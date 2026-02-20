@@ -16,6 +16,7 @@ import '@xyflow/react/dist/style.css';
 import { Loader2 } from 'lucide-react';
 import { QuestNode } from './components/QuestNode';
 import { QuestBuilderHeader } from './components/QuestBuilderHeader';
+import { ProjectSidebar } from './components/ProjectSidebar';
 import { AISidebar } from '../../components/shared/AISidebar';
 import { getLayoutedElements } from '../../utils/layoutUtils';
 import { QuestNodeData, NodeVariant } from '../../types/quest';
@@ -42,6 +43,7 @@ export function QuestBuilder() {
   const [sidebarMode, setSidebarMode] = useState<'edit' | 'create'>('edit');
   const [pendingNode, setPendingNode] = useState<PendingNode | null>(null);
   const [nodeIdCounter, setNodeIdCounter] = useState(1);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
 
   // Populate graph once data is fetched
   useEffect(() => {
@@ -192,10 +194,13 @@ export function QuestBuilder() {
         selectedNode={selectedNode}
         onOpenSidebar={() => { setSidebarMode('edit'); setIsSidebarOpen(true); }}
         onAutoLayout={handleAutoLayout}
+        isSidebarOpen={isLeftSidebarOpen}
+        onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
       />
 
       {/* Canvas */}
       <div className="flex-1 relative">
+        <ProjectSidebar questlineId={ACTIVE_QUESTLINE_ID} isOpen={isLeftSidebarOpen} />
         <ReactFlow
           nodes={nodes}
           edges={edges}
