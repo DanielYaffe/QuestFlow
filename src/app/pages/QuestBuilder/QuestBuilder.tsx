@@ -44,12 +44,14 @@ export function QuestBuilder() {
   const [pendingNode, setPendingNode] = useState<PendingNode | null>(null);
   const [nodeIdCounter, setNodeIdCounter] = useState(1);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [layoutDirection, setLayoutDirection] = useState<'TB' | 'LR'>('LR');
 
-  // Populate graph once data is fetched
+  // Populate graph once data is fetched and apply default horizontal layout
   useEffect(() => {
     if (fetchedNodes.length > 0) {
-      setNodes(fetchedNodes);
-      setEdges(fetchedEdges);
+      const layouted = getLayoutedElements(fetchedNodes, fetchedEdges, 'LR');
+      setNodes(layouted.nodes.map((n) => ({ ...n, data: { ...n.data, layoutDirection: 'LR' as const } })));
+      setEdges(layouted.edges);
       setNodeIdCounter(nextNodeId);
     }
   }, [fetchedNodes, fetchedEdges, nextNodeId, setNodes, setEdges]);
@@ -102,7 +104,7 @@ export function QuestBuilder() {
         id: newNodeId,
         type: 'questNode',
         position: positionMap[position],
-        data: { ...data, onAddPath: (pos) => requestNewNode(newNodeId, pos) },
+        data: { ...data, layoutDirection, onAddPath: (pos) => requestNewNode(newNodeId, pos) },
       };
 
       setNodes((nds) => [...nds, newNode]);
@@ -155,14 +157,16 @@ export function QuestBuilder() {
           onAddPath: (pos: 'top' | 'bottom' | 'left' | 'right') => requestNewNode(node.id, pos),
           onDelete: () => deleteNode(node.id),
           onChangeVariant: (variant: NodeVariant) => changeNodeVariant(node.id, variant),
+          // preserve layoutDirection already set in node.data
         },
       }))
     );
   }, [requestNewNode, deleteNode, changeNodeVariant]);
 
-  const handleAutoLayout = useCallback(() => {
-    const layouted = getLayoutedElements(nodes, edges);
-    setNodes(layouted.nodes);
+  const handleAutoLayout = useCallback((direction: 'TB' | 'LR') => {
+    setLayoutDirection(direction);
+    const layouted = getLayoutedElements(nodes, edges, direction);
+    setNodes(layouted.nodes.map((n) => ({ ...n, data: { ...n.data, layoutDirection: direction } })));
     setEdges(layouted.edges);
   }, [nodes, edges, setNodes, setEdges]);
 
@@ -194,6 +198,7 @@ export function QuestBuilder() {
         selectedNode={selectedNode}
         onOpenSidebar={() => { setSidebarMode('edit'); setIsSidebarOpen(true); }}
         onAutoLayout={handleAutoLayout}
+        layoutDirection={layoutDirection}
         isSidebarOpen={isLeftSidebarOpen}
         onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
       />

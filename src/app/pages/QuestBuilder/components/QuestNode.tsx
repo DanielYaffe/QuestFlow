@@ -51,6 +51,11 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
   const variant = data.variant || 'story';
   const config = variantConfig[variant];
   const Icon = config.icon;
+  const isHorizontal = (data.layoutDirection ?? 'LR') === 'LR';
+
+  const handleCls = `w-3 h-3 !border-2 !border-zinc-900 ${
+    selected ? `!${config.bgColor.replace('/10', '')}` : '!bg-purple-500'
+  }`;
 
   return (
     <div
@@ -60,35 +65,45 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
           : 'border-zinc-700 hover:border-zinc-600'
       }`}
     >
-      {/* Connection Handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        className={`w-3 h-3 !border-2 !border-zinc-900 ${
-          selected ? `!${config.bgColor.replace('/10', '')}` : '!bg-purple-500'
-        }`}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        className={`w-3 h-3 !border-2 !border-zinc-900 ${
-          selected ? `!${config.bgColor.replace('/10', '')}` : '!bg-purple-500'
-        }`}
-      />
+      {/* Target handle — Left in LR mode, Top in TB mode */}
+      <Handle type="target" position={isHorizontal ? Position.Left : Position.Top} className={handleCls} />
+      {/* Source handle — Right in LR mode, Bottom in TB mode */}
+      <Handle type="source" position={isHorizontal ? Position.Right : Position.Bottom} className={handleCls} />
 
-      {/* Add Path Buttons */}
-      <button
-        onClick={(e) => { e.stopPropagation(); data.onAddPath?.('top'); }}
-        className="absolute -top-6 left-1/2 -translate-x-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-10"
-      >
-        <Plus className={`w-3 h-3 ${config.iconColor}`} />
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); data.onAddPath?.('left'); }}
-        className="absolute -left-6 top-1/2 -translate-y-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-10"
-      >
-        <Plus className={`w-3 h-3 ${config.iconColor}`} />
-      </button>
+      {/* Add Path Buttons — shown based on layout direction */}
+      {isHorizontal ? (
+        /* LR: left (incoming) and right (outgoing) */
+        <>
+          <button
+            onClick={(e) => { e.stopPropagation(); data.onAddPath?.('left'); }}
+            className="absolute -left-6 top-1/2 -translate-y-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-10"
+          >
+            <Plus className={`w-3 h-3 ${config.iconColor}`} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); data.onAddPath?.('right'); }}
+            className="absolute -right-6 top-1/2 -translate-y-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-10"
+          >
+            <Plus className={`w-3 h-3 ${config.iconColor}`} />
+          </button>
+        </>
+      ) : (
+        /* TB: top (incoming) and bottom (outgoing) */
+        <>
+          <button
+            onClick={(e) => { e.stopPropagation(); data.onAddPath?.('top'); }}
+            className="absolute -top-6 left-1/2 -translate-x-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-10"
+          >
+            <Plus className={`w-3 h-3 ${config.iconColor}`} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); data.onAddPath?.('bottom'); }}
+            className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-10"
+          >
+            <Plus className={`w-3 h-3 ${config.iconColor}`} />
+          </button>
+        </>
+      )}
 
       {/* Card Content */}
       <div className={`p-4 ${config.bgColor}`}>
@@ -180,34 +195,6 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
         </button>
       </div>
 
-      {/* Bottom Add Path Buttons */}
-      <button
-        onClick={(e) => { e.stopPropagation(); data.onAddPath?.('bottom'); }}
-        className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-10"
-      >
-        <Plus className={`w-3 h-3 ${config.iconColor}`} />
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); data.onAddPath?.('right'); }}
-        className="absolute -right-6 top-1/2 -translate-y-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-10"
-      >
-        <Plus className={`w-3 h-3 ${config.iconColor}`} />
-      </button>
-
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className={`w-3 h-3 !border-2 !border-zinc-900 ${
-          selected ? `!${config.bgColor.replace('/10', '')}` : '!bg-purple-500'
-        }`}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className={`w-3 h-3 !border-2 !border-zinc-900 ${
-          selected ? `!${config.bgColor.replace('/10', '')}` : '!bg-purple-500'
-        }`}
-      />
     </div>
   );
 }
