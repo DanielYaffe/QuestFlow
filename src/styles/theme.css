@@ -119,6 +119,21 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* Quest node handles — visible green circles on hover */
+.quest-handle {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.react-flow__node:hover .quest-handle,
+.quest-handle:hover {
+  opacity: 1 !important;
+}
+
+.quest-handle:hover {
+  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.25) !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

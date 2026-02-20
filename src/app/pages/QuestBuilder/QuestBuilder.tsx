@@ -76,7 +76,7 @@ export function QuestBuilder() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge({ ...connection, type: 'smoothstep', animated: true, style: { stroke: '#a78bfa', strokeWidth: 2 } }, eds));
+      setEdges((eds) => addEdge({ ...connection, type: 'smoothstep', animated: true, style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' } }, eds));
     },
     [setEdges]
   );
@@ -134,7 +134,7 @@ export function QuestBuilder() {
           target: newNodeId,
           type: 'smoothstep',
           animated: true,
-          style: { stroke: '#a78bfa', strokeWidth: 2 },
+          style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' },
         },
       ]);
       setPendingNode(null);
@@ -234,10 +234,10 @@ export function QuestBuilder() {
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
-          className="bg-zinc-950"
+          className="bg-zinc-900"
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
+          <Background variant={BackgroundVariant.Dots} color="#52525b" gap={20} size={1.5} />
           <Controls className="!bg-zinc-800 !border-zinc-700 [&_button]:!bg-zinc-800 [&_button]:!border-zinc-700 [&_button]:!text-zinc-300 hover:[&_button]:!bg-zinc-700" />
           <MiniMap
             className="!bg-zinc-900 !border-zinc-800"

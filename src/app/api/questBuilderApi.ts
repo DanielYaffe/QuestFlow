@@ -75,12 +75,12 @@ const STUB_NODES: Node<QuestNodeData>[] = [
 ];
 
 const STUB_EDGES: Edge[] = [
-  { id: 'e9001-9002', source: '9001', target: '9002', type: 'smoothstep', animated: true, style: { stroke: '#a78bfa', strokeWidth: 2 } },
-  { id: 'e9002-9003', source: '9002', target: '9003', type: 'smoothstep', animated: true, style: { stroke: '#a78bfa', strokeWidth: 2 } },
-  { id: 'e9003-9004', source: '9003', target: '9004', type: 'smoothstep', animated: true, style: { stroke: '#a78bfa', strokeWidth: 2 } },
-  { id: 'e9003-9005', source: '9003', target: '9005', type: 'smoothstep', animated: true, style: { stroke: '#a78bfa', strokeWidth: 2 } },
-  { id: 'e9004-9006', source: '9004', target: '9006', type: 'smoothstep', animated: true, style: { stroke: '#a78bfa', strokeWidth: 2 } },
-  { id: 'e9005-9006', source: '9005', target: '9006', type: 'smoothstep', animated: true, style: { stroke: '#a78bfa', strokeWidth: 2 } },
+  { id: 'e9001-9002', source: '9001', target: '9002', type: 'smoothstep', animated: true, style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' } },
+  { id: 'e9002-9003', source: '9002', target: '9003', type: 'smoothstep', animated: true, style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' } },
+  { id: 'e9003-9004', source: '9003', target: '9004', type: 'smoothstep', animated: true, style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' } },
+  { id: 'e9003-9005', source: '9003', target: '9005', type: 'smoothstep', animated: true, style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' } },
+  { id: 'e9004-9006', source: '9004', target: '9006', type: 'smoothstep', animated: true, style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' } },
+  { id: 'e9005-9006', source: '9005', target: '9006', type: 'smoothstep', animated: true, style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' } },
 ];
 
 // ---------------------------------------------------------------------------

@@ -55,10 +55,6 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
   const Icon = config.icon;
   const isHorizontal = (data.layoutDirection ?? 'LR') === 'LR';
 
-  const handleCls = `w-3 h-3 !border-2 !border-zinc-900 ${
-    selected ? `!${config.bgColor.replace('/10', '')}` : '!bg-purple-500'
-  }`;
-
   return (
     <div
       className={`relative bg-zinc-900 rounded-lg border-2 transition-all min-w-[280px] max-w-[320px] group ${
@@ -68,9 +64,33 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
       }`}
     >
       {/* Target handle — Left in LR mode, Top in TB mode */}
-      <Handle type="target" position={isHorizontal ? Position.Left : Position.Top} className={handleCls} />
+      <Handle
+        type="target"
+        position={isHorizontal ? Position.Left : Position.Top}
+        style={{
+          width: 14,
+          height: 14,
+          background: '#22c55e',
+          border: '3px solid #ffffff',
+          borderRadius: '50%',
+          zIndex: 20,
+        }}
+        className="quest-handle"
+      />
       {/* Source handle — Right in LR mode, Bottom in TB mode */}
-      <Handle type="source" position={isHorizontal ? Position.Right : Position.Bottom} className={handleCls} />
+      <Handle
+        type="source"
+        position={isHorizontal ? Position.Right : Position.Bottom}
+        style={{
+          width: 14,
+          height: 14,
+          background: '#22c55e',
+          border: '3px solid #ffffff',
+          borderRadius: '50%',
+          zIndex: 20,
+        }}
+        className="quest-handle"
+      />
 
       {/* Add Path Buttons — shown based on layout direction */}
       {isHorizontal ? (
