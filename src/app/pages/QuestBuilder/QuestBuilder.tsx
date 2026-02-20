@@ -2,18 +2,21 @@ import React, { useState, useCallback, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
+  Panel,
   Node,
   type Edge,
   Connection,
   addEdge,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Crosshair } from 'lucide-react';
 import { QuestNode } from './components/QuestNode';
 import { QuestBuilderHeader } from './components/QuestBuilderHeader';
 import { ProjectSidebar } from './components/ProjectSidebar';
@@ -25,6 +28,21 @@ import { useQuestlineData } from './hooks/useQuestlineData';
 const nodeTypes = {
   questNode: QuestNode,
 } satisfies NodeTypes;
+
+function FitViewButton() {
+  const { fitView } = useReactFlow();
+  return (
+    <Panel position="bottom-right" style={{ marginBottom: '120px' }}>
+      <button
+        onClick={() => fitView({ padding: 0.15, duration: 400 })}
+        title="Center view"
+        className="w-8 h-8 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors shadow-md"
+      >
+        <Crosshair className="w-4 h-4" />
+      </button>
+    </Panel>
+  );
+}
 
 // Active questline ID — swap this to load a different project
 const ACTIVE_QUESTLINE_ID = 9000;
@@ -219,7 +237,7 @@ export function QuestBuilder() {
           className="bg-zinc-950"
           proOptions={{ hideAttribution: true }}
         >
-          <Background color="#27272a" gap={20} size={1} className="opacity-50" />
+          <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
           <Controls className="!bg-zinc-800 !border-zinc-700 [&_button]:!bg-zinc-800 [&_button]:!border-zinc-700 [&_button]:!text-zinc-300 hover:[&_button]:!bg-zinc-700" />
           <MiniMap
             className="!bg-zinc-900 !border-zinc-800"
@@ -230,6 +248,7 @@ export function QuestBuilder() {
             }}
             maskColor="rgba(0, 0, 0, 0.6)"
           />
+          <FitViewButton />
         </ReactFlow>
 
         <div className="absolute top-4 left-4 bg-zinc-900/90 backdrop-blur-sm border border-zinc-800 rounded-lg px-4 py-3 z-10">

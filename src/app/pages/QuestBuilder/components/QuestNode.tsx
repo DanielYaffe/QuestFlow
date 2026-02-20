@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Plus, Swords, MessageCircle, Scroll, Gem, Trash2, ChevronDown } from 'lucide-react';
 import { QuestNodeData, NodeVariant } from '../../../types/quest';
+import { ConfirmModal } from '../../../components/shared/ConfirmModal';
 
 const variantConfig = {
   story: {
@@ -45,6 +46,7 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [showVariantMenu, setShowVariantMenu] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [title, setTitle] = useState(data.title);
   const [body, setBody] = useState(data.body);
 
@@ -186,7 +188,7 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (confirm('Delete this node?')) data.onDelete?.();
+            setShowDeleteModal(true);
           }}
           className="p-1 bg-red-600/20 hover:bg-red-600/40 border border-red-600/50 rounded transition-colors"
           title="Delete node"
@@ -195,6 +197,16 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
         </button>
       </div>
 
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        title="Delete Node"
+        message={`Are you sure you want to delete "${title}"? This will also remove all connected edges.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={() => { setShowDeleteModal(false); data.onDelete?.(); }}
+        onCancel={() => setShowDeleteModal(false)}
+      />
     </div>
   );
 }
