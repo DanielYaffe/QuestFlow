@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Workflow, Home, Sparkles, PlayCircle } from 'lucide-react';
+import { Workflow, Home, Sparkles, PlayCircle, PlusCircle } from 'lucide-react';
 
 export function TopNav() {
   const navigate = useNavigate();
@@ -8,6 +8,7 @@ export function TopNav() {
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: Home },
+    { path: '/create', label: 'Create', icon: PlusCircle },
     { path: '/quest-builder', label: 'Quest Builder', icon: Workflow },
     { path: '/sprite-generator', label: 'Sprite Generator', icon: Sparkles },
     { path: '/sprite-animator', label: 'Sprite Animator', icon: PlayCircle },
