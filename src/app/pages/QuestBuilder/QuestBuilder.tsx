@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
@@ -44,15 +45,26 @@ function FitViewButton() {
   );
 }
 
-// Active questline ID — swap this to load a different project
-const ACTIVE_QUESTLINE_ID = 9000;
+// Separate component so it can call useReactFlow (must be inside ReactFlow provider)
+function AutoLayoutTrigger({ trigger }: { trigger: number }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    if (trigger > 0) {
+      // Small delay so React Flow has time to update node positions before fitting
+      const id = setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50);
+      return () => clearTimeout(id);
+    }
+  }, [trigger, fitView]);
+  return null;
+}
 
 type PendingNode = { sourceNodeId: string; position: 'top' | 'bottom' | 'left' | 'right' };
 
 type QuestFlowNode = Node<QuestNodeData>;
 
 export function QuestBuilder() {
-  const { nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, isLoading, error } = useQuestlineData(ACTIVE_QUESTLINE_ID);
+  const { questlineId = '' } = useParams<{ questlineId: string }>();
+  const { nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, isLoading, error } = useQuestlineData(questlineId);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<QuestFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -63,6 +75,7 @@ export function QuestBuilder() {
   const [nodeIdCounter, setNodeIdCounter] = useState(1);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [layoutDirection, setLayoutDirection] = useState<'TB' | 'LR'>('LR');
+  const [layoutTrigger, setLayoutTrigger] = useState(0);
 
   // Populate graph once data is fetched and apply default horizontal layout
   useEffect(() => {
@@ -186,6 +199,7 @@ export function QuestBuilder() {
     const layouted = getLayoutedElements(nodes, edges, direction);
     setNodes(layouted.nodes.map((n) => ({ ...n, data: { ...n.data, layoutDirection: direction } })));
     setEdges(layouted.edges);
+    setLayoutTrigger((t) => t + 1);
   }, [nodes, edges, setNodes, setEdges]);
 
   if (isLoading) {
@@ -223,7 +237,7 @@ export function QuestBuilder() {
 
       {/* Canvas */}
       <div className="flex-1 relative">
-        <ProjectSidebar questlineId={ACTIVE_QUESTLINE_ID} isOpen={isLeftSidebarOpen} />
+        <ProjectSidebar questlineId={questlineId} isOpen={isLeftSidebarOpen} />
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -249,6 +263,7 @@ export function QuestBuilder() {
             maskColor="rgba(0, 0, 0, 0.6)"
           />
           <FitViewButton />
+          <AutoLayoutTrigger trigger={layoutTrigger} />
         </ReactFlow>
 
         <div className="absolute top-4 left-4 bg-zinc-900/90 backdrop-blur-sm border border-zinc-800 rounded-lg px-4 py-3 z-10">

@@ -19,3 +19,4 @@ packages/solid/universal/src/universal.d.ts
 /devcontainer
 .claude/
 guidelines/
+backend/

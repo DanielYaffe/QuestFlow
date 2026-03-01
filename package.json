@@ -1,5 +1,5 @@
 {
-  "name": "@figma/my-make-file",
+  "name": "questflow-front",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -41,6 +41,7 @@
     "@radix-ui/react-tooltip": "1.1.8",
     "@types/dagre": "^0.7.53",
     "@xyflow/react": "^12.10.0",
+    "axios": "^1.13.6",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
@@ -69,6 +70,8 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
+    "@types/node": "^25.3.2",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "4.7.0",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5"

@@ -21,7 +21,7 @@ const variantColor: Record<string, string> = {
 };
 
 interface ProjectSidebarProps {
-  questlineId: number;
+  questlineId: string;
   isOpen: boolean;
 }
 

@@ -11,7 +11,7 @@ interface QuestlineState {
   error: string | null;
 }
 
-export function useQuestlineData(questlineId: number): QuestlineState {
+export function useQuestlineData(questlineId: string): QuestlineState {
   const [state, setState] = useState<QuestlineState>({
     nodes: [],
     edges: [],
