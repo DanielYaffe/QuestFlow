@@ -33,7 +33,7 @@ export function StepObjectives({
   const canSubmit = selectedObjectives.length > 0;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="h-full flex flex-col gap-6">
       <WizardStepIndicator currentStep={2} />
 
       <div className="text-center flex flex-col gap-2">
@@ -41,8 +41,8 @@ export function StepObjectives({
         <p className="text-zinc-400">Select the objectives and rewards for your quest</p>
       </div>
 
-      {/* Two-column grid */}
-      <div className="grid grid-cols-2 gap-6">
+      {/* Two-column grid — scrollable */}
+      <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-2 gap-6 pr-1">
         {/* Objectives */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 mb-1">

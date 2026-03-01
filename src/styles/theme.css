@@ -119,6 +119,25 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #52525b; /* zinc-600 */
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7c3aed; /* purple-700 */
+}
+
 /* Quest node handles — visible green circles on hover */
 .quest-handle {
   opacity: 0;

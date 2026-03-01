@@ -72,8 +72,8 @@ export function QuestCreate() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-zinc-950">
-      <div className="max-w-3xl mx-auto px-6 py-16">
+    <div className="h-full overflow-hidden bg-zinc-950">
+      <div className="max-w-3xl mx-auto px-6 py-16 h-full flex flex-col">
         {state.error && (
           <div className="mb-6 px-4 py-3 bg-red-900/30 border border-red-700/50 rounded-xl text-red-400 text-sm">
             {state.error}
@@ -106,6 +106,12 @@ export function QuestCreate() {
 
         {state.step === 3 && (
           <StepOutput
+            story={state.storyInput}
+            genre={state.selectedGenre}
+            objectives={state.objectives}
+            selectedObjectives={state.selectedObjectives}
+            rewards={state.rewards}
+            selectedRewards={state.selectedRewards}
             onBack={() => setState((s) => ({ ...s, step: 2 }))}
           />
         )}

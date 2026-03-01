@@ -1,10 +1,17 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Workflow, Home, Sparkles, PlayCircle, PlusCircle } from 'lucide-react';
+import { Workflow, Home, Sparkles, PlayCircle, PlusCircle, LogOut } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export function TopNav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: Home },
@@ -43,6 +50,14 @@ export function TopNav() {
               </button>
             );
           })}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white ml-2"
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="text-sm">Sign out</span>
+          </button>
         </div>
       </div>
     </nav>
