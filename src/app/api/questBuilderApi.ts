@@ -15,6 +15,18 @@ export async function fetchQuestlines(): Promise<QuestlineSummary[]> {
   return data;
 }
 
+export interface QuestlineMeta {
+  _id: string;
+  title: string;
+  genre: string;
+  styleId: string;
+}
+
+export async function fetchQuestlineMeta(questlineId: string): Promise<QuestlineMeta> {
+  const { data } = await api.get(`/questlines/${questlineId}`);
+  return { _id: data._id, title: data.title, genre: data.genre ?? '', styleId: data.styleId ?? '' };
+}
+
 export interface QuestlineData {
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
