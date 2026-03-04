@@ -89,7 +89,7 @@ export function QuestBuilder() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge({ ...connection, type: 'smoothstep', animated: true, style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' } }, eds));
+      setEdges((eds) => addEdge({ ...connection }, eds));
     },
     [setEdges]
   );
@@ -146,8 +146,7 @@ export function QuestBuilder() {
           source: sourceNodeId,
           target: newNodeId,
           type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '6 4' },
+          animated: false,
         },
       ]);
       setPendingNode(null);
