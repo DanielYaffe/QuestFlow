@@ -34,7 +34,9 @@ export function TopNav() {
         <div className="flex items-center gap-2">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+            const isActive = item.path === '/quest-builder'
+              ? location.pathname.startsWith('/quest-builder')
+              : location.pathname === item.path;
             return (
               <button
                 key={item.path}

@@ -7,6 +7,7 @@ import { Login } from './pages/Login/Login';
 import { AuthCallback } from './pages/AuthCallback/AuthCallback';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { QuestBuilder } from './pages/QuestBuilder/QuestBuilder';
+import { QuestBuilderLanding } from './pages/QuestBuilder/QuestBuilderLanding';
 import { QuestCreate } from './pages/QuestCreate/QuestCreate';
 import { SpriteGenerator } from './pages/SpriteGenerator/SpriteGenerator';
 import { SpriteAnimator } from './pages/SpriteAnimator/SpriteAnimator';
@@ -21,6 +22,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/quest-builder" element={<QuestBuilderLanding />} />
               <Route path="/quest-builder/:questlineId" element={<QuestBuilder />} />
               <Route path="/create" element={<QuestCreate />} />
               <Route path="/sprite-generator" element={<SpriteGenerator />} />
