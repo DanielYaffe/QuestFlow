@@ -2,21 +2,23 @@ import React from 'react';
 import { Check } from 'lucide-react';
 
 interface WizardStepIndicatorProps {
-  currentStep: 1 | 2 | 3;
+  currentStep: 1 | 2 | 3 | 4 | 5;
 }
 
 const STEPS = [
   { number: 1, label: 'Story' },
-  { number: 2, label: 'Objectives' },
-  { number: 3, label: 'Output' },
+  { number: 2, label: 'Style' },
+  { number: 3, label: 'Objectives' },
+  { number: 4, label: 'Characters' },
+  { number: 5, label: 'Output' },
 ];
 
 export function WizardStepIndicator({ currentStep }: WizardStepIndicatorProps) {
   return (
     <div className="flex items-center justify-center gap-0">
       {STEPS.map((step, index) => {
-        const isComplete = step.number < currentStep;
-        const isActive = step.number === currentStep;
+        const isComplete = (step.number as number) < currentStep;
+        const isActive = (step.number as number) === currentStep;
 
         return (
           <React.Fragment key={step.number}>

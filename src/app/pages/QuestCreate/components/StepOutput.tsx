@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Check, Plus, X, Save, Loader2 } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
-import { Objective, Reward, generateQuestline } from '../../../api/questCreateApi';
+import { Objective, Reward, GeneratedCharacter, generateQuestline } from '../../../api/questCreateApi';
 import {
   ExportTemplate,
   getTemplates,
@@ -17,6 +17,8 @@ interface StepOutputProps {
   selectedObjectives: string[];
   rewards: Reward[];
   selectedRewards: string[];
+  characters: GeneratedCharacter[];
+  styleId: string;
   onBack: () => void;
 }
 
@@ -59,6 +61,8 @@ export function StepOutput({
   selectedObjectives,
   rewards,
   selectedRewards,
+  characters,
+  styleId,
   onBack,
 }: StepOutputProps) {
   const navigate = useNavigate();
@@ -124,6 +128,8 @@ export function StepOutput({
         genre,
         objectives.filter((o) => selectedObjectives.includes(o.id)),
         rewards.filter((r) => selectedRewards.includes(r.id)),
+        characters,
+        styleId,
       );
       navigate(`/quest-builder/${id}`);
     } catch (err) {
@@ -143,7 +149,7 @@ export function StepOutput({
 
   return (
     <div className="h-full flex flex-col gap-5">
-      <WizardStepIndicator currentStep={3} />
+      <WizardStepIndicator currentStep={5} />
 
       <div className="text-center flex flex-col gap-1">
         <h2 className="text-3xl font-bold text-white">Your quest structure</h2>
