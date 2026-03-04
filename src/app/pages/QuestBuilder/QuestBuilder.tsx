@@ -22,6 +22,7 @@ import { QuestNode } from './components/QuestNode';
 import { QuestBuilderHeader } from './components/QuestBuilderHeader';
 import { ProjectSidebar } from './components/ProjectSidebar';
 import { AISidebar } from '../../components/shared/AISidebar';
+import { NodeEditSidebar, NodeSnapshot } from './components/NodeEditSidebar';
 import { getLayoutedElements } from '../../utils/layoutUtils';
 import { QuestNodeData, NodeVariant } from '../../types/quest';
 import { useQuestlineData } from './hooks/useQuestlineData';
@@ -76,6 +77,7 @@ export function QuestBuilder() {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [layoutDirection, setLayoutDirection] = useState<'TB' | 'LR'>('LR');
   const [layoutTrigger, setLayoutTrigger] = useState(0);
+  const [editingNode, setEditingNode] = useState<{ id: string; snapshot: NodeSnapshot } | null>(null);
 
   // Populate graph once data is fetched and apply default horizontal layout
   useEffect(() => {
@@ -177,6 +179,42 @@ export function QuestBuilder() {
     [setNodes]
   );
 
+  const openEditSidebar = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => {
+        const node = nds.find((n) => n.id === nodeId);
+        if (node) {
+          setEditingNode({
+            id: nodeId,
+            snapshot: {
+              title:      node.data.title,
+              body:       node.data.body,
+              variant:    (node.data.variant as NodeVariant) ?? 'story',
+              npcIds:     (node.data.npcIds     as string[]) ?? [],
+              monsterIds: (node.data.monsterIds as string[]) ?? [],
+              rewardIds:  (node.data.rewardIds  as string[]) ?? [],
+            },
+          });
+        }
+        return nds;
+      });
+    },
+    [setNodes]
+  );
+
+  const updateNode = useCallback(
+    (nodeId: string, updated: NodeSnapshot) => {
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, ...updated } }
+            : node
+        )
+      );
+    },
+    [setNodes]
+  );
+
   // Attach interaction callbacks to every node whenever the handlers update
   useEffect(() => {
     setNodes((nds) =>
@@ -187,11 +225,11 @@ export function QuestBuilder() {
           onAddPath: (pos: 'top' | 'bottom' | 'left' | 'right') => requestNewNode(node.id, pos),
           onDelete: () => deleteNode(node.id),
           onChangeVariant: (variant: NodeVariant) => changeNodeVariant(node.id, variant),
-          // preserve layoutDirection already set in node.data
+          onEdit: () => openEditSidebar(node.id),
         },
       }))
     );
-  }, [requestNewNode, deleteNode, changeNodeVariant]);
+  }, [requestNewNode, deleteNode, changeNodeVariant, openEditSidebar]);
 
   const handleAutoLayout = useCallback((direction: 'TB' | 'LR') => {
     setLayoutDirection(direction);
@@ -287,6 +325,7 @@ export function QuestBuilder() {
         </div>
       </div>
 
+      {/* Create-node sidebar (+ button flow) or AI chat sidebar */}
       <AISidebar
         isOpen={isSidebarOpen}
         mode={sidebarMode}
@@ -297,6 +336,18 @@ export function QuestBuilder() {
         }}
         selectedNodeTitle={selectedNode?.data.title}
         onCreateNode={confirmNewNode}
+      />
+
+      {/* Edit-node sidebar (click node flow) */}
+      <NodeEditSidebar
+        isOpen={editingNode !== null}
+        node={editingNode?.snapshot ?? null}
+        questlineId={questlineId}
+        onClose={() => setEditingNode(null)}
+        onApply={(updated) => {
+          if (editingNode) updateNode(editingNode.id, updated);
+          setEditingNode(null);
+        }}
       />
     </div>
   );
