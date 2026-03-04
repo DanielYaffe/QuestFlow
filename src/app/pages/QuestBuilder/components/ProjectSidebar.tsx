@@ -9,6 +9,7 @@ import {
   Chapter,
   QuestSummary,
 } from '../../../api/projectSidebarApi';
+import { fetchQuestlineMeta } from '../../../api/questBuilderApi';
 import { CharacterDetailPanel } from './CharacterDetailPanel';
 
 type Tab = 'characters' | 'chapters' | 'quests';
@@ -33,11 +34,13 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [questSummaries, setQuestSummaries] = useState<QuestSummary[]>([]);
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+  const [questStyleId, setQuestStyleId] = useState('');
 
   useEffect(() => {
     fetchCharacters(questlineId).then(setCharacters).catch(console.error);
     fetchChapters(questlineId).then(setChapters).catch(console.error);
     fetchQuestSummaries(questlineId).then(setQuestSummaries).catch(console.error);
+    fetchQuestlineMeta(questlineId).then((m) => setQuestStyleId(m.styleId ?? '')).catch(console.error);
   }, [questlineId]);
 
   const selectedCharacter = characters.find((c) => c.id === selectedCharacterId) ?? null;
@@ -208,6 +211,13 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
               <CharacterDetailPanel
                 character={selectedCharacter}
                 questSummaries={questSummaries}
+                questlineId={questlineId}
+                questStyleId={questStyleId}
+                onImageUpdated={(url) =>
+                  setCharacters((prev) =>
+                    prev.map((c) => c.id === selectedCharacter.id ? { ...c, imageUrl: url } : c)
+                  )
+                }
                 onClose={() => setSelectedCharacterId(null)}
               />
             )}

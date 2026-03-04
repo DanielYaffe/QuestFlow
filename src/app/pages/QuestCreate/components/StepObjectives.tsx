@@ -34,7 +34,7 @@ export function StepObjectives({
 
   return (
     <div className="h-full flex flex-col gap-6">
-      <WizardStepIndicator currentStep={2} />
+      <WizardStepIndicator currentStep={3} />
 
       <div className="text-center flex flex-col gap-2">
         <h2 className="text-3xl font-bold text-white">Shape your questline</h2>

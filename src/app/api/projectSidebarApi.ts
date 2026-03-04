@@ -26,6 +26,13 @@ export type QuestSummary = {
   variant: NodeVariant;
 };
 
+export type Reward = {
+  id: string;
+  title: string;
+  description: string;
+  rarity: 'common' | 'rare' | 'epic';
+};
+
 // ---------------------------------------------------------------------------
 // API functions
 // ---------------------------------------------------------------------------
@@ -44,4 +51,17 @@ export async function fetchChapters(questlineId: string): Promise<Chapter[]> {
 export async function fetchQuestSummaries(questlineId: string): Promise<QuestSummary[]> {
   const { data } = await api.get(`/questlines/${questlineId}/quests`);
   return data;
+}
+
+export async function fetchRewards(questlineId: string): Promise<Reward[]> {
+  const { data } = await api.get(`/questlines/${questlineId}/rewards`);
+  return data.map((r: Reward & { _id?: string }) => ({ ...r, id: r._id ?? r.id }));
+}
+
+export async function updateCharacterImage(
+  questlineId: string,
+  characterId: string,
+  imageUrl: string,
+): Promise<void> {
+  await api.put(`/questlines/${questlineId}/characters/${characterId}`, { imageUrl });
 }
