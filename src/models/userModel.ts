@@ -1,10 +1,9 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-
-
 export interface IUser extends Document {
   email: string;
-  password: string;
+  password?: string;
+  googleId?: string;
   refreshTokens: string[];
 }
 
@@ -16,7 +15,11 @@ const userSchema = new Schema<IUser>({
     },
     password: {
         type: String,
-        required: true,
+        required: false,
+    },
+    googleId: {
+        type: String,
+        required: false,
     },
     refreshTokens: {
         type: [String],

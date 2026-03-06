@@ -8,7 +8,13 @@ import userRouter from "./routes/userRoute";
 import postRouter from "./routes/postRoute";
 import authRouter from "./routes/authRoute";
 import questlineRouter from "./routes/questlineRoute";
+import questGenerationRouter from "./routes/questGenerationRoute";
+import exportTemplateRouter from "./routes/exportTemplateRoute";
+import spriteRouter from "./routes/spriteRoute";
+import questStyleRouter from "./routes/questStyleRoute";
+import { seedQuestStyles } from "./models/questStyleModel";
 import cors from "cors";
+import "./config/passport";
 import { authenticate } from "./middlewares/authMiddleware";
 import { swaggerUi, swaggerSpec } from "./swagger";
 
@@ -32,6 +38,10 @@ app.use('/comments', commentsRouter);
 app.use('/users', userRouter);
 app.use('/posts', postRouter);
 app.use('/questlines', questlineRouter);
+app.use('/quests', questGenerationRouter);
+app.use('/export-templates', exportTemplateRouter);
+app.use('/sprites', spriteRouter);
+app.use('/quest-styles', questStyleRouter);
 
 const db = mongoose.connection;
 db.on("error", (error) => console.error(error));
@@ -46,6 +56,7 @@ const initApp = () => {
             mongoose
                 .connect(config.DATABASE_URL)
                 .then(() => {
+                    seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
                     resolve(app);
                 })
                 .catch((error) => {

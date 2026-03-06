@@ -82,8 +82,8 @@ const login = async (req: Request, res: Response) => {
     }
     try {
         const user = await User.findOne({ email: email });
-        if (!user) {
-            return sendError(400, "Invalid email", res);
+        if (!user || !user.password) {
+            return sendError(400, "Invalid email or account uses Google login", res);
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {

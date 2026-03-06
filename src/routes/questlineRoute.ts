@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import questlineController from '../controllers/questlineController';
 
 const questlineRouter = Router();
@@ -560,6 +560,13 @@ questlineRouter.put('/:id/chapters/:chapterId', questlineController.updateChapte
  *         description: Not found
  */
 questlineRouter.delete('/:id/chapters/:chapterId', questlineController.deleteChapter.bind(questlineController));
+
+// ── Rewards ─────────────────────────────────────────────────────────────────
+
+questlineRouter.get('/:id/rewards',              questlineController.getRewards.bind(questlineController));
+questlineRouter.post('/:id/rewards',             questlineController.createReward.bind(questlineController));
+questlineRouter.put('/:id/rewards/:rewardId',    questlineController.updateReward.bind(questlineController));
+questlineRouter.delete('/:id/rewards/:rewardId', questlineController.deleteReward.bind(questlineController));
 
 // ── Quest summaries (node titles / variants list) ───────────────────────────
 
