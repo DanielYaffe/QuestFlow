@@ -31,6 +31,7 @@ export type Reward = {
   title: string;
   description: string;
   rarity: 'common' | 'rare' | 'epic';
+  imageUrl?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -58,10 +59,34 @@ export async function fetchRewards(questlineId: string): Promise<Reward[]> {
   return data.map((r: Reward & { _id?: string }) => ({ ...r, id: r._id ?? r.id }));
 }
 
+export async function updateCharacter(
+  questlineId: string,
+  characterId: string,
+  patch: Partial<Omit<Character, 'id' | 'questIds'>>,
+): Promise<void> {
+  await api.put(`/questlines/${questlineId}/characters/${characterId}`, patch);
+}
+
 export async function updateCharacterImage(
   questlineId: string,
   characterId: string,
   imageUrl: string,
 ): Promise<void> {
   await api.put(`/questlines/${questlineId}/characters/${characterId}`, { imageUrl });
+}
+
+export async function updateReward(
+  questlineId: string,
+  rewardId: string,
+  patch: Partial<Omit<Reward, 'id'>>,
+): Promise<void> {
+  await api.put(`/questlines/${questlineId}/rewards/${rewardId}`, patch);
+}
+
+export async function updateRewardImage(
+  questlineId: string,
+  rewardId: string,
+  imageUrl: string,
+): Promise<void> {
+  await api.put(`/questlines/${questlineId}/rewards/${rewardId}`, { imageUrl });
 }

@@ -4,6 +4,7 @@ import {
   Download, Copy, Check, AlertCircle, Loader2, X, ZoomIn, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { generateSprite, getSprites, SpriteFilters, SpriteRecord } from '../../api/spriteApi';
+import { useSpriteJobs } from '../../context/SpriteJobContext';
 
 // ---------------------------------------------------------------------------
 // Filter option definitions
@@ -283,18 +284,29 @@ export function SpriteGenerator() {
     setFilters((f) => ({ ...f, [key]: value }));
   };
 
+  const { registerJob } = useSpriteJobs();
+
   const handleGenerate = async () => {
     if (!prompt.trim() || isGenerating) return;
     setIsGenerating(true);
     setError(null);
     try {
-      const record = await generateSprite(prompt.trim(), filtersEnabled ? filters : {});
-      setCurrent(record);
-      setSprites((prev) => [record, ...prev]);
+      const { jobId } = await generateSprite(prompt.trim(), filtersEnabled ? filters : {});
+      registerJob(jobId, {
+        label: prompt.trim().slice(0, 40),
+        onDone: (record) => {
+          setCurrent(record);
+          setSprites((prev) => [record, ...prev]);
+          setIsGenerating(false);
+        },
+        onError: (msg) => {
+          setError(msg);
+          setIsGenerating(false);
+        },
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Generation failed — try again';
       setError(msg);
-    } finally {
       setIsGenerating(false);
     }
   };

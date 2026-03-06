@@ -12,29 +12,24 @@ const CHECKER_STYLE: React.CSSProperties = {
   backgroundPosition: '0 0,0 6px,6px -6px,-6px 0',
 };
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Character,
-  QuestSummary,
-  updateCharacter,
-  updateCharacterImage,
-} from '../../../api/projectSidebarApi';
+import { Reward, updateReward, updateRewardImage } from '../../../api/projectSidebarApi';
 import { generateSprite } from '../../../api/spriteApi';
 import { getQuestStyles } from '../../../api/questStyleApi';
 
-const variantColor: Record<string, string> = {
-  story: 'bg-purple-500',
-  combat: 'bg-red-500',
-  dialogue: 'bg-blue-500',
-  treasure: 'bg-amber-500',
+const rarityColor: Record<string, string> = {
+  common: 'text-zinc-400 bg-zinc-700/50 border-zinc-600',
+  rare:   'text-blue-300 bg-blue-500/10 border-blue-500/40',
+  epic:   'text-purple-300 bg-purple-500/10 border-purple-500/40',
 };
 
 interface EditableFieldProps {
   label: string;
   value: string;
   onChange: (val: string) => void;
+  multiline?: boolean;
 }
 
-function EditableField({ label, value, onChange }: EditableFieldProps) {
+function EditableField({ label, value, onChange, multiline = false }: EditableFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -44,14 +39,24 @@ function EditableField({ label, value, onChange }: EditableFieldProps) {
     <div>
       <p className="text-zinc-500 text-xs uppercase tracking-wider mb-2">{label}</p>
       {isEditing ? (
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => { setIsEditing(false); onChange(draft); }}
-          rows={4}
-          autoFocus
-          className="w-full bg-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded-lg border border-purple-500 focus:outline-none resize-none"
-        />
+        multiline ? (
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => { setIsEditing(false); onChange(draft); }}
+            rows={4}
+            autoFocus
+            className="w-full bg-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded-lg border border-purple-500 focus:outline-none resize-none"
+          />
+        ) : (
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => { setIsEditing(false); onChange(draft); }}
+            autoFocus
+            className="w-full bg-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded-lg border border-purple-500 focus:outline-none"
+          />
+        )
       ) : (
         <p
           onClick={() => setIsEditing(true)}
@@ -113,30 +118,28 @@ function UnsavedChangesDialog({ onSave, onDiscard, onCancel, isSaving }: Unsaved
   );
 }
 
-interface CharacterDetailPanelProps {
-  character: Character;
-  questSummaries: QuestSummary[];
+interface RewardDetailPanelProps {
+  reward: Reward;
   questlineId: string;
   questStyleId: string;
   registerCloseHandler: (fn: () => void) => void;
-  onSaved: (patch: Partial<Character>) => void;
+  onSaved: (patch: Partial<Reward>) => void;
   onImageUpdated: (url: string) => void;
   onClose: () => void;
 }
 
-export function CharacterDetailPanel({
-  character,
-  questSummaries,
+export function RewardDetailPanel({
+  reward,
   questlineId,
   questStyleId,
   registerCloseHandler,
   onSaved,
   onImageUpdated,
   onClose,
-}: CharacterDetailPanelProps) {
-  const [appearance, setAppearance] = useState(character.appearance);
-  const [background, setBackground] = useState(character.background);
-  const [imageUrl, setImageUrl] = useState(character.imageUrl ?? '');
+}: RewardDetailPanelProps) {
+  const [title, setTitle] = useState(reward.title);
+  const [description, setDescription] = useState(reward.description);
+  const [imageUrl, setImageUrl] = useState(reward.imageUrl ?? '');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [genError, setGenError] = useState('');
@@ -145,18 +148,16 @@ export function CharacterDetailPanel({
   const [pendingClose, setPendingClose] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const isDirty =
-    appearance !== character.appearance ||
-    background !== character.background;
+  const isDirty = title !== reward.title || description !== reward.description;
 
   useEffect(() => {
-    setAppearance(character.appearance);
-    setBackground(character.background);
-    setImageUrl(character.imageUrl ?? '');
+    setTitle(reward.title);
+    setDescription(reward.description);
+    setImageUrl(reward.imageUrl ?? '');
     setGenError('');
     setSaveError('');
     setShowUnsavedDialog(false);
-  }, [character.id]);
+  }, [reward.id]);
 
   // Expose the guarded close handler so the sidebar can trigger it on tab switch
   useEffect(() => {
@@ -170,14 +171,12 @@ export function CharacterDetailPanel({
     });
   }, [isDirty, registerCloseHandler, onClose]);
 
-  const characterQuests = questSummaries.filter((q) => character.questIds.includes(q.id));
-
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     setSaveError('');
     try {
-      await updateCharacter(questlineId, character.id, { appearance, background });
-      onSaved({ appearance, background });
+      await updateReward(questlineId, reward.id, { title, description });
+      onSaved({ title, description });
       if (pendingClose) {
         setShowUnsavedDialog(false);
         onClose();
@@ -189,7 +188,7 @@ export function CharacterDetailPanel({
     } finally {
       setIsSaving(false);
     }
-  }, [questlineId, character.id, appearance, background, onSaved, pendingClose, onClose]);
+  }, [questlineId, reward.id, title, description, onSaved, pendingClose, onClose]);
 
   const requestClose = () => {
     if (isDirty) {
@@ -201,8 +200,8 @@ export function CharacterDetailPanel({
   };
 
   const handleDiscard = () => {
-    setAppearance(character.appearance);
-    setBackground(character.background);
+    setTitle(reward.title);
+    setDescription(reward.description);
     setShowUnsavedDialog(false);
     if (pendingClose) onClose();
   };
@@ -213,24 +212,24 @@ export function CharacterDetailPanel({
     setIsGenerating(true);
     setGenError('');
     try {
-      let prompt = `${character.name} — ${appearance || character.appearance}`;
+      let prompt = `${title} — a ${reward.rarity} quest reward item, ${description}`;
       if (questStyleId) {
         const styles = await getQuestStyles();
         const style = styles.find((s) => s._id === questStyleId);
         if (style?.promptSuffix) prompt += `. ${style.promptSuffix}`;
       }
       const { jobId } = await generateSprite(prompt, {
-        category: 'npc',
+        category: 'item',
         detailLevel: 'detailed',
         background: 'transparent',
       });
       // Register at app level — SSE survives navigation
       registerJob(jobId, {
-        label: character.name,
+        label: title,
         onDone: async (result) => {
           setImageUrl(result.imageUrl);
           onImageUpdated(result.imageUrl);
-          await updateCharacterImage(questlineId, character.id, result.imageKey);
+          await updateRewardImage(questlineId, reward.id, result.imageKey);
           setIsGenerating(false);
         },
         onError: (err) => {
@@ -269,7 +268,10 @@ export function CharacterDetailPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-800 flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-white font-medium truncate">{character.name}</h3>
+          <h3 className="text-white font-medium truncate">{reward.title}</h3>
+          <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 capitalize ${rarityColor[reward.rarity]}`}>
+            {reward.rarity}
+          </span>
           {isDirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Unsaved changes" />}
         </div>
         <button onClick={requestClose} className="text-zinc-500 hover:text-white transition-colors flex-shrink-0 ml-2">
@@ -279,7 +281,7 @@ export function CharacterDetailPanel({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        <EditableField label="Appearance" value={appearance} onChange={setAppearance} />
+        <EditableField label="Title" value={title} onChange={setTitle} />
 
         {/* Image */}
         <div>
@@ -291,7 +293,7 @@ export function CharacterDetailPanel({
                 style={CHECKER_STYLE}
                 onClick={() => setLightboxOpen(true)}
               >
-                <img src={imageUrl} alt={character.name} className="w-full object-contain max-h-48" />
+                <img src={imageUrl} alt={reward.title} className="w-full object-contain max-h-48" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                   <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
@@ -330,24 +332,7 @@ export function CharacterDetailPanel({
           {genError && <p className="text-red-400 text-xs mt-1">{genError}</p>}
         </div>
 
-        <EditableField label="Background" value={background} onChange={setBackground} />
-
-        {/* Quest Appearances */}
-        <div>
-          <p className="text-zinc-500 text-xs uppercase tracking-wider mb-3">Appears In</p>
-          {characterQuests.length === 0 ? (
-            <p className="text-zinc-600 text-sm italic">No quests assigned</p>
-          ) : (
-            <div className="space-y-2">
-              {characterQuests.map((quest) => (
-                <div key={quest.id} className="flex items-center gap-3 px-3 py-2 bg-zinc-800/60 rounded-lg border border-zinc-700/50">
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${variantColor[quest.variant]}`} />
-                  <span className="text-zinc-300 text-sm truncate">{quest.title}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <EditableField label="Description" value={description} onChange={setDescription} multiline />
       </div>
 
       {/* Footer — save button */}
@@ -393,15 +378,15 @@ export function CharacterDetailPanel({
             <div className="flex items-center justify-center p-6" style={CHECKER_STYLE}>
               <img
                 src={imageUrl}
-                alt={character.name}
+                alt={reward.title}
                 className="object-contain rounded-lg max-h-[60vh] max-w-full"
               />
             </div>
             <div className="flex items-center justify-between px-5 py-4 border-t border-zinc-800">
-              <p className="text-zinc-300 text-sm font-medium truncate">{character.name}</p>
+              <p className="text-zinc-300 text-sm font-medium truncate">{reward.title}</p>
               <a
                 href={imageUrl}
-                download={`${character.name}.png`}
+                download={`${reward.title}.png`}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >

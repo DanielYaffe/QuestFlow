@@ -1,5 +1,7 @@
 import React from 'react';
+import { Toaster } from 'sonner';
 import { HashRouter, Routes, Route } from 'react-router-dom';
+import { SpriteJobProvider } from './context/SpriteJobContext';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { MainLayout } from './layouts/MainLayout';
@@ -15,6 +17,8 @@ import { SpriteAnimator } from './pages/SpriteAnimator/SpriteAnimator';
 export default function App() {
   return (
     <AuthProvider>
+      <SpriteJobProvider>
+      <Toaster position="bottom-right" theme="dark" richColors />
       <HashRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -31,6 +35,7 @@ export default function App() {
           </Route>
         </Routes>
       </HashRouter>
+      </SpriteJobProvider>
     </AuthProvider>
   );
 }
