@@ -1,57 +1,327 @@
-### User API Testing
+### QuestFlow API — REST Client
+### Set these variables before running requests
 
-### Posts
+@baseUrl = http://localhost:3000
+@accessToken = YOUR_ACCESS_TOKEN_HERE
+@refreshToken = YOUR_REFRESH_TOKEN_HERE
+@questlineId = YOUR_QUESTLINE_ID_HERE
+@characterId = YOUR_CHARACTER_ID_HERE
+@rewardId = YOUR_REWARD_ID_HERE
+@chapterId = YOUR_CHAPTER_ID_HERE
+@variantId = YOUR_VARIANT_ID_HERE
+@jobId = YOUR_JOB_ID_HERE
+@templateId = YOUR_TEMPLATE_ID_HERE
 
-### Get all posts
-GET http://localhost:3000/posts
+# ============================================================
+# AUTH
+# ============================================================
 
-### Get post by id
-GET http://localhost:3000/posts/12345
-
-### Create post
-POST http://localhost:3000/posts
+### Register
+POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
 {
-    "image": "shoval.king",
-    "text": "This is the content of my first post",
-    "sender": "Bob Sponge"
+  "email": "user@example.com",
+  "password": "secret123"
 }
 
-### Update post
-PUT http://localhost:3000/posts/697a65f59de97b4c60af618d
+### Login
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-    "text": "My updated post"
+  "email": "user@example.com",
+  "password": "secret123"
 }
 
-
-### Comments
-
-### Get all comments
-GET http://localhost:3000/comment
-
-### Get comment by id
-GET http://localhost:3000/comment/697a73c03ef605dc07f5bee5
-
-### Create comment
-POST http://localhost:3000/comment
+### Refresh access token
+POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
 
 {
-    "postId": "697a65f59de97b4c60af618d",
-    "content": "This is a comment",
-    "sender": "Jane Doe"
+  "refreshToken": "{{refreshToken}}"
 }
 
-### Update comment
-PUT http://localhost:3000/comment/697a73c03ef605dc07f5bee5
+### Logout
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-    "content": "Thiasdfs is an updated asdfsadfs afdsa fcomment"
+  "refreshToken": "{{refreshToken}}"
 }
 
-### Delete comment
-DELETE http://localhost:3000/comment/697a73c03ef605dc07f5bee5
+### Google OAuth — open in browser
+# GET {{baseUrl}}/auth/google
+
+# ============================================================
+# QUESTLINES
+# ============================================================
+
+### List all questlines
+GET {{baseUrl}}/questlines
+Authorization: Bearer {{accessToken}}
+
+### Get questline by id
+GET {{baseUrl}}/questlines/{{questlineId}}
+Authorization: Bearer {{accessToken}}
+
+### Create questline
+POST {{baseUrl}}/questlines
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "The Dragon's Lair",
+  "description": "A heroic journey into the mountains"
+}
+
+### Update questline
+PUT {{baseUrl}}/questlines/{{questlineId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "The Dragon's Lair — Updated",
+  "description": "An even more heroic journey"
+}
+
+### Delete questline
+DELETE {{baseUrl}}/questlines/{{questlineId}}
+Authorization: Bearer {{accessToken}}
+
+# ---- Graph ----
+
+### Get quest builder graph (nodes + edges)
+GET {{baseUrl}}/questlines/{{questlineId}}/graph
+Authorization: Bearer {{accessToken}}
+
+### Save quest builder graph
+PUT {{baseUrl}}/questlines/{{questlineId}}/graph
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "nodes": [
+    { "id": "node-1", "title": "Find the artifact", "variant": "main", "position": { "x": 100, "y": 200 } }
+  ],
+  "edges": [
+    { "id": "edge-1", "source": "node-1", "target": "node-2" }
+  ]
+}
+
+# ---- Variants ----
+
+### Get variants for a questline
+GET {{baseUrl}}/questlines/{{questlineId}}/variants
+Authorization: Bearer {{accessToken}}
+
+### Create custom variant
+POST {{baseUrl}}/questlines/{{questlineId}}/variants
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Side Quest",
+  "color": "#f59e0b"
+}
+
+### Delete custom variant
+DELETE {{baseUrl}}/questlines/{{questlineId}}/variants/{{variantId}}
+Authorization: Bearer {{accessToken}}
+
+# ---- Characters ----
+
+### Get characters
+GET {{baseUrl}}/questlines/{{questlineId}}/characters
+Authorization: Bearer {{accessToken}}
+
+### Create character
+POST {{baseUrl}}/questlines/{{questlineId}}/characters
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Aldric the Brave",
+  "appearance": "Tall warrior with silver hair and a battle-worn sword",
+  "background": "Former knight of the realm, exiled after a political betrayal"
+}
+
+### Update character
+PUT {{baseUrl}}/questlines/{{questlineId}}/characters/{{characterId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Aldric the Wise",
+  "appearance": "Older now, with a long grey beard",
+  "imageUrl": "sprites/aldric.png"
+}
+
+### Delete character
+DELETE {{baseUrl}}/questlines/{{questlineId}}/characters/{{characterId}}
+Authorization: Bearer {{accessToken}}
+
+# ---- Rewards ----
+
+### Get rewards
+GET {{baseUrl}}/questlines/{{questlineId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+### Create reward
+POST {{baseUrl}}/questlines/{{questlineId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Sword of Valor",
+  "description": "A legendary blade forged by dwarves in the fires of Mount Khar",
+  "rarity": "epic"
+}
+
+### Update reward
+PUT {{baseUrl}}/questlines/{{questlineId}}/rewards/{{rewardId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Sword of Valor +1",
+  "rarity": "epic",
+  "imageUrl": "sprites/sword.png"
+}
+
+### Delete reward
+DELETE {{baseUrl}}/questlines/{{questlineId}}/rewards/{{rewardId}}
+Authorization: Bearer {{accessToken}}
+
+# ---- Chapters ----
+
+### Get chapters
+GET {{baseUrl}}/questlines/{{questlineId}}/chapters
+Authorization: Bearer {{accessToken}}
+
+### Create chapter
+POST {{baseUrl}}/questlines/{{questlineId}}/chapters
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Chapter 1: The Call",
+  "scenes": [
+    { "id": "scene-1", "title": "The Village Square" }
+  ]
+}
+
+### Update chapter
+PUT {{baseUrl}}/questlines/{{questlineId}}/chapters/{{chapterId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Chapter 1: The Call to Adventure"
+}
+
+### Delete chapter
+DELETE {{baseUrl}}/questlines/{{questlineId}}/chapters/{{chapterId}}
+Authorization: Bearer {{accessToken}}
+
+# ---- Quest summaries ----
+
+### Get quest node summaries (id, title, variant)
+GET {{baseUrl}}/questlines/{{questlineId}}/quests
+Authorization: Bearer {{accessToken}}
+
+# ============================================================
+# AI QUEST GENERATION
+# ============================================================
+
+### Generate objectives + rewards from a story
+POST {{baseUrl}}/quests/generate
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "story": "A young blacksmith discovers her hammer can forge items out of pure starlight, drawing the attention of a dying god who needs her power to survive.",
+  "genre": "fantasy"
+}
+
+### Generate characters from a story
+POST {{baseUrl}}/quests/generate-characters
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "story": "A young blacksmith discovers her hammer can forge items out of pure starlight, drawing the attention of a dying god who needs her power to survive.",
+  "genre": "fantasy"
+}
+
+### Generate full questline structure from a story
+POST {{baseUrl}}/quests/generate-questline
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "story": "A young blacksmith discovers her hammer can forge items out of pure starlight, drawing the attention of a dying god who needs her power to survive.",
+  "genre": "fantasy",
+  "styleId": ""
+}
+
+# ============================================================
+# SPRITES
+# ============================================================
+
+### List all sprites for the current user
+GET {{baseUrl}}/sprites
+Authorization: Bearer {{accessToken}}
+
+### Start async sprite generation (returns jobId immediately)
+POST {{baseUrl}}/sprites/generate
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "prompt": "A fierce dragon knight in golden armour",
+  "filters": {
+    "artStyle": "pixel-art-16bit",
+    "category": "character",
+    "perspective": "front-facing",
+    "background": "transparent",
+    "colorPalette": "vibrant",
+    "detailLevel": "detailed",
+    "aspectRatio": "square"
+  }
+}
+
+### SSE stream — receive sprite job result (open in browser or use EventSource)
+### Replace YOUR_ACCESS_TOKEN_HERE and the jobId in the URL
+# GET {{baseUrl}}/sprites/jobs/{{jobId}}/stream?token={{accessToken}}
+
+# ============================================================
+# QUEST STYLES
+# ============================================================
+
+### Get all quest styles
+GET {{baseUrl}}/quest-styles
+Authorization: Bearer {{accessToken}}
+
+# ============================================================
+# EXPORT TEMPLATES
+# ============================================================
+
+### Get all export templates
+GET {{baseUrl}}/export-templates
+Authorization: Bearer {{accessToken}}
+
+### Create export template
+POST {{baseUrl}}/export-templates
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Markdown Export",
+  "content": "# {{title}}\n\n{{description}}\n\n## Objectives\n{{objectives}}"
+}
+
+### Delete export template
+DELETE {{baseUrl}}/export-templates/{{templateId}}
+Authorization: Bearer {{accessToken}}

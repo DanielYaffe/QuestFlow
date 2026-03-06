@@ -563,9 +563,122 @@ questlineRouter.delete('/:id/chapters/:chapterId', questlineController.deleteCha
 
 // ── Rewards ─────────────────────────────────────────────────────────────────
 
-questlineRouter.get('/:id/rewards',              questlineController.getRewards.bind(questlineController));
-questlineRouter.post('/:id/rewards',             questlineController.createReward.bind(questlineController));
-questlineRouter.put('/:id/rewards/:rewardId',    questlineController.updateReward.bind(questlineController));
+/**
+ * @swagger
+ * /questlines/{id}/rewards:
+ *   get:
+ *     summary: Get rewards for a questline
+ *     tags: [Questlines]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of rewards
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Reward'
+ */
+questlineRouter.get('/:id/rewards', questlineController.getRewards.bind(questlineController));
+
+/**
+ * @swagger
+ * /questlines/{id}/rewards:
+ *   post:
+ *     summary: Add a reward to a questline (owner only)
+ *     tags: [Questlines]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Reward'
+ *     responses:
+ *       201:
+ *         description: Reward created
+ *       403:
+ *         description: Forbidden
+ */
+questlineRouter.post('/:id/rewards', questlineController.createReward.bind(questlineController));
+
+/**
+ * @swagger
+ * /questlines/{id}/rewards/{rewardId}:
+ *   put:
+ *     summary: Update a reward (owner only)
+ *     tags: [Questlines]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: rewardId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Reward'
+ *     responses:
+ *       200:
+ *         description: Updated reward
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Not found
+ */
+questlineRouter.put('/:id/rewards/:rewardId', questlineController.updateReward.bind(questlineController));
+
+/**
+ * @swagger
+ * /questlines/{id}/rewards/{rewardId}:
+ *   delete:
+ *     summary: Delete a reward (owner only)
+ *     tags: [Questlines]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: rewardId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Deleted
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Not found
+ */
 questlineRouter.delete('/:id/rewards/:rewardId', questlineController.deleteReward.bind(questlineController));
 
 // ── Quest summaries (node titles / variants list) ───────────────────────────
