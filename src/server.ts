@@ -3,9 +3,6 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import bodyParser from "body-parser";
 import { config } from "./config/config";
-import commentsRouter from "./routes/commentRoute";
-import userRouter from "./routes/userRoute";
-import postRouter from "./routes/postRoute";
 import authRouter from "./routes/authRoute";
 import questlineRouter from "./routes/questlineRoute";
 import questGenerationRouter from "./routes/questGenerationRoute";
@@ -25,7 +22,7 @@ const app = express();
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   explorer: true,
   customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Shoval & Daniel Posts & Comments API Documentation'
+  customSiteTitle: 'QuestFlow API Documentation'
 }));
 
 app.use(bodyParser.json());
@@ -34,9 +31,6 @@ app.use(cors())
 
 app.use('/auth', authRouter);
 app.use(authenticate);
-app.use('/comments', commentsRouter);
-app.use('/users', userRouter);
-app.use('/posts', postRouter);
 app.use('/questlines', questlineRouter);
 app.use('/quests', questGenerationRouter);
 app.use('/export-templates', exportTemplateRouter);
