@@ -1,7 +1,8 @@
+/// <reference types="vite/client" />
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
 // Attach the JWT token to every request automatically
@@ -57,7 +58,7 @@ api.interceptors.response.use(
 
     try {
       const { data } = await axios.post<{ token: string; refreshToken: string }>(
-        'http://localhost:3000/auth/refresh',
+        `${import.meta.env.VITE_API_URL}/auth/refresh`,
         { refreshToken },
       );
 

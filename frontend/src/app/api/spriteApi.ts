@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import api from './axiosInstance';
 
 export interface SpriteFilters {
@@ -38,7 +39,7 @@ export function watchSpriteJob(
 ): () => void {
   const token = localStorage.getItem('token') ?? '';
   const es = new EventSource(
-    `http://localhost:3000/sprites/jobs/${jobId}/stream?token=${encodeURIComponent(token)}`,
+    `${import.meta.env.VITE_API_URL}/sprites/jobs/${jobId}/stream?token=${encodeURIComponent(token)}`,
   );
 
   es.onmessage = (e) => {
