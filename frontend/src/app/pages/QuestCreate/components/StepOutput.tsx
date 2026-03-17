@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, Check, Plus, X, Save, Loader2 } from 'lucide-react';
+import { Copy, Check, Plus, X, Save } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
+import { QuestLoadingScreen } from './QuestLoadingScreen';
 import { Objective, Reward, GeneratedCharacter, generateQuestline } from '../../../api/questCreateApi';
 import {
   ExportTemplate,
@@ -149,6 +150,7 @@ export function StepOutput({
 
   return (
     <div className="h-full flex flex-col gap-5">
+      <QuestLoadingScreen visible={generating} mode="questline" />
       <WizardStepIndicator currentStep={5} />
 
       <div className="text-center flex flex-col gap-1">
@@ -264,14 +266,7 @@ export function StepOutput({
           disabled={generating}
           className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/25 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
         >
-          {generating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Generating…
-            </>
-          ) : (
-            'Open in Quest Builder →'
-          )}
+          Open in Quest Builder →
         </button>
       </div>
     </div>
