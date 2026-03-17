@@ -226,10 +226,10 @@ export function RewardDetailPanel({
       // Register at app level — SSE survives navigation
       registerJob(jobId, {
         label: title,
-        onDone: async (result) => {
+        action: { type: 'reward', questlineId, entityId: reward.id },
+        onDone: (result) => {
           setImageUrl(result.imageUrl);
           onImageUpdated(result.imageUrl);
-          await updateRewardImage(questlineId, reward.id, result.imageKey);
           setIsGenerating(false);
         },
         onError: (err) => {

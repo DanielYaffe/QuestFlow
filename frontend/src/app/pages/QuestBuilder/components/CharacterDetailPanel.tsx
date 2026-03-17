@@ -227,10 +227,10 @@ export function CharacterDetailPanel({
       // Register at app level — SSE survives navigation
       registerJob(jobId, {
         label: character.name,
-        onDone: async (result) => {
+        action: { type: 'character', questlineId, entityId: character.id },
+        onDone: (result) => {
           setImageUrl(result.imageUrl);
           onImageUpdated(result.imageUrl);
-          await updateCharacterImage(questlineId, character.id, result.imageKey);
           setIsGenerating(false);
         },
         onError: (err) => {

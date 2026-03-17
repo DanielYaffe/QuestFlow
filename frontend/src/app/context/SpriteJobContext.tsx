@@ -1,38 +1,31 @@
 import React, { createContext, useContext, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { SpriteRecord, watchSpriteJob } from '../api/spriteApi';
+import { updateCharacterImage, updateRewardImage } from '../api/projectSidebarApi';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+export type SpriteJobAction =
+  | { type: 'character'; questlineId: string; entityId: string }
+  | { type: 'reward';    questlineId: string; entityId: string };
 
 export interface SpriteJobMeta {
-  /** Human-readable label shown in the toast, e.g. "Aldric the Brave" */
   label: string;
-  /** Called when the job completes successfully */
+  action?: SpriteJobAction;
   onDone?: (result: SpriteRecord) => void;
-  /** Called when the job fails */
   onError?: (msg: string) => void;
 }
 
 interface SpriteJobContextValue {
-  /**
-   * Register a background sprite job.
-   * Opens a persistent SSE connection at app level so navigation doesn't kill it.
-   * Job ID and label are persisted to localStorage so a refresh reconnects automatically.
-   */
   registerJob: (jobId: string, meta: SpriteJobMeta) => void;
 }
 
-// ---------------------------------------------------------------------------
-// localStorage helpers
-// ---------------------------------------------------------------------------
-
 const STORAGE_KEY = 'spriteActiveJobs';
+const JOB_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface PersistedJob {
   jobId: string;
   label: string;
+  startedAt: number;
+  action?: SpriteJobAction;
 }
 
 function loadPersistedJobs(): PersistedJob[] {
@@ -43,9 +36,9 @@ function loadPersistedJobs(): PersistedJob[] {
   }
 }
 
-function persistJob(jobId: string, label: string) {
+function persistJob(jobId: string, label: string, action?: SpriteJobAction) {
   const jobs = loadPersistedJobs().filter((j) => j.jobId !== jobId);
-  jobs.push({ jobId, label });
+  jobs.push({ jobId, label, startedAt: Date.now(), ...(action ? { action } : {}) });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
 }
 
@@ -53,10 +46,6 @@ function clearPersistedJob(jobId: string) {
   const jobs = loadPersistedJobs().filter((j) => j.jobId !== jobId);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
 }
-
-// ---------------------------------------------------------------------------
-// Context
-// ---------------------------------------------------------------------------
 
 const SpriteJobContext = createContext<SpriteJobContextValue>({
   registerJob: () => {},
@@ -66,51 +55,70 @@ export function useSpriteJobs() {
   return useContext(SpriteJobContext);
 }
 
-// ---------------------------------------------------------------------------
-// Provider — mounts once at app root, survives route changes and page refreshes
-// ---------------------------------------------------------------------------
-
 export function SpriteJobProvider({ children }: { children: React.ReactNode }) {
-  // Map of jobId → SSE cleanup fn
   const cleanups = useRef<Map<string, () => void>>(new Map());
 
-  const connectJob = useCallback((jobId: string, label: string, meta?: Omit<SpriteJobMeta, 'label'>) => {
+  const connectJob = useCallback((
+    jobId: string,
+    label: string,
+    action?: SpriteJobAction,
+    meta?: Omit<SpriteJobMeta, 'label' | 'action'>,
+    startedAt: number = Date.now(),
+  ) => {
     cleanups.current.get(jobId)?.();
+
+    const remaining = JOB_TIMEOUT_MS - (Date.now() - startedAt);
+    if (remaining <= 0) {
+      clearPersistedJob(jobId);
+      toast.error(`Image generation timed out: ${label}`, { duration: 8_000 });
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      cleanups.current.delete(jobId);
+      clearPersistedJob(jobId);
+      meta?.onError?.('Generation timed out');
+      toast.error(`Image generation timed out: ${label}`, { duration: 8_000 });
+    }, remaining);
 
     const cleanup = watchSpriteJob(
       jobId,
-      (result) => {
+      async (result) => {
+        clearTimeout(timeoutId);
         cleanups.current.delete(jobId);
         clearPersistedJob(jobId);
+        if (action?.type === 'character') {
+          await updateCharacterImage(action.questlineId, action.entityId, result.imageKey).catch(() => {});
+        } else if (action?.type === 'reward') {
+          await updateRewardImage(action.questlineId, action.entityId, result.imageKey).catch(() => {});
+        }
         meta?.onDone?.(result);
         toast.success(`Image ready: ${label}`, {
           description: 'Your generated image is ready.',
           duration: 10_000,
+          action: {
+            label: 'View image',
+            onClick: () => { window.location.hash = `/sprite-generator?spriteId=${result._id}`; },
+          },
         });
       },
       (msg) => {
+        clearTimeout(timeoutId);
         cleanups.current.delete(jobId);
         clearPersistedJob(jobId);
         meta?.onError?.(msg);
-        toast.error(`Image generation failed: ${label}`, {
-          description: msg,
-          duration: 8_000,
-        });
+        toast.error(`Image generation failed: ${label}`, { description: msg, duration: 8_000 });
       },
     );
 
-    cleanups.current.set(jobId, cleanup);
+    cleanups.current.set(jobId, () => { clearTimeout(timeoutId); cleanup(); });
   }, []);
 
-  // On mount: reconnect any jobs that were in-progress when the page was refreshed
   useEffect(() => {
     const pending = loadPersistedJobs();
-    for (const { jobId, label } of pending) {
-      // No onDone/onError callbacks — the original caller is gone after refresh.
-      // Toast notifications will still fire.
-      connectJob(jobId, label);
+    for (const { jobId, label, action, startedAt } of pending) {
+      connectJob(jobId, label, action, undefined, startedAt);
     }
-
     return () => {
       cleanups.current.forEach((cleanup) => cleanup());
       cleanups.current.clear();
@@ -118,8 +126,8 @@ export function SpriteJobProvider({ children }: { children: React.ReactNode }) {
   }, [connectJob]);
 
   const registerJob = useCallback((jobId: string, meta: SpriteJobMeta) => {
-    persistJob(jobId, meta.label);
-    connectJob(jobId, meta.label, meta);
+    persistJob(jobId, meta.label, meta.action);
+    connectJob(jobId, meta.label, meta.action, meta);
   }, [connectJob]);
 
   return (

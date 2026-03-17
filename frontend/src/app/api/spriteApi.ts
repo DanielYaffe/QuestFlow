@@ -21,7 +21,6 @@ export interface SpriteRecord {
   createdAt: string;
 }
 
-// Returns immediately with a jobId — generation runs in the background
 export async function generateSprite(
   prompt: string,
   filters: Partial<SpriteFilters>,
@@ -30,8 +29,6 @@ export async function generateSprite(
   return data;
 }
 
-// Opens an SSE connection that resolves when the job completes.
-// Returns a cleanup function that closes the connection.
 export function watchSpriteJob(
   jobId: string,
   onDone: (result: SpriteRecord) => void,
@@ -42,25 +39,32 @@ export function watchSpriteJob(
     `${import.meta.env.VITE_API_URL}/sprites/jobs/${jobId}/stream?token=${encodeURIComponent(token)}`,
   );
 
+  let settled = false;
+
   es.onmessage = (e) => {
     try {
       const payload = JSON.parse(e.data) as { status: string; result?: SpriteRecord; error?: string };
       if (payload.status === 'done' && payload.result) {
+        settled = true;
+        es.close();
         onDone(payload.result);
-        es.close();
       } else if (payload.status === 'failed') {
-        onError(payload.error ?? 'Generation failed');
+        settled = true;
         es.close();
+        onError(payload.error ?? 'Generation failed');
       }
     } catch {
-      onError('Unexpected response from server');
+      settled = true;
       es.close();
+      onError('Unexpected response from server');
     }
   };
 
   es.onerror = () => {
-    onError('Connection lost — check your network');
+    if (settled) return;
+    if (document.visibilityState === 'hidden' || es.readyState === EventSource.CLOSED) return;
     es.close();
+    onError('Connection lost — check your network');
   };
 
   return () => es.close();
