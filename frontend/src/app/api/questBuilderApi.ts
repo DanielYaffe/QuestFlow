@@ -1,5 +1,8 @@
-import { Node, Edge } from '@xyflow/react';
+import { Edge } from '@xyflow/react';
 import { QuestNodeData } from '../types/quest';
+
+// Use a local Node type alias to avoid @xyflow/react export issues
+type Node<T> = { id: string; type?: string; data: T; position?: { x: number; y: number }; [key: string]: unknown };
 import api from './axiosInstance';
 
 export interface QuestlineSummary {
