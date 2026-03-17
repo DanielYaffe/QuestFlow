@@ -5,7 +5,6 @@ import UserModel from "../models/userModel";
 
 export type AuthRequest = Request & { user?: { _id: string } };
 
-// Augment Express's Request so AuthRequest is structurally identical to Request
 declare global {
   namespace Express {
     interface Request {
@@ -15,7 +14,6 @@ declare global {
 }
 
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
-    // SSE connections (EventSource) can't set headers — accept token via ?token= query param
     if (!req.headers.authorization && req.query.token) {
         req.headers.authorization = `Bearer ${req.query.token as string}`;
     }

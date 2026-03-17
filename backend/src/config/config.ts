@@ -5,7 +5,7 @@ dotenv.config();
 
 const envSchema = z.object({
     DATABASE_URL: z.string().min(1).default('mongodb://localhost:27017/matala1'),
-    PORT: z.coerce.number().default(5000),
+    PORT: z.coerce.number().default(3000),
     JWT_SECRET: z.string().min(1).default('secret'),
     JWT_EXPIRES_IN: z.coerce.number().default(36000),
     REFRESH_TOKEN_EXPIRES_IN: z.coerce.number().default(36000),
