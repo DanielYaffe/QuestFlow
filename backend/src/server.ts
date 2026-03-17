@@ -9,7 +9,9 @@ import questGenerationRouter from "./routes/questGenerationRoute";
 import exportTemplateRouter from "./routes/exportTemplateRoute";
 import spriteRouter from "./routes/spriteRoute";
 import questStyleRouter from "./routes/questStyleRoute";
+import nodeVariantConfigRouter from "./routes/nodeVariantConfigRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
+import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import cors from "cors";
 import "./config/passport";
 import { authenticate } from "./middlewares/authMiddleware";
@@ -36,6 +38,7 @@ app.use('/quests', questGenerationRouter);
 app.use('/export-templates', exportTemplateRouter);
 app.use('/sprites', spriteRouter);
 app.use('/quest-styles', questStyleRouter);
+app.use('/variant-configs', nodeVariantConfigRouter);
 
 const db = mongoose.connection;
 db.on("error", (error) => console.error(error));
@@ -51,6 +54,7 @@ const initApp = () => {
                 .connect(config.DATABASE_URL)
                 .then(() => {
                     seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
+                    seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));
                     resolve(app);
                 })
                 .catch((error) => {
