@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Pencil, GitCompare, Check, ArrowLeft, Swords, MessageCircle, Scroll, Gem, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull } from 'lucide-react';
+import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull } from 'lucide-react';
+import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 import { motion, AnimatePresence } from 'motion/react';
 import { NodeVariant } from '../../../types/quest';
 import { fetchCharacters, fetchRewards, Character, Reward } from '../../../api/projectSidebarApi';
@@ -26,24 +27,6 @@ interface NodeEditSidebarProps {
 }
 
 type Phase = 'edit' | 'diff';
-
-// ---------------------------------------------------------------------------
-// Variant config
-// ---------------------------------------------------------------------------
-
-const variantOptions: { value: NodeVariant; label: string; icon: React.ElementType; color: string }[] = [
-  { value: 'story',    label: 'Story',    icon: Scroll,        color: 'text-purple-400 border-purple-500 bg-purple-500/10' },
-  { value: 'dialogue', label: 'Dialogue', icon: MessageCircle, color: 'text-blue-400 border-blue-500 bg-blue-500/10' },
-  { value: 'combat',   label: 'Combat',   icon: Swords,        color: 'text-red-400 border-red-500 bg-red-500/10' },
-  { value: 'treasure', label: 'Treasure', icon: Gem,           color: 'text-amber-400 border-amber-500 bg-amber-500/10' },
-];
-
-const variantColorMap: Record<NodeVariant, string> = {
-  story:    'text-purple-400',
-  dialogue: 'text-blue-400',
-  combat:   'text-red-400',
-  treasure: 'text-amber-400',
-};
 
 // ---------------------------------------------------------------------------
 // Word-level LCS diff
@@ -127,13 +110,14 @@ function InlineTokens({ tokens, side }: { tokens: WordToken[]; side: 'old' | 'ne
 // FieldDiffPanel
 // ---------------------------------------------------------------------------
 
-function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew }: {
+function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew, getVariantColor }: {
   label: string;
   oldVal: string;
   newVal: string;
   changed: boolean;
   variantOld?: NodeVariant;
   variantNew?: NodeVariant;
+  getVariantColor?: (key: string) => string;
 }) {
   const isVariant = variantOld !== undefined;
   const pairs = isVariant ? [] : buildLinePairs(oldVal, newVal);
@@ -153,7 +137,7 @@ function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew
           </div>
           <div className="p-3 overflow-y-auto text-sm text-zinc-300 leading-relaxed" style={{ maxHeight: 160 }}>
             {isVariant ? (
-              <span className={`capitalize font-medium ${variantColorMap[variantOld!]}`}>{variantOld}</span>
+              <span className={`capitalize font-medium ${getVariantColor?.(variantOld!) ?? 'text-zinc-400'}`}>{variantOld}</span>
             ) : (
               <span className="whitespace-pre-wrap break-words font-mono text-xs">
                 {pairs.map((pair, i) => {
@@ -176,7 +160,7 @@ function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew
           </div>
           <div className="p-3 overflow-y-auto text-sm text-zinc-300 leading-relaxed" style={{ maxHeight: 160 }}>
             {isVariant ? (
-              <span className={`capitalize font-medium ${variantColorMap[variantNew!]}`}>{variantNew}</span>
+              <span className={`capitalize font-medium ${getVariantColor?.(variantNew!) ?? 'text-zinc-400'}`}>{variantNew}</span>
             ) : (
               <span className="whitespace-pre-wrap break-words font-mono text-xs">
                 {pairs.map((pair, i) => {
@@ -251,9 +235,10 @@ interface TagPickerProps<T> {
   getId: (item: T) => string;
   getName: (item: T) => string;
   onToggle: (id: string) => void;
+  loading?: boolean;
 }
 
-function TagPicker<T>({ label, icon: Icon, items, selectedIds, getId, getName, onToggle }: TagPickerProps<T>) {
+function TagPicker<T>({ label, icon: Icon, items, selectedIds, getId, getName, onToggle, loading }: TagPickerProps<T>) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -263,12 +248,13 @@ function TagPicker<T>({ label, icon: Icon, items, selectedIds, getId, getName, o
         {label}
       </label>
 
-      {/* Selected chips */}
-      {selectedIds.length > 0 && (
+      {/* Selected chips — only show names once items have loaded */}
+      {selectedIds.length > 0 && !loading && (
         <div className="flex flex-wrap gap-1.5 mb-2">
           {selectedIds.map((id) => {
             const item = items.find((it) => getId(it) === id);
-            const name = item ? getName(item) : id;
+            const name = item ? getName(item) : null;
+            if (!name) return null;
             return (
               <span
                 key={id}
@@ -291,15 +277,22 @@ function TagPicker<T>({ label, icon: Icon, items, selectedIds, getId, getName, o
       {/* Dropdown toggle */}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:border-zinc-600 transition-colors"
+        onClick={() => !loading && setOpen((v) => !v)}
+        disabled={loading}
+        className="w-full flex items-center justify-between px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:border-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-wait"
       >
-        <span className="text-zinc-500">{selectedIds.length > 0 ? `${selectedIds.length} selected` : `Select ${label.toLowerCase()}...`}</span>
+        <span className="text-zinc-500">
+          {loading
+            ? 'Loading...'
+            : selectedIds.length > 0
+              ? `${selectedIds.length} selected`
+              : `Select ${label.toLowerCase()}...`}
+        </span>
         {open ? <ChevronUp className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
       </button>
 
       {/* Dropdown list */}
-      {open && (
+      {open && !loading && (
         <div className="mt-1 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
           {items.length === 0 ? (
             <div className="px-3 py-3 text-xs text-zinc-500 italic">No items available</div>
@@ -343,6 +336,7 @@ function arraysEqual(a: string[], b: string[]) {
 }
 
 export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }: NodeEditSidebarProps) {
+  const { configs, getConfig } = useVariantConfigs();
   const [phase, setPhase] = useState<Phase>('edit');
   const [title,      setTitle]      = useState('');
   const [body,       setBody]       = useState('');
@@ -352,8 +346,10 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
   const [rewardIds,  setRewardIds]  = useState<string[]>([]);
   const [width,      setWidth]      = useState(DEFAULT_WIDTH);
 
-  const [characters, setCharacters] = useState<Character[]>([]);
-  const [rewards,    setRewards]    = useState<Reward[]>([]);
+  const [characters,       setCharacters]       = useState<Character[]>([]);
+  const [rewards,          setRewards]          = useState<Reward[]>([]);
+  const [charsLoaded,      setCharsLoaded]      = useState(false);
+  const [rewardsLoaded,    setRewardsLoaded]    = useState(false);
 
   const dragging = useRef(false);
   const startX   = useRef(0);
@@ -375,8 +371,14 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
   // Fetch characters + rewards when sidebar opens
   useEffect(() => {
     if (!isOpen || !questlineId) return;
-    fetchCharacters(questlineId).then(setCharacters).catch(() => setCharacters([]));
-    fetchRewards(questlineId).then(setRewards).catch(() => setRewards([]));
+    setCharsLoaded(false);
+    setRewardsLoaded(false);
+    fetchCharacters(questlineId)
+      .then((c) => { setCharacters(c); setCharsLoaded(true); })
+      .catch(() => { setCharacters([]); setCharsLoaded(true); });
+    fetchRewards(questlineId)
+      .then((r) => { setRewards(r); setRewardsLoaded(true); })
+      .catch(() => { setRewards([]); setRewardsLoaded(true); });
   }, [isOpen, questlineId]);
 
   // Drag-to-resize
@@ -403,6 +405,9 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
   const toggleMonster = (id: string) => setMonsterIds((prev)  => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   const toggleReward  = (id: string) => setRewardIds((prev)   => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
+  // Combat-like variants show monster picker; all others show NPC picker
+  const isCombatVariant = getConfig(variant).iconKey === 'swords' || variant.toLowerCase().includes('combat');
+
   const hasChanges =
     node !== null && (
       title.trim() !== node.title ||
@@ -420,8 +425,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
     onClose();
   };
 
-  const getCharName = (id: string) => characters.find((c) => c.id === id)?.name ?? id;
-  const getRewardName = (id: string) => rewards.find((r) => r.id === id)?.title ?? id;
+  const getCharName   = (id: string) => characters.find((c) => c.id === id)?.name   ?? id;
+  const getRewardName = (id: string) => rewards.find((r)    => r.id === id)?.title  ?? id;
 
   return (
     <AnimatePresence>
@@ -495,15 +500,16 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                 <div>
                   <label className="text-zinc-400 text-xs uppercase tracking-wide mb-3 block">Node Type</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {variantOptions.map((opt) => {
+                    {configs.map((opt) => {
                       const Icon = opt.icon;
+                      const activeColor = `${opt.iconColor} ${opt.borderColor} ${opt.bgColor}`;
                       return (
                         <button
-                          key={opt.value}
-                          onClick={() => setVariant(opt.value)}
+                          key={opt.key}
+                          onClick={() => setVariant(opt.key)}
                           className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center gap-2 ${
-                            variant === opt.value
-                              ? opt.color
+                            variant === opt.key
+                              ? activeColor
                               : 'border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
                           }`}
                         >
@@ -518,8 +524,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                 {/* Divider */}
                 <div className="border-t border-zinc-800" />
 
-                {/* NPC Picker — non-combat only */}
-                {variant !== 'combat' && (
+                {/* NPC Picker — non-combat variants */}
+                {!isCombatVariant && (
                   <TagPicker<Character>
                     label="NPCs Involved"
                     icon={Users}
@@ -528,11 +534,12 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                     getId={(c) => c.id}
                     getName={(c) => c.name}
                     onToggle={toggleNpc}
+                    loading={!charsLoaded}
                   />
                 )}
 
-                {/* Monster Picker — combat only */}
-                {variant === 'combat' && (
+                {/* Monster Picker — combat variants */}
+                {isCombatVariant && (
                   <TagPicker<Character>
                     label="Monsters to Defeat"
                     icon={Skull}
@@ -541,6 +548,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                     getId={(c) => c.id}
                     getName={(c) => c.name}
                     onToggle={toggleMonster}
+                    loading={!charsLoaded}
                   />
                 )}
 
@@ -553,6 +561,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                   getId={(r) => r.id}
                   getName={(r) => r.title}
                   onToggle={toggleReward}
+                  loading={!rewardsLoaded}
                 />
 
                 {/* Actions */}
@@ -603,9 +612,10 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                   changed={variant !== node.variant}
                   variantOld={node.variant}
                   variantNew={variant}
+                  getVariantColor={(key) => getConfig(key).iconColor}
                 />
 
-                {variant !== 'combat' && (
+                {!isCombatVariant && (
                   <IdListDiff
                     label="NPCs Involved"
                     oldIds={node.npcIds ?? []}
@@ -615,7 +625,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                   />
                 )}
 
-                {variant === 'combat' && (
+                {isCombatVariant && (
                   <IdListDiff
                     label="Monsters to Defeat"
                     oldIds={node.monsterIds ?? []}

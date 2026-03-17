@@ -17,6 +17,9 @@ export interface IQuestNode {
   title: string;
   body: string;
   variant: string;
+  npcIds: string[];
+  monsterIds: string[];
+  rewardIds: string[];
 }
 
 export interface IQuestEdge {
@@ -92,11 +95,14 @@ export interface IQuestline extends Document {
 // ---------------------------------------------------------------------------
 
 const QuestNodeSchema = new Schema<IQuestNode>({
-  nodeId:  { type: String, required: true },
-  type:    { type: String, default: 'questNode' },
-  title:   { type: String, required: true },
-  body:    { type: String, required: true },
-  variant: { type: String, default: 'story' },
+  nodeId:     { type: String, required: true },
+  type:       { type: String, default: 'questNode' },
+  title:      { type: String, required: true },
+  body:       { type: String, required: true },
+  variant:    { type: String, default: 'story' },
+  npcIds:     { type: [String], default: [] },
+  monsterIds: { type: [String], default: [] },
+  rewardIds:  { type: [String], default: [] },
 });
 
 const QuestEdgeSchema = new Schema<IQuestEdge>({

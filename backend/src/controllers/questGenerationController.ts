@@ -4,6 +4,47 @@ import { config } from '../config/config';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import QuestlineModel from '../models/questlineModel';
 import QuestStyleModel from '../models/questStyleModel';
+import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVariantConfigModel';
+
+const BASE_VARIANT_KEYS = new Set(BASE_VARIANT_SEEDS.map((s) => s.key));
+
+// Palette pool for AI-generated variants
+const AI_VARIANT_PALETTES = [
+  { borderColor: 'border-emerald-500', bgColor: 'bg-emerald-500/10', iconColor: 'text-emerald-400', shadowColor: 'shadow-emerald-500/50' },
+  { borderColor: 'border-orange-500',  bgColor: 'bg-orange-500/10',  iconColor: 'text-orange-400',  shadowColor: 'shadow-orange-500/50' },
+  { borderColor: 'border-cyan-500',    bgColor: 'bg-cyan-500/10',    iconColor: 'text-cyan-400',    shadowColor: 'shadow-cyan-500/50' },
+  { borderColor: 'border-pink-500',    bgColor: 'bg-pink-500/10',    iconColor: 'text-pink-400',    shadowColor: 'shadow-pink-500/50' },
+  { borderColor: 'border-violet-500',  bgColor: 'bg-violet-500/10',  iconColor: 'text-violet-400',  shadowColor: 'shadow-violet-500/50' },
+  { borderColor: 'border-yellow-500',  bgColor: 'bg-yellow-500/10',  iconColor: 'text-yellow-400',  shadowColor: 'shadow-yellow-500/50' },
+];
+
+async function ensureVariantConfigsExist(variantKeys: string[]): Promise<void> {
+  const unknown = variantKeys.filter((k) => !BASE_VARIANT_KEYS.has(k));
+  if (unknown.length === 0) return;
+
+  const existingDocs = await NodeVariantConfigModel.find({ key: { $in: unknown } }).select('key').lean();
+  const existingKeys = new Set(existingDocs.map((d) => d.key));
+
+  const toCreate = unknown.filter((k) => !existingKeys.has(k));
+  if (toCreate.length === 0) return;
+
+  let paletteIdx = 0;
+  const docs = toCreate.map((key) => {
+    const palette = AI_VARIANT_PALETTES[paletteIdx % AI_VARIANT_PALETTES.length];
+    paletteIdx++;
+    return {
+      key,
+      label: key.charAt(0).toUpperCase() + key.slice(1),
+      iconKey: 'star',
+      isBase: false,
+      ...palette,
+    };
+  });
+
+  await NodeVariantConfigModel.insertMany(docs, { ordered: false }).catch(() => {
+    // ignore duplicate key errors from race conditions
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -177,10 +218,15 @@ function buildGraphPrompt(
   genre: string,
   objectives: Objective[],
   rewards: Reward[],
+  characters: GeneratedCharacter[],
   promptSuffix: string,
 ): string {
   const objectiveList = objectives.map((o, i) => `  ${i + 1}. ${o.title} — ${o.description}`).join('\n');
-  const rewardList = rewards.map((r) => `  - ${r.title} (${r.rarity})`).join('\n');
+  const rewardList    = rewards.map((r) => `  - id="${r.id}" title="${r.title}" (${r.rarity})`).join('\n');
+  const characterList = characters.map((c) => `  - id="${c.id}" name="${c.name}" role="${c.role}"`).join('\n');
+
+  const hasCharacters = characters.length > 0;
+  const hasRewards    = rewards.length > 0;
 
   return `You are a professional game designer creating a quest node graph for a ${genre} game.
 
@@ -192,9 +238,12 @@ ${story}
 Objectives to weave into the story (use as inspiration for scenes, not as a node-per-objective checklist):
 ${objectiveList}
 
-Rewards granted at the quest end:
+Rewards available (use their exact IDs when assigning to nodes):
 ${rewardList}
-
+${hasCharacters ? `
+Characters in this story (use their exact IDs when assigning to nodes):
+${characterList}
+` : ''}
 ━━━ WHAT A NODE IS ━━━
 A node is a single SCENE in the story — one moment, one location, one decision point.
 Think of it like a chapter in a book or a room in a dungeon.
@@ -203,6 +252,12 @@ Each node has a variant that describes the TYPE of scene:
   combat   → fight, ambush, boss encounter, skirmish
   dialogue → conversation, interrogation, negotiation, NPC interaction
   treasure → item discovery, puzzle, exploration, looting
+
+━━━ CHARACTER & REWARD ASSIGNMENT ━━━
+- Every dialogue/story node SHOULD involve 1–2 relevant characters. Put their IDs in "npcIds".
+- Every combat node SHOULD involve the villain or monster characters. Put their IDs in "monsterIds".
+- The final resolution node MUST have the reward IDs in "rewardIds". Mid-quest treasure nodes may also have reward IDs.
+- Use ONLY IDs from the lists above. Leave arrays empty ([]) if none apply.
 
 ━━━ WHAT BRANCHING MEANS ━━━
 Branching means the STORY SPLITS. One scene ends and the player chooses (or the story diverges into) two DIFFERENT continuations.
@@ -236,9 +291,9 @@ Return ONLY valid JSON — no markdown, no explanation, no code fences:
 {
   "title": "3–6 word quest title",
   "nodes": [
-    { "id": "1", "type": "questNode", "variant": "story",    "title": "short action title", "body": "2-3 sentences describing the scene, what the player does, and what is at stake." },
-    { "id": "2", "type": "questNode", "variant": "dialogue", "title": "short action title", "body": "2-3 sentences." },
-    { "id": "3", "type": "questNode", "variant": "combat",   "title": "short action title", "body": "2-3 sentences." }
+    { "id": "1", "type": "questNode", "variant": "story",    "title": "short action title", "body": "2-3 sentences describing the scene, what the player does, and what is at stake.", "npcIds": ["char-1"], "monsterIds": [], "rewardIds": [] },
+    { "id": "2", "type": "questNode", "variant": "dialogue", "title": "short action title", "body": "2-3 sentences.", "npcIds": ["char-2"], "monsterIds": [], "rewardIds": [] },
+    { "id": "3", "type": "questNode", "variant": "combat",   "title": "short action title", "body": "2-3 sentences.", "npcIds": [], "monsterIds": ["char-3"], "rewardIds": [] }
   ],
   "edges": [
     { "id": "e1-2", "source": "1", "target": "2" },
@@ -283,14 +338,21 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     }
 
     // 2. Ask Gemini to generate the graph
-    const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], promptSuffix));
+    const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix));
     const generated = JSON.parse(json) as {
       title: string;
-      nodes: { id: string; type: string; variant: string; title: string; body: string }[];
+      nodes: { id: string; type: string; variant: string; title: string; body: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[] }[];
       edges: { id: string; source: string; target: string }[];
     };
 
-    // 3. Save to DB in the questline graph format
+    // 3. Ensure variant configs exist for any new variants the AI invented
+    const variantKeys = [...new Set(generated.nodes.map((n) => n.variant ?? 'story'))];
+    await ensureVariantConfigsExist(variantKeys);
+
+    // 4. Build temp-id → index maps so we can remap AI-generated IDs to MongoDB _ids after insert
+    const charIdMap  = new Map<string, string>(); // "char-1" → mongo _id
+    const rewardIdMap = new Map<string, string>(); // "rew-1"  → mongo _id
+
     const questline = await QuestlineModel.create({
       ownerId: userId,
       title:       generated.title || story.split('\n')[0].slice(0, 60) || 'New Quest',
@@ -298,12 +360,16 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       genre:       genre,
       storyPrompt: story,
       styleId:     styleId ?? '',
+      // Nodes saved with placeholder IDs first — remapped below after we have _ids
       nodes: generated.nodes.map((n) => ({
-        nodeId:  n.id,
-        type:    n.type ?? 'questNode',
-        title:   n.title,
-        body:    n.body,
-        variant: n.variant ?? 'story',
+        nodeId:     n.id,
+        type:       n.type ?? 'questNode',
+        title:      n.title,
+        body:       n.body,
+        variant:    n.variant ?? 'story',
+        npcIds:     n.npcIds     ?? [],
+        monsterIds: n.monsterIds ?? [],
+        rewardIds:  n.rewardIds  ?? [],
       })),
       edges: generated.edges.map((e) => ({
         edgeId: e.id,
@@ -328,6 +394,31 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
         questIds:   [],
       })),
     });
+
+    // 5. Build temp-id → MongoDB _id maps from the newly created embedded documents
+    (characters ?? []).forEach((c, i) => {
+      const mongoId = questline.characters[i]?._id?.toString();
+      if (mongoId) charIdMap.set(c.id, mongoId);
+    });
+    (rewards ?? []).forEach((r, i) => {
+      const mongoId = questline.rewards[i]?._id?.toString();
+      if (mongoId) rewardIdMap.set(r.id, mongoId);
+    });
+
+    // 6. Remap node arrays from temp IDs to MongoDB _ids and save
+    const remappedNodes = questline.nodes.map((n) => ({
+      _id:        n._id,
+      nodeId:     n.nodeId,
+      type:       n.type,
+      title:      n.title,
+      body:       n.body,
+      variant:    n.variant,
+      npcIds:     n.npcIds.map((id)     => charIdMap.get(id)   ?? id),
+      monsterIds: n.monsterIds.map((id) => charIdMap.get(id)   ?? id),
+      rewardIds:  n.rewardIds.map((id)  => rewardIdMap.get(id) ?? id),
+    }));
+    questline.nodes = remappedNodes as typeof questline.nodes;
+    await questline.save();
 
     res.status(201).json({ questlineId: questline._id.toString() });
   } catch (error) {

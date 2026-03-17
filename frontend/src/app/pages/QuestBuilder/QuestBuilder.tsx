@@ -26,6 +26,7 @@ import { NodeEditSidebar, NodeSnapshot } from './components/NodeEditSidebar';
 import { getLayoutedElements } from '../../utils/layoutUtils';
 import { QuestNodeData, NodeVariant } from '../../types/quest';
 import { useQuestlineData } from './hooks/useQuestlineData';
+import { fetchCharacters, fetchRewards } from '../../api/projectSidebarApi';
 
 const nodeTypes = {
   questNode: QuestNode,
@@ -78,6 +79,19 @@ export function QuestBuilder() {
   const [layoutDirection, setLayoutDirection] = useState<'TB' | 'LR'>('LR');
   const [layoutTrigger, setLayoutTrigger] = useState(0);
   const [editingNode, setEditingNode] = useState<{ id: string; snapshot: NodeSnapshot } | null>(null);
+  const [characterNames, setCharacterNames] = useState<Record<string, string>>({});
+  const [rewardNames, setRewardNames]       = useState<Record<string, string>>({});
+
+  // Fetch character + reward name maps for node card display
+  useEffect(() => {
+    if (!questlineId) return;
+    fetchCharacters(questlineId)
+      .then((chars) => setCharacterNames(Object.fromEntries(chars.map((c) => [c.id, c.name]))))
+      .catch(() => {});
+    fetchRewards(questlineId)
+      .then((rwds) => setRewardNames(Object.fromEntries(rwds.map((r) => [r.id, r.title]))))
+      .catch(() => {});
+  }, [questlineId]);
 
   // Populate graph once data is fetched and apply default horizontal layout
   useEffect(() => {
@@ -215,13 +229,15 @@ export function QuestBuilder() {
     [setNodes]
   );
 
-  // Attach interaction callbacks to every node whenever the handlers update
+  // Attach interaction callbacks and name maps to every node whenever they update
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => ({
         ...node,
         data: {
           ...node.data,
+          characterNames,
+          rewardNames,
           onAddPath: (pos: 'top' | 'bottom' | 'left' | 'right') => requestNewNode(node.id, pos),
           onDelete: () => deleteNode(node.id),
           onChangeVariant: (variant: NodeVariant) => changeNodeVariant(node.id, variant),
@@ -229,7 +245,7 @@ export function QuestBuilder() {
         },
       }))
     );
-  }, [requestNewNode, deleteNode, changeNodeVariant, openEditSidebar]);
+  }, [requestNewNode, deleteNode, changeNodeVariant, openEditSidebar, characterNames, rewardNames]);
 
   const handleAutoLayout = useCallback((direction: 'TB' | 'LR') => {
     setLayoutDirection(direction);

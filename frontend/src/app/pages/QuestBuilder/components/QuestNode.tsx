@@ -1,53 +1,30 @@
-import React, { useState } from 'react';
-import { Handle, Position, NodeProps, Node } from '@xyflow/react';
-import { Plus, Swords, MessageCircle, Scroll, Gem, Trash2 } from 'lucide-react';
-import { QuestNodeData, NodeVariant } from '../../../types/quest';
+/// <reference types="vite/client" />
+import { useState } from 'react';
+import { Handle, Position } from '@xyflow/react';
+import { Plus, Trash2, Users, Swords, Trophy } from 'lucide-react';
 import { ConfirmModal } from '../../../components/shared/ConfirmModal';
+import { QuestNodeData } from '@/types/quest';
+import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 
-const variantConfig: Record<NodeVariant, {
-  icon: React.ElementType;
-  borderColor: string;
-  bgColor: string;
-  iconColor: string;
-  shadowColor: string;
-}> = {
-  story: {
-    icon: Scroll,
-    borderColor: 'border-purple-500',
-    bgColor: 'bg-purple-500/10',
-    iconColor: 'text-purple-400',
-    shadowColor: 'shadow-purple-500/50',
-  },
-  combat: {
-    icon: Swords,
-    borderColor: 'border-red-500',
-    bgColor: 'bg-red-500/10',
-    iconColor: 'text-red-400',
-    shadowColor: 'shadow-red-500/50',
-  },
-  dialogue: {
-    icon: MessageCircle,
-    borderColor: 'border-blue-500',
-    bgColor: 'bg-blue-500/10',
-    iconColor: 'text-blue-400',
-    shadowColor: 'shadow-blue-500/50',
-  },
-  treasure: {
-    icon: Gem,
-    borderColor: 'border-amber-500',
-    bgColor: 'bg-amber-500/10',
-    iconColor: 'text-amber-400',
-    shadowColor: 'shadow-amber-500/50',
-  },
-};
-
-export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
+export function QuestNode({ data, selected }: { data: QuestNodeData; selected?: boolean }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const { getConfig } = useVariantConfigs();
 
-  const variant = (data.variant as NodeVariant) || 'story';
-  const config = variantConfig[variant];
+  const variantKey = (data.variant as string) || 'story';
+  const config = getConfig(variantKey);
   const Icon = config.icon;
   const isHorizontal = (data.layoutDirection ?? 'LR') === 'LR';
+
+  const characterNames = (data.characterNames as Record<string, string>) ?? {};
+  const rewardNames    = (data.rewardNames    as Record<string, string>) ?? {};
+  const npcIds         = (data.npcIds     as string[]) ?? [];
+  const monsterIds     = (data.monsterIds as string[]) ?? [];
+  const rewardIds      = (data.rewardIds  as string[]) ?? [];
+
+  const npcChips     = npcIds.map((id)     => characterNames[id] ?? id);
+  const monsterChips = monsterIds.map((id) => characterNames[id] ?? id);
+  const rewardChips  = rewardIds.map((id)  => rewardNames[id]    ?? id);
+  const hasChips = npcChips.length > 0 || monsterChips.length > 0 || rewardChips.length > 0;
 
   return (
     <div
@@ -106,18 +83,47 @@ export function QuestNode({ data, selected }: NodeProps<Node<QuestNodeData>>) {
         </>
       )}
 
-      {/* Card Content — read-only, click to open sidebar */}
+      {/* Card Content */}
       <div className={`p-4 ${config.bgColor}`}>
         <div className="flex items-start gap-2 mb-3">
           <Icon className={`w-5 h-5 ${config.iconColor} flex-shrink-0 mt-0.5`} />
           <h3 className="flex-1 text-white font-medium leading-snug">{data.title}</h3>
         </div>
         <p className="text-zinc-400 text-sm line-clamp-3">{data.body}</p>
+
+        {hasChips && (
+          <div className="mt-3 flex flex-col gap-1.5">
+            {npcChips.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Users className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                {npcChips.map((name) => (
+                  <span key={name} className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/30 px-1.5 py-0.5 rounded-full">{name}</span>
+                ))}
+              </div>
+            )}
+            {monsterChips.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Swords className="w-3 h-3 text-red-400 flex-shrink-0" />
+                {monsterChips.map((name) => (
+                  <span key={name} className="text-xs bg-red-500/10 text-red-300 border border-red-500/30 px-1.5 py-0.5 rounded-full">{name}</span>
+                ))}
+              </div>
+            )}
+            {rewardChips.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Trophy className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                {rewardChips.map((name) => (
+                  <span key={name} className="text-xs bg-amber-500/10 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">{name}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Variant badge */}
       <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full pointer-events-none">
-        <span className={`text-xs ${config.iconColor} capitalize`}>{variant}</span>
+        <span className={`text-xs ${config.iconColor} capitalize`}>{config.label}</span>
       </div>
 
       {/* Delete button */}

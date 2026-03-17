@@ -80,7 +80,7 @@ class QuestlineController extends BaseController {
   async getGraph(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     try {
-      const questline = await QuestlineModel.findById(req.params.id).select('ownerId nodes edges');
+      const questline = await QuestlineModel.findById(req.params.id).select('ownerId nodes edges characters rewards');
       if (!questline) {
         res.status(404).json({ error: 'Questline not found' });
         return;
@@ -95,10 +95,27 @@ class QuestlineController extends BaseController {
         .filter((n) => !isNaN(n));
       const nextNodeId = numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
 
+      // Build a remap for stale temp IDs (char-N / rew-N) to real MongoDB _ids.
+      // This handles questlines generated before the ID-remapping fix was deployed.
+      const staleCharMap  = new Map<string, string>(); // "char-1" → mongo _id (1-based index)
+      const staleRewardMap = new Map<string, string>(); // "rew-1"  → mongo _id
+      questline.characters.forEach((c, i) => staleCharMap.set(`char-${i + 1}`, c._id.toString()));
+      questline.rewards.forEach((r, i) => staleRewardMap.set(`rew-${i + 1}`, r._id.toString()));
+
+      const remapId = (id: string, charMap: Map<string, string>, rewMap: Map<string, string>): string =>
+        charMap.get(id) ?? rewMap.get(id) ?? id;
+
       const shapedNodes = questline.nodes.map((n) => ({
         id: n.nodeId,
         type: n.type,
-        data: { title: n.title, body: n.body, variant: n.variant },
+        data: {
+          title:      n.title,
+          body:       n.body,
+          variant:    n.variant,
+          npcIds:     (n.npcIds     ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
+          monsterIds: (n.monsterIds ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
+          rewardIds:  (n.rewardIds  ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
+        },
       }));
 
       const shapedEdges = questline.edges.map((e) => ({
@@ -128,17 +145,20 @@ class QuestlineController extends BaseController {
       }
 
       const { nodes, edges } = req.body as {
-        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string } }[];
+        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[] } }[];
         edges: { id: string; source: string; target: string }[];
       };
 
       await QuestlineModel.findByIdAndUpdate(req.params.id, {
         nodes: (nodes ?? []).map((n) => ({
-          nodeId:  n.id,
-          type:    n.type ?? 'questNode',
-          title:   n.data.title,
-          body:    n.data.body,
-          variant: n.data.variant ?? 'story',
+          nodeId:     n.id,
+          type:       n.type ?? 'questNode',
+          title:      n.data.title,
+          body:       n.data.body,
+          variant:    n.data.variant ?? 'story',
+          npcIds:     n.data.npcIds     ?? [],
+          monsterIds: n.data.monsterIds ?? [],
+          rewardIds:  n.data.rewardIds  ?? [],
         })),
         edges: (edges ?? []).map((e) => ({
           edgeId: e.id,
