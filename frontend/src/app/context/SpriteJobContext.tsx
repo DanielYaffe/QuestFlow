@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { SpriteRecord, watchSpriteJob } from '../api/spriteApi';
 
@@ -19,8 +19,39 @@ interface SpriteJobContextValue {
   /**
    * Register a background sprite job.
    * Opens a persistent SSE connection at app level so navigation doesn't kill it.
+   * Job ID and label are persisted to localStorage so a refresh reconnects automatically.
    */
   registerJob: (jobId: string, meta: SpriteJobMeta) => void;
+}
+
+// ---------------------------------------------------------------------------
+// localStorage helpers
+// ---------------------------------------------------------------------------
+
+const STORAGE_KEY = 'spriteActiveJobs';
+
+interface PersistedJob {
+  jobId: string;
+  label: string;
+}
+
+function loadPersistedJobs(): PersistedJob[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+function persistJob(jobId: string, label: string) {
+  const jobs = loadPersistedJobs().filter((j) => j.jobId !== jobId);
+  jobs.push({ jobId, label });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+}
+
+function clearPersistedJob(jobId: string) {
+  const jobs = loadPersistedJobs().filter((j) => j.jobId !== jobId);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
 }
 
 // ---------------------------------------------------------------------------
@@ -36,35 +67,32 @@ export function useSpriteJobs() {
 }
 
 // ---------------------------------------------------------------------------
-// Provider — mounts once at app root, survives route changes
+// Provider — mounts once at app root, survives route changes and page refreshes
 // ---------------------------------------------------------------------------
 
 export function SpriteJobProvider({ children }: { children: React.ReactNode }) {
   // Map of jobId → SSE cleanup fn
   const cleanups = useRef<Map<string, () => void>>(new Map());
 
-  const registerJob = useCallback((jobId: string, meta: SpriteJobMeta) => {
-    // Close any previous SSE for this jobId (shouldn't happen, but be safe)
+  const connectJob = useCallback((jobId: string, label: string, meta?: Omit<SpriteJobMeta, 'label'>) => {
     cleanups.current.get(jobId)?.();
 
     const cleanup = watchSpriteJob(
       jobId,
-      async (result) => {
+      (result) => {
         cleanups.current.delete(jobId);
-
-        // Let the direct subscriber handle it first (e.g. update the panel)
-        meta.onDone?.(result);
-
-        // Always show a toast — even if the user navigated away
-        toast.success(`Image ready: ${meta.label}`, {
+        clearPersistedJob(jobId);
+        meta?.onDone?.(result);
+        toast.success(`Image ready: ${label}`, {
           description: 'Your generated image is ready.',
           duration: 10_000,
         });
       },
       (msg) => {
         cleanups.current.delete(jobId);
-        meta.onError?.(msg);
-        toast.error(`Image generation failed: ${meta.label}`, {
+        clearPersistedJob(jobId);
+        meta?.onError?.(msg);
+        toast.error(`Image generation failed: ${label}`, {
           description: msg,
           duration: 8_000,
         });
@@ -73,6 +101,26 @@ export function SpriteJobProvider({ children }: { children: React.ReactNode }) {
 
     cleanups.current.set(jobId, cleanup);
   }, []);
+
+  // On mount: reconnect any jobs that were in-progress when the page was refreshed
+  useEffect(() => {
+    const pending = loadPersistedJobs();
+    for (const { jobId, label } of pending) {
+      // No onDone/onError callbacks — the original caller is gone after refresh.
+      // Toast notifications will still fire.
+      connectJob(jobId, label);
+    }
+
+    return () => {
+      cleanups.current.forEach((cleanup) => cleanup());
+      cleanups.current.clear();
+    };
+  }, [connectJob]);
+
+  const registerJob = useCallback((jobId: string, meta: SpriteJobMeta) => {
+    persistJob(jobId, meta.label);
+    connectJob(jobId, meta.label, meta);
+  }, [connectJob]);
 
   return (
     <SpriteJobContext.Provider value={{ registerJob }}>
