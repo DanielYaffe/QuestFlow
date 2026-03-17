@@ -12,18 +12,13 @@ const generateToken = (userId: string) => {
 };
 
 export async function googleCallback(req: Request, res: Response) {
-  const user = req.user as IUser;
+  const user = req.user
   if (!user) {
     return res.redirect(`${config.FRONTEND_URL}/#/login?error=google_failed`);
   }
 
   const { token, refreshToken } = generateToken(user._id.toString());
 
-  if (!user.refreshTokens) user.refreshTokens = [];
-  user.refreshTokens.push(refreshToken);
-  await user.save();
-
-  // Redirect to frontend with tokens in query params — frontend reads and stores them
   res.redirect(
     `${config.FRONTEND_URL}/#/auth/callback?token=${encodeURIComponent(token)}&refreshToken=${encodeURIComponent(refreshToken)}`
   );
