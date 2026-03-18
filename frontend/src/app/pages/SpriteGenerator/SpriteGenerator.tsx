@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Sparkles, Wand2, SlidersHorizontal, ChevronDown, ChevronUp,
   Download, Copy, Check, AlertCircle, Loader2, X, ZoomIn, ToggleLeft, ToggleRight,
@@ -272,10 +272,29 @@ export function SpriteGenerator() {
   // Lightbox
   const [lightboxSprite, setLightboxSprite] = useState<SpriteRecord | null>(null);
 
-  // Load saved sprites on mount
+  // Track whether we've already handled the spriteId deep-link
+  const deepLinkedRef = useRef(false);
+
+  // Load saved sprites on mount; open lightbox if ?spriteId is in the URL
   useEffect(() => {
     getSprites()
-      .then(setSprites)
+      .then((records) => {
+        setSprites(records);
+        if (!deepLinkedRef.current) {
+          deepLinkedRef.current = true;
+          const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+          const spriteId = params.get('spriteId');
+          if (spriteId) {
+            const match = records.find((r) => r._id === spriteId);
+            if (match) {
+              setCurrent(match);
+              setLightboxSprite(match);
+            }
+            // Clean the param from the URL without a full reload
+            window.location.hash = '/sprite-generator';
+          }
+        }
+      })
       .catch(() => { /* non-fatal */ })
       .finally(() => setLoadingHistory(false));
   }, []);
