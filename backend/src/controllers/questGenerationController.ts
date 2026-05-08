@@ -5,6 +5,8 @@ import { AuthRequest } from '../middlewares/authMiddleware';
 import QuestlineModel from '../models/questlineModel';
 import QuestStyleModel from '../models/questStyleModel';
 import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVariantConfigModel';
+import GameThemeModel, { IGameTheme } from '../models/gameThemeModel';
+import ThemeConfigModel from '../models/themeConfigModel';
 
 const BASE_VARIANT_KEYS = new Set(BASE_VARIANT_SEEDS.map((s) => s.key));
 
@@ -63,6 +65,31 @@ interface Reward {
 }
 
 // ---------------------------------------------------------------------------
+// Helper — load theme metadata (falls back to generic_rpg if not found)
+// ---------------------------------------------------------------------------
+
+async function loadTheme(themeId?: string): Promise<IGameTheme | null> {
+  const id = themeId || 'generic_rpg';
+  return GameThemeModel.findOne({ themeId: id }).lean();
+}
+
+function buildThemeContext(theme: IGameTheme | null): string {
+  if (!theme) return '';
+
+  const rewardList = theme.rewardTypes.map((r) => `${r.name} (${r.rarity})`).join(', ');
+  const questList  = theme.questTypes.map((q) => q.name).join(', ');
+
+  return `
+Theme context:
+- Tone: ${theme.questTone}
+- Naming style: ${theme.namingStyle}
+- Available reward types: ${rewardList}
+- Quest types: ${questList}
+- Location rules: ${theme.locationRules}
+- Dialogue style: ${theme.dialogueStyle}`.trim();
+}
+
+// ---------------------------------------------------------------------------
 // Helper — run Gemini and strip fences
 // ---------------------------------------------------------------------------
 
@@ -80,9 +107,9 @@ async function callGemini(prompt: string): Promise<string> {
 // POST /quests/generate — generate objectives + rewards
 // ---------------------------------------------------------------------------
 
-function buildObjectivesPrompt(story: string, genre: string): string {
+function buildObjectivesPrompt(story: string, genre: string, themeContext: string): string {
   return `You are a professional game designer specialising in quest design for ${genre} games.
-
+${themeContext ? `\n${themeContext}\n` : ''}
 A player has provided the following story premise:
 """
 ${story}
@@ -118,7 +145,7 @@ Return this exact JSON structure:
 }
 
 export async function generateObjectives(req: AuthRequest, res: Response) {
-  const { story, genre } = req.body as { story?: string; genre?: string };
+  const { story, genre, themeId } = req.body as { story?: string; genre?: string; themeId?: string };
 
   if (!story || !genre) {
     res.status(400).json({ error: 'story and genre are required' });
@@ -131,7 +158,9 @@ export async function generateObjectives(req: AuthRequest, res: Response) {
   }
 
   try {
-    const json = await callGemini(buildObjectivesPrompt(story, genre));
+    const theme = await loadTheme(themeId);
+    const themeContext = buildThemeContext(theme);
+    const json = await callGemini(buildObjectivesPrompt(story, genre, themeContext));
     const parsed = JSON.parse(json) as { objectives: Objective[]; rewards: Reward[] };
     res.json(parsed);
   } catch (error) {
@@ -155,9 +184,9 @@ interface GeneratedCharacter {
   background: string;
 }
 
-function buildCharactersPrompt(story: string, genre: string): string {
+function buildCharactersPrompt(story: string, genre: string, themeContext: string): string {
   return `You are a professional narrative designer for ${genre} games.
-
+${themeContext ? `\n${themeContext}\n` : ''}
 A player has provided the following story premise:
 """
 ${story}
@@ -184,7 +213,7 @@ Return this exact JSON structure:
 }
 
 export async function generateCharacters(req: AuthRequest, res: Response) {
-  const { story, genre } = req.body as { story?: string; genre?: string };
+  const { story, genre, themeId } = req.body as { story?: string; genre?: string; themeId?: string };
 
   if (!story || !genre) {
     res.status(400).json({ error: 'story and genre are required' });
@@ -197,7 +226,9 @@ export async function generateCharacters(req: AuthRequest, res: Response) {
   }
 
   try {
-    const json = await callGemini(buildCharactersPrompt(story, genre));
+    const theme = await loadTheme(themeId);
+    const themeContext = buildThemeContext(theme);
+    const json = await callGemini(buildCharactersPrompt(story, genre, themeContext));
     const parsed = JSON.parse(json) as { characters: GeneratedCharacter[] };
     res.json(parsed);
   } catch (error) {
@@ -220,6 +251,7 @@ function buildGraphPrompt(
   rewards: Reward[],
   characters: GeneratedCharacter[],
   promptSuffix: string,
+  themeContext: string,
 ): string {
   const objectiveList = objectives.map((o, i) => `  ${i + 1}. ${o.title} — ${o.description}`).join('\n');
   const rewardList    = rewards.map((r) => `  - id="${r.id}" title="${r.title}" (${r.rarity})`).join('\n');
@@ -229,7 +261,7 @@ function buildGraphPrompt(
   const hasRewards    = rewards.length > 0;
 
   return `You are a professional game designer creating a quest node graph for a ${genre} game.
-
+${themeContext ? `\n${themeContext}\n` : ''}
 Story premise:
 """
 ${story}
@@ -310,13 +342,15 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     return;
   }
 
-  const { story, genre, objectives, rewards, characters, styleId } = req.body as {
+  const { story, genre, objectives, rewards, characters, styleId, themeId, exportFormat } = req.body as {
     story?: string;
     genre?: string;
     objectives?: Objective[];
     rewards?: Reward[];
     characters?: GeneratedCharacter[];
     styleId?: string;
+    themeId?: string;
+    exportFormat?: string;
   };
 
   if (!story || !genre || !objectives?.length) {
@@ -330,15 +364,22 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
   }
 
   try {
-    // 1. Resolve the style's promptSuffix (if provided)
-    let promptSuffix = '';
-    if (styleId) {
-      const style = await QuestStyleModel.findById(styleId).lean();
-      if (style) promptSuffix = style.promptSuffix;
-    }
+    // 1. Resolve style promptSuffix and theme metadata in parallel
+    const [style, theme] = await Promise.all([
+      styleId ? QuestStyleModel.findById(styleId).lean() : Promise.resolve(null),
+      loadTheme(themeId),
+    ]);
+
+    const promptSuffix = style?.promptSuffix ?? '';
+    const themeContext = buildThemeContext(theme);
+
+    // Resolve export format: request body → theme default → 'json'
+    const resolvedExportFormat = exportFormat
+      ?? (await ThemeConfigModel.findOne({ themeId: themeId ?? 'generic_rpg' }).lean())?.defaultExportFormat
+      ?? 'json';
 
     // 2. Ask Gemini to generate the graph
-    const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix));
+    const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix, themeContext));
     const generated = JSON.parse(json) as {
       title: string;
       nodes: { id: string; type: string; variant: string; title: string; body: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[] }[];
@@ -354,12 +395,14 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     const rewardIdMap = new Map<string, string>(); // "rew-1"  → mongo _id
 
     const questline = await QuestlineModel.create({
-      ownerId: userId,
-      title:       generated.title || story.split('\n')[0].slice(0, 60) || 'New Quest',
-      description: story,
-      genre:       genre,
-      storyPrompt: story,
-      styleId:     styleId ?? '',
+      ownerId:      userId,
+      title:        generated.title || story.split('\n')[0].slice(0, 60) || 'New Quest',
+      description:  story,
+      genre:        genre,
+      storyPrompt:  story,
+      styleId:      styleId ?? '',
+      themeId:      themeId ?? 'generic_rpg',
+      exportFormat: resolvedExportFormat,
       // Nodes saved with placeholder IDs first — remapped below after we have _ids
       nodes: generated.nodes.map((n) => ({
         nodeId:     n.id,

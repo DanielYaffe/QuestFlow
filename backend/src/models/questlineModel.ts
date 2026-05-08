@@ -80,6 +80,8 @@ export interface IQuestline extends Document {
   genre: string;
   storyPrompt: string;
   styleId: string;
+  themeId: string;
+  exportFormat: string;
   ownerId: string;
   nodes: IQuestNode[];
   edges: IQuestEdge[];
@@ -201,12 +203,14 @@ const ChapterSchema = new Schema<IChapter>({
  */
 const QuestlineSchema = new Schema<IQuestline>(
   {
-    title:       { type: String, required: true },
-    description: { type: String, default: '' },
-    genre:       { type: String, default: '' },
-    storyPrompt: { type: String, default: '' },
-    styleId:     { type: String, default: '' },
-    ownerId:     { type: String, required: true, index: true },
+    title:        { type: String, required: true },
+    description:  { type: String, default: '' },
+    genre:        { type: String, default: '' },
+    storyPrompt:  { type: String, default: '' },
+    styleId:      { type: String, default: '' },
+    themeId:      { type: String, default: 'generic_rpg' },
+    exportFormat: { type: String, default: 'json' },
+    ownerId:      { type: String, required: true, index: true },
     nodes:       { type: [QuestNodeSchema], default: [] },
     edges:       { type: [QuestEdgeSchema], default: [] },
     variants:    { type: [QuestlineVariantSchema], default: [] },

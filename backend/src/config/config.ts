@@ -21,6 +21,7 @@ const envSchema = z.object({
     GOOGLE_CALLBACK_URL: z.string().default('http://localhost:3000/auth/google/callback'),
     FRONTEND_URL: z.string().default('http://localhost:5173'),
     REDIS_URL: z.string().default('redis://localhost:6379'),
+    COMFYUI_ENDPOINT: z.string().default('http://127.0.0.1:8188'),
 });
 
 const parsed = envSchema.safeParse(process.env);

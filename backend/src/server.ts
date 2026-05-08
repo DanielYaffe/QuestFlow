@@ -13,6 +13,7 @@ import nodeVariantConfigRouter from "./routes/nodeVariantConfigRoute";
 import jobRouter from "./routes/jobRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
+import { seedThemes } from "./models/seedThemes";
 import cors from "cors";
 import "./config/passport";
 import { authenticate } from "./middlewares/authMiddleware";
@@ -57,6 +58,7 @@ const initApp = () => {
                 .then(() => {
                     seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
                     seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));
+                    seedThemes().catch((err) => console.error('[seed] themes failed:', err));
                     resolve(app);
                 })
                 .catch((error) => {
