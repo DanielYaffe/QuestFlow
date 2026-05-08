@@ -157,7 +157,7 @@ async function generateAndSaveThumbnail(id: string, prompt: string, engine: stri
 
     const genAI = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY, httpOptions: { timeout: 120_000 } });
     const response = await genAI.models.generateContent({
-      model: 'gemini-3.1-flash-image-preview',
+      model: 'gemini-2.5-flash-image',
       contents: prompt,
       config: { responseModalities: [Modality.IMAGE] },
     });
