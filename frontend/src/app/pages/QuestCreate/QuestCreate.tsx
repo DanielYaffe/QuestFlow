@@ -5,6 +5,7 @@ import { StepStyle } from './components/StepStyle';
 import { StepObjectives } from './components/StepObjectives';
 import { StepCharacters } from './components/StepCharacters';
 import { StepOutput } from './components/StepOutput';
+import { QuestLoadingScreen } from './components/QuestLoadingScreen';
 
 interface WizardState {
   step: 1 | 2 | 3 | 4 | 5;
@@ -16,6 +17,7 @@ interface WizardState {
   rewards: Reward[];
   selectedRewards: string[];
   characters: GeneratedCharacter[];
+  selectedCharacters: string[];
   isLoadingObjectives: boolean;
   isLoadingCharacters: boolean;
   error: string | null;
@@ -32,14 +34,14 @@ export function QuestCreate() {
     rewards: [],
     selectedRewards: [],
     characters: [],
+    selectedCharacters: [],
     isLoadingObjectives: false,
     isLoadingCharacters: false,
     error: null,
   });
 
-  const handleStorySubmit = async () => {
+  const handleStorySubmit = () => {
     if (!state.storyInput.trim() || state.isLoadingObjectives) return;
-    // Move to style selection first; fetch objectives when user confirms style
     setState((s) => ({ ...s, step: 2, error: null }));
   };
 
@@ -73,6 +75,7 @@ export function QuestCreate() {
         ...s,
         isLoadingCharacters: false,
         characters: result.characters,
+        selectedCharacters: result.characters.map((c) => c.id),
         step: 4,
       }));
     } catch (err) {
@@ -88,7 +91,12 @@ export function QuestCreate() {
     setState((s) => ({ ...s, isLoadingCharacters: true, error: null }));
     try {
       const result = await generateCharacters(state.storyInput, state.selectedGenre);
-      setState((s) => ({ ...s, isLoadingCharacters: false, characters: result.characters }));
+      setState((s) => ({
+        ...s,
+        isLoadingCharacters: false,
+        characters: result.characters,
+        selectedCharacters: result.characters.map((c) => c.id),
+      }));
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -107,6 +115,15 @@ export function QuestCreate() {
     }));
   };
 
+  const handleSelectAllObjectives = () => {
+    setState((s) => ({
+      ...s,
+      selectedObjectives: s.selectedObjectives.length === s.objectives.length
+        ? []
+        : s.objectives.map((o) => o.id),
+    }));
+  };
+
   const handleToggleReward = (id: string) => {
     setState((s) => ({
       ...s,
@@ -116,8 +133,37 @@ export function QuestCreate() {
     }));
   };
 
+  const handleSelectAllRewards = () => {
+    setState((s) => ({
+      ...s,
+      selectedRewards: s.selectedRewards.length === s.rewards.length
+        ? []
+        : s.rewards.map((r) => r.id),
+    }));
+  };
+
+  const handleToggleCharacter = (id: string) => {
+    setState((s) => ({
+      ...s,
+      selectedCharacters: s.selectedCharacters.includes(id)
+        ? s.selectedCharacters.filter((x) => x !== id)
+        : [...s.selectedCharacters, id],
+    }));
+  };
+
+  const handleSelectAllCharacters = () => {
+    setState((s) => ({
+      ...s,
+      selectedCharacters: s.selectedCharacters.length === s.characters.length
+        ? []
+        : s.characters.map((c) => c.id),
+    }));
+  };
+
   return (
     <div className="h-full overflow-hidden bg-zinc-950">
+      <QuestLoadingScreen visible={state.isLoadingObjectives} mode="objectives" />
+      <QuestLoadingScreen visible={state.isLoadingCharacters} mode="characters" />
       <div className="max-w-3xl mx-auto px-6 py-16 h-full flex flex-col">
         {state.error && (
           <div className="mb-6 px-4 py-3 bg-red-900/30 border border-red-700/50 rounded-xl text-red-400 text-sm">
@@ -153,6 +199,8 @@ export function QuestCreate() {
             selectedRewards={state.selectedRewards}
             onToggleObjective={handleToggleObjective}
             onToggleReward={handleToggleReward}
+            onSelectAllObjectives={handleSelectAllObjectives}
+            onSelectAllRewards={handleSelectAllRewards}
             onBack={() => setState((s) => ({ ...s, step: 2 }))}
             onSubmit={handleFetchCharacters}
           />
@@ -161,7 +209,10 @@ export function QuestCreate() {
         {state.step === 4 && (
           <StepCharacters
             characters={state.characters}
+            selectedCharacters={state.selectedCharacters}
             isLoading={state.isLoadingCharacters}
+            onToggleCharacter={handleToggleCharacter}
+            onSelectAllCharacters={handleSelectAllCharacters}
             onBack={() => setState((s) => ({ ...s, step: 3 }))}
             onSubmit={() => setState((s) => ({ ...s, step: 5 }))}
             onRegenerate={handleRegenerateCharacters}
@@ -176,7 +227,7 @@ export function QuestCreate() {
             selectedObjectives={state.selectedObjectives}
             rewards={state.rewards}
             selectedRewards={state.selectedRewards}
-            characters={state.characters}
+            characters={state.characters.filter((c) => state.selectedCharacters.includes(c.id))}
             styleId={state.selectedStyleId}
             onBack={() => setState((s) => ({ ...s, step: 4 }))}
           />

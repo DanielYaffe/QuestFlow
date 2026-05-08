@@ -180,7 +180,7 @@ export async function generateSprite(req: AuthRequest, res: Response) {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         const response = await genAI.models.generateContent({
-          model: 'gemini-3.1-flash-image-preview',
+          model: 'gemini-2.5-flash-image',
           contents: fullPrompt,
           config: { responseModalities: [Modality.IMAGE] },
         });

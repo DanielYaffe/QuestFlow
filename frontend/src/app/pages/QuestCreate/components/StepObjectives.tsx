@@ -10,14 +10,16 @@ interface StepObjectivesProps {
   selectedRewards: string[];
   onToggleObjective: (id: string) => void;
   onToggleReward: (id: string) => void;
+  onSelectAllObjectives: () => void;
+  onSelectAllRewards: () => void;
   onBack: () => void;
   onSubmit: () => void;
 }
 
 const rarityConfig = {
   common: { label: 'Common', color: 'text-zinc-400', icon: Coins },
-  rare: { label: 'Rare', color: 'text-blue-400', icon: Star },
-  epic: { label: 'Epic', color: 'text-purple-400', icon: Gem },
+  rare:   { label: 'Rare',   color: 'text-blue-400',   icon: Star },
+  epic:   { label: 'Epic',   color: 'text-purple-400', icon: Gem  },
 };
 
 export function StepObjectives({
@@ -27,9 +29,13 @@ export function StepObjectives({
   selectedRewards,
   onToggleObjective,
   onToggleReward,
+  onSelectAllObjectives,
+  onSelectAllRewards,
   onBack,
   onSubmit,
 }: StepObjectivesProps) {
+  const allObjectivesSelected = objectives.length > 0 && selectedObjectives.length === objectives.length;
+  const allRewardsSelected = rewards.length > 0 && selectedRewards.length === rewards.length;
   const canSubmit = selectedObjectives.length > 0;
 
   return (
@@ -41,15 +47,20 @@ export function StepObjectives({
         <p className="text-zinc-400">Select the objectives and rewards for your quest</p>
       </div>
 
-      {/* Two-column grid — scrollable */}
       <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-2 gap-6 pr-1">
         {/* Objectives */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 mb-1">
             <Target className="w-4 h-4 text-purple-400" />
             <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Objectives</h3>
+            <button
+              onClick={onSelectAllObjectives}
+              className="ml-auto text-xs text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              {allObjectivesSelected ? 'Deselect all' : 'Select all'}
+            </button>
             {selectedObjectives.length > 0 && (
-              <span className="ml-auto text-xs text-purple-400 bg-purple-500/10 border border-purple-500/30 rounded-full px-2 py-0.5">
+              <span className="text-xs text-purple-400 bg-purple-500/10 border border-purple-500/30 rounded-full px-2 py-0.5">
                 {selectedObjectives.length} selected
               </span>
             )}
@@ -67,12 +78,9 @@ export function StepObjectives({
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  {/* Checkbox */}
-                  <div
-                    className={`mt-0.5 w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border transition-colors ${
-                      isSelected ? 'bg-purple-600 border-purple-600' : 'border-zinc-600 group-hover:border-zinc-400'
-                    }`}
-                  >
+                  <div className={`mt-0.5 w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border transition-colors ${
+                    isSelected ? 'bg-purple-600 border-purple-600' : 'border-zinc-600 group-hover:border-zinc-400'
+                  }`}>
                     {isSelected && <Check className="w-3 h-3 text-white" />}
                   </div>
                   <div className="flex flex-col gap-0.5 min-w-0">
@@ -92,8 +100,14 @@ export function StepObjectives({
           <div className="flex items-center gap-2 mb-1">
             <Gift className="w-4 h-4 text-amber-400" />
             <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Rewards</h3>
+            <button
+              onClick={onSelectAllRewards}
+              className="ml-auto text-xs text-amber-400 hover:text-amber-300 transition-colors"
+            >
+              {allRewardsSelected ? 'Deselect all' : 'Select all'}
+            </button>
             {selectedRewards.length > 0 && (
-              <span className="ml-auto text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-full px-2 py-0.5">
+              <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-full px-2 py-0.5">
                 {selectedRewards.length} selected
               </span>
             )}
@@ -113,11 +127,9 @@ export function StepObjectives({
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border transition-colors ${
-                      isSelected ? 'bg-amber-500 border-amber-500' : 'border-zinc-600 group-hover:border-zinc-400'
-                    }`}
-                  >
+                  <div className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border transition-colors ${
+                    isSelected ? 'bg-amber-500 border-amber-500' : 'border-zinc-600 group-hover:border-zinc-400'
+                  }`}>
                     {isSelected && <Check className="w-3 h-3 text-white" />}
                   </div>
                   <span className={`text-sm font-medium flex-1 ${isSelected ? 'text-white' : 'text-zinc-300'}`}>
@@ -134,7 +146,6 @@ export function StepObjectives({
         </div>
       </div>
 
-      {/* Bottom bar */}
       <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
         <button
           onClick={onBack}
