@@ -13,12 +13,14 @@ const envSchema = z.object({
     AWS_ACCESS_KEY_ID: z.string().default(''),
     AWS_SECRET_ACCESS_KEY: z.string().default(''),
     AWS_REGION: z.string().default('us-east-1'),
+    AWS_BEDROCK_REGION: z.string().default('us-east-1'),
     AWS_S3_BUCKET: z.string().default(''),
     MINIO_ENDPOINT: z.string().default(''),
     GOOGLE_CLIENT_ID: z.string().default(''),
     GOOGLE_CLIENT_SECRET: z.string().default(''),
     GOOGLE_CALLBACK_URL: z.string().default('http://localhost:3000/auth/google/callback'),
     FRONTEND_URL: z.string().default('http://localhost:5173'),
+    REDIS_URL: z.string().default('redis://localhost:6379'),
 });
 
 const parsed = envSchema.safeParse(process.env);
