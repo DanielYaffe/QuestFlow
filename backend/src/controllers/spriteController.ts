@@ -2,9 +2,9 @@ import { Response } from 'express';
 import { Job } from 'bullmq';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import SpriteModel from '../models/spriteModel';
-import ThemeConfigModel from '../models/themeConfigModel';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { spriteQueue, SpriteJobData, SpriteJobResult } from '../queues/spriteQueue';
+import { getStyle, getDefaultStyle } from '../config/styles';
 
 // ---------------------------------------------------------------------------
 // POST /sprites/generate — enqueue ComfyUI generation job
@@ -29,33 +29,13 @@ export async function generateSprite(req: AuthRequest, res: Response) {
     return;
   }
 
-  let loraName = '';
-  let triggerWord = '';
-  let resolvedStyleId = styleId ?? '';
-
-  if (styleId) {
-    const themeConfig = await ThemeConfigModel.findById(styleId).lean();
-    if (!themeConfig) {
-      res.status(404).json({ error: 'Style not found' });
-      return;
-    }
-    loraName = themeConfig.loraModelPath ?? '';
-    triggerWord = themeConfig.loraTriggerWord ?? '';
-  }
-
-  // Build positive prompt: trigger word prepended if a style is selected
-  const positivePrompt = triggerWord
-    ? `${triggerWord}, ${prompt.trim()}`
-    : prompt.trim();
+  const resolvedStyle = (styleId ? getStyle(styleId) : undefined) ?? getDefaultStyle();
 
   const bullJob = await spriteQueue.add('generate', {
     userId,
     userPrompt: prompt.trim(),
-    positivePrompt,
-    negativePrompt: negativePrompt ?? '',
-    styleId: resolvedStyleId,
-    loraName,
-    triggerWord,
+    styleId: resolvedStyle.id,
+    negativePrompt: negativePrompt ?? undefined,
   } satisfies SpriteJobData);
 
   res.status(202).json({ jobId: bullJob.id });

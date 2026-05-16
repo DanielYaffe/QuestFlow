@@ -4,11 +4,8 @@ import { redis } from './connection';
 export interface SpriteJobData {
   userId: string;
   userPrompt: string;
-  positivePrompt: string;
-  negativePrompt: string;
   styleId: string;
-  loraName: string;      // '' when no style selected
-  triggerWord: string;   // '' when no style selected
+  negativePrompt?: string;
 }
 
 export interface SpriteJobResult {

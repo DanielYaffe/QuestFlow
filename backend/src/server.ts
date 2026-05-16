@@ -11,6 +11,7 @@ import spriteRouter from "./routes/spriteRoute";
 import questStyleRouter from "./routes/questStyleRoute";
 import nodeVariantConfigRouter from "./routes/nodeVariantConfigRoute";
 import jobRouter from "./routes/jobRoute";
+import stylesRouter from "./routes/stylesRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import { seedThemes } from "./models/seedThemes";
@@ -42,6 +43,7 @@ app.use('/sprites', spriteRouter);
 app.use('/quest-styles', questStyleRouter);
 app.use('/variant-configs', nodeVariantConfigRouter);
 app.use('/jobs', jobRouter);
+app.use('/styles', stylesRouter);
 
 const db = mongoose.connection;
 db.on("error", (error) => console.error(error));
