@@ -1,35 +1,13 @@
 {
   "1": {
-    "inputs": { "ckpt_name": "pixelArtDiffusionXL.safetensors" },
+    "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" },
     "class_type": "CheckpointLoaderSimple",
     "_meta": { "title": "Load Checkpoint" }
-  },
-  "2": {
-    "inputs": {
-      "PowerLoraLoaderHeaderWidget": { "type": "PowerLoraLoaderHeaderWidget" },
-      "model": ["1", 0],
-      "clip": ["1", 1],
-      "lora_1": {
-        "on": true,
-        "lora": "cb-000006.safetensors",
-        "strength": 0.85,
-        "strengthTwo": 0.8
-      },
-      "lora_2": {
-        "on": true,
-        "lora": "dmd2_sdxl_4step_lora.safetensors",
-        "strength": 1.0,
-        "strengthTwo": 1.0
-      },
-      "➕ Add Lora": ""
-    },
-    "class_type": "Power Lora Loader (rgthree)",
-    "_meta": { "title": "Power Lora Loader (rgthree)" }
   },
   "3": {
     "inputs": {
       "text": "POSITIVE_PROMPT_PLACEHOLDER",
-      "clip": ["2", 1]
+      "clip": ["1", 1]
     },
     "class_type": "CLIPTextEncode",
     "_meta": { "title": "CLIP Text Encode (Positive)" }
@@ -37,7 +15,7 @@
   "4": {
     "inputs": {
       "text": "NEGATIVE_PROMPT_PLACEHOLDER",
-      "clip": ["2", 1]
+      "clip": ["1", 1]
     },
     "class_type": "CLIPTextEncode",
     "_meta": { "title": "CLIP Text Encode (Negative)" }
@@ -50,12 +28,12 @@
   "6": {
     "inputs": {
       "seed": 0,
-      "steps": 4,
-      "cfg": 1.2,
-      "sampler_name": "euler",
-      "scheduler": "simple",
+      "steps": 30,
+      "cfg": 7,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
       "denoise": 1,
-      "model": ["2", 0],
+      "model": ["1", 0],
       "positive": ["3", 0],
       "negative": ["4", 0],
       "latent_image": ["5", 0]
@@ -71,18 +49,10 @@
     "class_type": "VAEDecode",
     "_meta": { "title": "VAE Decode" }
   },
-  "9": {
-    "inputs": {
-      "rembg_session": "u2net",
-      "image": ["7", 0]
-    },
-    "class_type": "easy imageRemBg",
-    "_meta": { "title": "Easy Image Remove Background" }
-  },
   "8": {
     "inputs": {
-      "filename_prefix": "cbstyle_output",
-      "images": ["9", 0]
+      "filename_prefix": "base_output",
+      "images": ["7", 0]
     },
     "class_type": "SaveImage",
     "_meta": { "title": "Save Image" }

@@ -15,6 +15,13 @@ export interface LoraGenerationOptions {
   height?: number;
 }
 
+export interface BaseGenerationOptions {
+  positivePrompt: string;
+  negativePrompt?: string;
+  width?: number;
+  height?: number;
+}
+
 interface ComfyUIPromptResponse {
   prompt_id: string;
 }
@@ -32,19 +39,33 @@ function loadWorkflow(name: string): Record<string, unknown> {
 type WorkflowNode = { inputs: Record<string, unknown>; class_type: string; _meta?: unknown };
 type Workflow = Record<string, WorkflowNode>;
 
-function patchWorkflow(
+function patchLoraWorkflow(
   workflow: Record<string, unknown>,
   opts: LoraGenerationOptions,
 ): Workflow {
-  // Deep clone so the template is never mutated
   const w = JSON.parse(JSON.stringify(workflow)) as Workflow;
 
   const positive = `${opts.triggerWord}, ${opts.positivePrompt}`;
-  const negative = opts.negativePrompt ?? DEFAULT_NEGATIVE;
+  const negative = opts.negativePrompt || DEFAULT_NEGATIVE;
 
   w['2'].inputs['lora_name'] = opts.loraName;
   w['3'].inputs['text'] = positive;
   w['4'].inputs['text'] = negative;
+  if (opts.width)  w['5'].inputs['width']  = opts.width;
+  if (opts.height) w['5'].inputs['height'] = opts.height;
+  w['6'].inputs['seed'] = randomInt(0, 2 ** 32);
+
+  return w;
+}
+
+function patchBaseWorkflow(
+  workflow: Record<string, unknown>,
+  opts: BaseGenerationOptions,
+): Workflow {
+  const w = JSON.parse(JSON.stringify(workflow)) as Workflow;
+
+  w['3'].inputs['text'] = opts.positivePrompt;
+  w['4'].inputs['text'] = opts.negativePrompt || DEFAULT_NEGATIVE;
   if (opts.width)  w['5'].inputs['width']  = opts.width;
   if (opts.height) w['5'].inputs['height'] = opts.height;
   w['6'].inputs['seed'] = randomInt(0, 2 ** 32);
@@ -82,7 +103,6 @@ async function pollForResult(promptId: string, timeoutMs = 120_000): Promise<Buf
 
     if (!entry?.status?.completed) continue;
 
-    // Find the first image output across all nodes
     for (const nodeOutput of Object.values(entry.outputs)) {
       const image = nodeOutput.images?.[0];
       if (!image) continue;
@@ -107,7 +127,6 @@ async function pollForResult(promptId: string, timeoutMs = 120_000): Promise<Buf
 export async function generateWithLora(opts: LoraGenerationOptions): Promise<Buffer> {
   const workflowName = opts.loraName.replace(/\.safetensors$/, '').replace(/[^a-z0-9_-]/gi, '_');
 
-  // Fall back to cbstyle workflow if no theme-specific workflow exists
   let workflow: Record<string, unknown>;
   try {
     workflow = loadWorkflow(workflowName);
@@ -115,7 +134,14 @@ export async function generateWithLora(opts: LoraGenerationOptions): Promise<Buf
     workflow = loadWorkflow('cbstyle');
   }
 
-  const patched = patchWorkflow(workflow, opts);
+  const patched = patchLoraWorkflow(workflow, opts);
+  const promptId = await queuePrompt(patched);
+  return pollForResult(promptId);
+}
+
+export async function generateBase(opts: BaseGenerationOptions): Promise<Buffer> {
+  const workflow = loadWorkflow('base');
+  const patched = patchBaseWorkflow(workflow, opts);
   const promptId = await queuePrompt(patched);
   return pollForResult(promptId);
 }
