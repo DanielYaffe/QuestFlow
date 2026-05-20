@@ -1,8 +1,10 @@
 import { Node } from '@xyflow/react';
 import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft } from 'lucide-react';
 import { QuestNodeData } from '../../../types/quest';
+import { ExportDropdown } from './ExportDropdown';
 
 interface QuestBuilderHeaderProps {
+  questlineId: string;
   selectedNode: Node<QuestNodeData> | null;
   onOpenSidebar: () => void;
   onAutoLayout: (direction: 'TB' | 'LR') => void;
@@ -11,7 +13,7 @@ interface QuestBuilderHeaderProps {
   onToggleSidebar: () => void;
 }
 
-export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({ questlineId, selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar }: QuestBuilderHeaderProps) {
   return (
     <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between z-10">
       <div className="flex items-center gap-3">
@@ -72,9 +74,7 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
           </button>
         </div>
 
-        <button className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors">
-          Export Quest
-        </button>
+        <ExportDropdown questlineId={questlineId} />
       </div>
     </header>
   );

@@ -280,6 +280,7 @@ export function QuestBuilder() {
   return (
     <div className="h-full flex flex-col">
       <QuestBuilderHeader
+        questlineId={questlineId}
         selectedNode={selectedNode}
         onOpenSidebar={() => { setSidebarMode('edit'); setIsSidebarOpen(true); }}
         onAutoLayout={handleAutoLayout}

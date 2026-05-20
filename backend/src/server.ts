@@ -10,6 +10,8 @@ import exportTemplateRouter from "./routes/exportTemplateRoute";
 import spriteRouter from "./routes/spriteRoute";
 import questStyleRouter from "./routes/questStyleRoute";
 import nodeVariantConfigRouter from "./routes/nodeVariantConfigRoute";
+import userSettingsRouter from "./routes/userSettingsRoute";
+import questExportRouter from "./routes/questExportRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import cors from "cors";
@@ -39,6 +41,8 @@ app.use('/export-templates', exportTemplateRouter);
 app.use('/sprites', spriteRouter);
 app.use('/quest-styles', questStyleRouter);
 app.use('/variant-configs', nodeVariantConfigRouter);
+app.use('/users', userSettingsRouter);
+app.use('/questlines', questExportRouter);
 
 const db = mongoose.connection;
 db.on("error", (error) => console.error(error));

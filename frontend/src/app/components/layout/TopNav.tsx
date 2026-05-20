@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Workflow, Home, Sparkles, PlayCircle, PlusCircle, LogOut } from 'lucide-react';
+import { Workflow, Home, Sparkles, PlayCircle, PlusCircle, LogOut, Settings2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export function TopNav() {
@@ -19,6 +19,7 @@ export function TopNav() {
     { path: '/quest-builder', label: 'Quest Builder', icon: Workflow },
     { path: '/sprite-generator', label: 'Sprite Generator', icon: Sparkles },
     { path: '/sprite-animator', label: 'Sprite Animator', icon: PlayCircle },
+    { path: '/settings', label: 'Settings', icon: Settings2 },
   ];
 
   return (

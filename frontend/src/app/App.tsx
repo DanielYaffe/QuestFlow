@@ -13,6 +13,7 @@ import { QuestBuilderLanding } from './pages/QuestBuilder/QuestBuilderLanding';
 import { QuestCreate } from './pages/QuestCreate/QuestCreate';
 import { SpriteGenerator } from './pages/SpriteGenerator/SpriteGenerator';
 import { SpriteAnimator } from './pages/SpriteAnimator/SpriteAnimator';
+import { Settings } from './pages/Settings/Settings';
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
               <Route path="/create" element={<QuestCreate />} />
               <Route path="/sprite-generator" element={<SpriteGenerator />} />
               <Route path="/sprite-animator" element={<SpriteAnimator />} />
+              <Route path="/settings" element={<Settings />} />
             </Route>
           </Route>
         </Routes>
