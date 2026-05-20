@@ -1,5 +1,7 @@
 import { Router, RequestHandler } from 'express';
 import questlineController from '../controllers/questlineController';
+import { requireQuestlineOwnership } from '../middlewares/requireQuestlineOwnership';
+import { previewExport, downloadExport, pushToGithub } from '../controllers/questExportController';
 
 const questlineRouter = Router();
 
@@ -715,5 +717,11 @@ questlineRouter.delete('/:id/rewards/:rewardId', questlineController.deleteRewar
  *                     type: string
  */
 questlineRouter.get('/:id/quests', questlineController.getQuestSummaries.bind(questlineController));
+
+// ── Export ──────────────────────────────────────────────────────────────────
+
+questlineRouter.get('/:id/export/preview', requireQuestlineOwnership as RequestHandler, previewExport as RequestHandler);
+questlineRouter.get('/:id/export',         requireQuestlineOwnership as RequestHandler, downloadExport as RequestHandler);
+questlineRouter.post('/:id/push-to-github', requireQuestlineOwnership as RequestHandler, pushToGithub as RequestHandler);
 
 export default questlineRouter;

@@ -27,6 +27,7 @@ import { getLayoutedElements } from '../../utils/layoutUtils';
 import { QuestNodeData, NodeVariant } from '../../types/quest';
 import { useQuestlineData } from './hooks/useQuestlineData';
 import { fetchCharacters, fetchRewards } from '../../api/projectSidebarApi';
+import { ExportDialog } from './components/ExportDialog';
 
 const nodeTypes = {
   questNode: QuestNode,
@@ -81,6 +82,7 @@ export function QuestBuilder() {
   const [editingNode, setEditingNode] = useState<{ id: string; snapshot: NodeSnapshot } | null>(null);
   const [characterNames, setCharacterNames] = useState<Record<string, string>>({});
   const [rewardNames, setRewardNames]       = useState<Record<string, string>>({});
+  const [isExportOpen, setIsExportOpen]     = useState(false);
 
   // Fetch character + reward name maps for node card display
   useEffect(() => {
@@ -280,13 +282,13 @@ export function QuestBuilder() {
   return (
     <div className="h-full flex flex-col">
       <QuestBuilderHeader
-        questlineId={questlineId}
         selectedNode={selectedNode}
         onOpenSidebar={() => { setSidebarMode('edit'); setIsSidebarOpen(true); }}
         onAutoLayout={handleAutoLayout}
         layoutDirection={layoutDirection}
         isSidebarOpen={isLeftSidebarOpen}
         onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
+        onExport={() => setIsExportOpen(true)}
       />
 
       {/* Canvas */}
@@ -365,6 +367,12 @@ export function QuestBuilder() {
           if (editingNode) updateNode(editingNode.id, updated);
           setEditingNode(null);
         }}
+      />
+
+      <ExportDialog
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        questlineId={questlineId}
       />
     </div>
   );
