@@ -85,9 +85,9 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
     }
 
     const g = user.gitSettings;
-    const owner  = bodyOwner  ?? g.repoOwner    ?? '';
-    const repo   = bodyRepo   ?? g.repoName     ?? '';
-    const branch = bodyBranch ?? g.defaultBranch ?? 'main';
+    const owner  = (bodyOwner  ?? g.repoOwner    ?? '').trim();
+    const repo   = (bodyRepo   ?? g.repoName     ?? '').trim();
+    const branch = (bodyBranch ?? g.defaultBranch ?? 'main').trim();
 
     if (!owner || !repo) {
       res.status(400).json({ error: 'Repository owner and name are required.' });
@@ -95,11 +95,13 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
     }
 
     const { filename, content } = await exportQuestline(String(req.params.id), parsedFormat);
-    const baseDir = bodyFilePath ?? g.defaultFilePath ?? '';
-    const filePath = baseDir ? `${baseDir.replace(/\/$/, '')}/${filename}` : filename;
+    // Strip both leading and trailing slashes so a user-supplied path like
+    // "/Assets/Quests/" never produces a double-slash in the GitHub API URL.
+    const baseDir = (bodyFilePath ?? g.defaultFilePath ?? '').replace(/^\/+|\/+$/g, '');
+    const filePath = baseDir ? `${baseDir}/${filename}` : filename;
 
-    await pushFile({
-      token: decrypt(g.encryptedToken),
+    const usedPath = await pushFile({
+      token: decrypt(g.encryptedToken!),
       owner,
       repo,
       branch,
@@ -108,7 +110,7 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
       commitMessage: commitMessage ?? `Update ${req.questline?.title ?? 'quest'}`,
     });
 
-    res.json({ message: `Pushed ${filename} to ${owner}/${repo}@${branch}` });
+    res.json({ message: `Pushed to ${owner}/${repo} → ${branch}:${usedPath}` });
   } catch (error: any) {
     res.status(500).json({ error: error?.message ?? 'Push failed' });
   }

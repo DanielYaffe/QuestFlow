@@ -82,7 +82,9 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
     try {
       await downloadExport(questlineId, format);
       toast.success(`Downloaded ${filename}`);
-    } catch {
+    } catch (err) {
+      // AbortError means the user dismissed the "Save As" picker — not an error.
+      if (err instanceof Error && err.name === 'AbortError') return;
       toast.error('Download failed. Please try again.');
     } finally {
       setIsDownloading(false);

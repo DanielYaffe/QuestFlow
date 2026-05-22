@@ -1,5 +1,5 @@
 import { Node } from '@xyflow/react';
-import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft } from 'lucide-react';
+import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft, Loader2, Check } from 'lucide-react';
 import { QuestNodeData } from '../../../types/quest';
 
 interface QuestBuilderHeaderProps {
@@ -10,9 +10,11 @@ interface QuestBuilderHeaderProps {
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
   onExport: () => void;
+  isSaving: boolean;
+  hasUnsavedChanges: boolean;
 }
 
-export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
   return (
     <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between z-10">
       <div className="flex items-center gap-3">
@@ -72,6 +74,18 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
             Vertical
           </button>
         </div>
+
+        {isSaving ? (
+          <span className="flex items-center gap-1.5 text-zinc-400 text-sm">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Saving...
+          </span>
+        ) : !hasUnsavedChanges ? (
+          <span className="flex items-center gap-1.5 text-zinc-500 text-sm">
+            <Check className="w-3.5 h-3.5" />
+            Saved
+          </span>
+        ) : null}
 
         <button
           onClick={onExport}

@@ -37,13 +37,29 @@ export async function downloadExport(
   const disposition: string = response.headers['content-disposition'] ?? '';
   const match = disposition.match(/filename="?([^"]+)"?/);
   const filename = match?.[1] ?? `questline${getExtension(format)}`;
+  const blob = new Blob([response.data]);
 
-  const url = URL.createObjectURL(new Blob([response.data]));
+  // Prefer the File System Access API when available: it shows a "Save As"
+  // dialog so the user can overwrite an existing file directly.
+  if (typeof (window as any).showSaveFilePicker === 'function') {
+    const handle = await (window as any).showSaveFilePicker({ suggestedName: filename });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return;
+  }
+
+  // Fallback for browsers without File System Access API: anchor-based download.
+  // The browser controls naming — if a file with the same name already exists
+  // it will append (1), (2), etc. automatically.
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(anchor);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 function getExtension(format: Format): string {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   ReactFlow,
@@ -27,6 +27,7 @@ import { getLayoutedElements } from '../../utils/layoutUtils';
 import { QuestNodeData, NodeVariant } from '../../types/quest';
 import { useQuestlineData } from './hooks/useQuestlineData';
 import { fetchCharacters, fetchRewards } from '../../api/projectSidebarApi';
+import { saveQuestlineGraph } from '../../api/questBuilderApi';
 import { ExportDialog } from './components/ExportDialog';
 
 const nodeTypes = {
@@ -83,6 +84,14 @@ export function QuestBuilder() {
   const [characterNames, setCharacterNames] = useState<Record<string, string>>({});
   const [rewardNames, setRewardNames]       = useState<Record<string, string>>({});
   const [isExportOpen, setIsExportOpen]     = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving]           = useState(false);
+  const nodesRef    = useRef(nodes);
+  const edgesRef    = useRef(edges);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
 
   // Fetch character + reward name maps for node card display
   useEffect(() => {
@@ -108,6 +117,7 @@ export function QuestBuilder() {
   const onConnect = useCallback(
     (connection: Connection) => {
       setEdges((eds) => addEdge({ ...connection }, eds));
+      markUnsaved();
     },
     [setEdges]
   );
@@ -168,6 +178,7 @@ export function QuestBuilder() {
         },
       ]);
       setPendingNode(null);
+      markUnsaved();
     },
     [pendingNode, nodes, nodeIdCounter, setNodes, setEdges, requestNewNode]
   );
@@ -180,6 +191,7 @@ export function QuestBuilder() {
         setSelectedNode(null);
         setIsSidebarOpen(false);
       }
+      markUnsaved();
     },
     [setNodes, setEdges, selectedNode]
   );
@@ -191,6 +203,7 @@ export function QuestBuilder() {
           node.id === nodeId ? { ...node, data: { ...node.data, variant } } : node
         )
       );
+      markUnsaved();
     },
     [setNodes]
   );
@@ -227,6 +240,7 @@ export function QuestBuilder() {
             : node
         )
       );
+      markUnsaved();
     },
     [setNodes]
   );
@@ -248,6 +262,22 @@ export function QuestBuilder() {
       }))
     );
   }, [requestNewNode, deleteNode, changeNodeVariant, openEditSidebar, characterNames, rewardNames]);
+
+  const markUnsaved = useCallback(() => {
+    setHasUnsavedChanges(true);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      setIsSaving(true);
+      try {
+        await saveQuestlineGraph(questlineId, nodesRef.current, edgesRef.current);
+        setHasUnsavedChanges(false);
+      } catch {
+        // will retry on next change
+      } finally {
+        setIsSaving(false);
+      }
+    }, 0);
+  }, [questlineId]);
 
   const handleAutoLayout = useCallback((direction: 'TB' | 'LR') => {
     setLayoutDirection(direction);
@@ -289,6 +319,8 @@ export function QuestBuilder() {
         isSidebarOpen={isLeftSidebarOpen}
         onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
         onExport={() => setIsExportOpen(true)}
+        isSaving={isSaving}
+        hasUnsavedChanges={hasUnsavedChanges}
       />
 
       {/* Canvas */}
