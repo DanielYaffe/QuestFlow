@@ -15,6 +15,7 @@ export type QuestNodeData = Record<string, unknown> & {
   onDelete?: () => void;
   onChangeVariant?: (variant: NodeVariant) => void;
   onEdit?: () => void;
+  aiHighlight?: 'updated' | 'added';
 };
 
 export type Quest = {
