@@ -1,9 +1,27 @@
 """CLIPScore — prompt-alignment metric.
 
-Reference: Hessel, Holtzman, Forbes, Le Bras, Choi 2021 — CLIPScore: A Reference-free Evaluation
-Metric for Image Captioning. https://arxiv.org/abs/2104.08718
+What this measures: cosine similarity between the generated image and the text
+prompt, both embedded into CLIP ViT-L/14's joint vision-language space. Scaled ×2.5
+and clamped at 0 (the original paper's normalisation). Higher = the image obeys the
+prompt more closely.
 
-Score: 2.5 · max(0, cos(CLIP_img_emb, CLIP_text_emb))
+Why we need it: a LoRA can overfit. It might learn the style so aggressively that it
+stops listening to the prompt — you ask for a "two-headed plant creature" and it
+just produces a generic CB-style monster. CLIPScore catches that. In the LoRA-vs-
+baseline comparison, this is the "trade-off cost" axis: how much prompt-following
+was sacrificed for style fidelity.
+
+Reference-free: CLIPScore doesn't need a held-out set. It only uses the image and
+the prompt text.
+
+Limitation: CLIP was trained on natural images and captions. Pixel art is out of
+distribution, so absolute values aren't comparable to CLIPScore numbers reported on
+COCO. Use only for relative ranking across conditions in this sweep.
+
+Score formula: 2.5 · max(0, cos(CLIP_img_emb, CLIP_text_emb))
+
+Reference: Hessel, Holtzman, Forbes, Le Bras, Choi 2021 — CLIPScore: A Reference-free
+Evaluation Metric for Image Captioning. https://arxiv.org/abs/2104.08718
 """
 from __future__ import annotations
 

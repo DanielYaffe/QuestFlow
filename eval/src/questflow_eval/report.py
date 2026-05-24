@@ -16,6 +16,40 @@ from .aggregate import aggregate, normalise, rank
 from .eval_config import EvalConfig, WeightSet
 
 
+HOW_TO_READ_MD = """\
+## How to read this report
+
+Each condition is a generator configuration (checkpoint + optional LoRA at a given strength). For each condition we generate the same fixed prompt set with the same seeds, then score the outputs on six metrics with 95% bootstrap confidence intervals.
+
+**Reading a CI:** `0.432 [0.388, 0.475]` means "best estimate 0.432; the true mean is plausibly anywhere in [0.388, 0.475] with 95% confidence". If two conditions' intervals don't overlap, the difference between them is statistically meaningful at this sample size; if they overlap heavily, the difference may be noise.
+
+**Why so many metrics:** a LoRA can fail in independent ways (style ≠ prompt-following ≠ diversity ≠ memorisation). Each metric catches a different failure mode. The aggregate score combines them with weights so a LoRA has to do reasonably well on all of them to win.
+
+**Same seed across conditions:** for any (prompt, seed_index) pair, all conditions use the same random seed. This is "common random numbers" — it means a metric difference between two conditions is attributable to the model, not to lucky noise. See `grids/` for the side-by-side visual proof.
+"""
+
+
+METRIC_GLOSSARY_MD = """\
+## What each metric measures
+
+- **CLIPScore** *(prompt alignment, higher = better)*. Cosine similarity between the image and the text prompt in CLIP ViT-L/14's embedding space, ×2.5. Answers: "did the model draw what I asked for?" Drops when a LoRA overfits the style and stops listening to the prompt. Reference-free (no held-out set involved).
+
+- **DINOv2 fidelity** *(style match, higher = better)*. Cosine similarity between the generated image and the centroid of the held-out reference sprites, computed in DINOv2 ViT-B/14's embedding space. Answers: "does the output look like Cassette Beasts?" This is the load-bearing metric for "did the LoRA learn the target style".
+
+- **FID** *(distribution match, lower = better)*. Fréchet distance between Inception-V3 features of generated images and the held-out reference set, treated as Gaussians. Answers: "as a whole batch, do the generations look like a sample from the CB sprite distribution?" Less reliable at small n (we have ~20 per condition), so down-weighted in the aggregate.
+
+- **LPIPS diversity** *(intra-prompt variation, higher = better, up to a point)*. Mean pairwise perceptual distance (LPIPS, AlexNet backbone) between outputs of the same prompt under the same condition. Answers: "did the model produce variety when given different seeds, or did it mode-collapse?" Only meaningful alongside the other metrics — a model that produces garbage will also score high here.
+
+- **Memorization NN** *(copying detection, higher = better)*. Minimum cosine *distance* from each generated image to the nearest image in a comparison set (DINOv2 embedding). What it answers depends on the comparison set used (see "Memorization basis" above the table):
+    - vs **training set** → strict copying detection. Low values flag the LoRA reproducing specific images it was trained on.
+    - vs **held-out references** → "style-resemblance to unseen sprites". Catches some over-fitting modes but does not detect literal training-image reproduction.
+
+- **Pixel-art composite** *(intrinsic, higher = better)*. Weighted combination of palette size, edge hardness (step vs ramp edges), and block uniformity, computed on the raw 1024×1024 generation. Answers: "did the model produce pixel-art-shaped output natively, before the snapper got involved?" Not relative — measures intrinsic image properties, no reference set.
+
+The aggregate score normalises each metric to [0, 1] and takes a weighted sum. Default weights favour style fidelity (0.30) and prompt-following (0.20). The sensitivity table below shows ranking under alternative weight regimes so the result's robustness to weight choice is visible.
+"""
+
+
 CAVEATS_MD = """\
 ## Caveats and threats to validity
 
@@ -24,7 +58,7 @@ CAVEATS_MD = """\
 3. **DINOv2 also wasn't trained on sprites**, but generalises better to non-photographic content than CLIP. Still a transfer-learning limitation.
 4. **Diversity ≠ quality.** Interpret LPIPS only alongside CLIPScore and DINOv2.
 5. **Reference set is finite and user-provided.** Style fidelity is biased toward whatever those sprites depict.
-6. **Memorization NN uses the reference set as a proxy.** Training set unavailable, so this measures resemblance to reference rather than true memorization.
+6. **Memorization NN basis.** When `training_dir` is set on a LoRA, distances are measured against the training images directly — a strict copying-detection test. When unavailable, the metric falls back to the held-out reference set, which measures resemblance to unseen sprites instead. The "Memorization basis" note above each report indicates which mode applied.
 7. **No training-loss curves.** Inference-time metrics are the only window into LoRA quality.
 8. **Weight choice is subjective.** Sensitivity analysis included below.
 9. **DMD2 is constant across all conditions.** "LoRA off" measures DMD2 + checkpoint, not vanilla checkpoint — the right comparison because production also uses DMD2.
@@ -148,11 +182,39 @@ def render_report(
     lines.append(f"- ComfyUI endpoint: `{cfg.comfy_endpoint}`\n")
     lines.append(f"- RNG seed: `{cfg.rng_seed}`, seeds per prompt: `{cfg.seeds_per_prompt}`\n")
     lines.append(f"- Bootstrap n: `{cfg.bootstrap_n}`, CI: `{cfg.bootstrap_ci:.0%}`\n\n")
+    lines.append(HOW_TO_READ_MD + "\n")
+    lines.append(METRIC_GLOSSARY_MD + "\n")
 
-    lines.append("## Per-metric scores (mean ± 95% CI)\n")
+    # Memorization measurement basis — varies per condition depending on whether the
+    # LoRA has a training_dir set. Surface this prominently so a reader knows what the
+    # column actually means before they read the numbers.
     cond_ids = list(metrics_json["per_condition"].keys())
+    mem_bases = {cid: metrics_json["per_condition"][cid].get(
+        "memorization_against", "held_out_reference"
+    ) for cid in cond_ids}
+    bases_in_use = set(mem_bases.values())
+    if bases_in_use == {"training_set"}:
+        mem_note = (
+            "**Memorization basis:** all conditions scored against the LoRA's training "
+            "set — direct copying-detection. Low distance = LoRA reproduces training images."
+        )
+    elif bases_in_use == {"held_out_reference"}:
+        mem_note = (
+            "**Memorization basis:** all conditions scored against held-out reference "
+            "sprites (training set unavailable). Measures resemblance to nearest unseen "
+            "sprite, NOT literal training-image reproduction."
+        )
+    else:
+        mem_note = (
+            "**Memorization basis:** mixed across conditions — see column annotations below."
+        )
+    lines.append("## Per-metric scores (mean ± 95% CI)\n")
+    lines.append(mem_note + "\n")
+
     metrics_order = sorted({m for c in metrics_json["per_condition"].values() for m in c["metrics"]})
     header = ["condition", *metrics_order]
+    if bases_in_use == {"training_set", "held_out_reference"}:
+        header.append("memorization basis")
     lines.append("| " + " | ".join(header) + " |")
     lines.append("|" + "|".join(["---"] * len(header)) + "|")
     for cid in cond_ids:
@@ -160,6 +222,8 @@ def render_report(
         for m in metrics_order:
             agg = metrics_json["per_condition"][cid]["metrics"].get(m, {})
             row.append(_format_ci(agg.get("mean", float("nan")), agg.get("ci_low", float("nan")), agg.get("ci_high", float("nan"))))
+        if bases_in_use == {"training_set", "held_out_reference"}:
+            row.append("training" if mem_bases[cid] == "training_set" else "held-out")
         lines.append("| " + " | ".join(row) + " |")
     lines.append("")
 

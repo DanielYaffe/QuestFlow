@@ -1,7 +1,22 @@
 """LPIPS-based diversity within a (condition, prompt) group.
 
-Reference: Zhang, Isola, Efros, Shechtman, Wang 2018 — The Unreasonable Effectiveness of
-Deep Features as a Perceptual Metric. https://arxiv.org/abs/1801.03924
+What this measures: for N images generated from the same prompt under the same
+condition (different seeds), compute pairwise perceptual distance between every pair
+and return the mean. Higher = more diverse outputs.
+
+Why we need it: a LoRA can produce images that are individually high-quality but
+nearly identical (mode collapse). CLIPScore and DINOv2 fidelity wouldn't catch that
+— both would still look good per-image. LPIPS diversity does.
+
+Limitation: high LPIPS is necessary but not sufficient. A LoRA that produces garbage
+might also score high because garbage is perceptually noisy. Interpret only alongside
+CLIPScore and DINOv2.
+
+Backbone: AlexNet — the original paper's recommendation; faster than VGG and equally
+predictive for "are these images perceptually similar" comparisons.
+
+Reference: Zhang, Isola, Efros, Shechtman, Wang 2018 — The Unreasonable Effectiveness
+of Deep Features as a Perceptual Metric. https://arxiv.org/abs/1801.03924
 """
 from __future__ import annotations
 

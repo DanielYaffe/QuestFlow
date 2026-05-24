@@ -1,11 +1,30 @@
-"""Clean-FID between a condition's generations and the reference set.
+"""Clean-FID between a condition's generations and the held-out reference set.
+
+What this measures: pushes every generated image and every reference image through
+Inception-V3, fits a multivariate Gaussian to each set's activations (mean +
+covariance), then computes the Fréchet distance between the two Gaussians. Lower =
+the generated *distribution* statistically resembles the reference distribution.
+
+How it differs from DINOv2 fidelity: DINOv2 fidelity is per-image (does THIS image
+look like the centroid). FID is set-level (do the generations as a *batch* look
+distributionally like the references). A LoRA that produces 20 nearly-identical
+high-fidelity outputs would score high on DINOv2 (each image matches the centroid)
+but poorly on FID (one mode != a distribution). So FID catches a failure DINOv2
+doesn't.
+
+Why we use Clean-FID specifically: the original FID implementation's PIL/cv2 resize
+inconsistencies introduce 5-20 point biases (Parmar et al. 2022). Clean-FID standardises
+the preprocessing so values are comparable across implementations.
+
+Caveat: FID at small n is biased downward. The original paper used 50,000+ samples;
+we have ~20 per condition. Numbers are indicative for relative ranking only; absolute
+values aren't comparable to FID values reported in papers. Down-weighted in the
+aggregate (0.15) for this reason.
 
 References:
 - Heusel et al. 2017 — GANs Trained by a Two Time-Scale Update Rule. https://arxiv.org/abs/1706.08500
 - Parmar, Zhang, Zhu 2022 — On Aliased Resizing and Surprising Subtleties in GAN Evaluation.
-  https://arxiv.org/abs/2104.11222 (the basis for clean-fid).
-
-Caveat: FID at small n is biased; see report's caveats section.
+  https://arxiv.org/abs/2104.11222
 """
 from __future__ import annotations
 

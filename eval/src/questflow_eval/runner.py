@@ -213,6 +213,15 @@ def compute_metrics(
 
     reference_cache: dict[str, list[Image.Image]] = {}
     reference_paths_cache: dict[str, list[Path]] = {}
+    training_cache: dict[str, list[Image.Image] | None] = {}
+
+    def _load_image_dir(d: Path) -> tuple[list[Image.Image], list[Path]]:
+        paths = sorted(
+            p for p in d.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg")
+        )
+        imgs = [prep_for_metric(_load_image(p), bg_color=cfg.background_color,
+                                rembg_fallback=cfg.rembg_fallback) for p in paths]
+        return imgs, paths
 
     def _reference_for_lora(lora_id: str) -> tuple[list[Image.Image], list[Path]]:
         if lora_id in reference_cache:
@@ -221,16 +230,35 @@ def compute_metrics(
         ref_dir = (eval_dir / lora.reference_dir).resolve()
         if not ref_dir.exists():
             raise FileNotFoundError(f"reference dir for LoRA '{lora_id}' not found: {ref_dir}")
-        ref_paths = sorted(
-            p for p in ref_dir.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg")
-        )
+        refs, ref_paths = _load_image_dir(ref_dir)
         if not ref_paths:
             raise FileNotFoundError(f"reference dir for LoRA '{lora_id}' is empty: {ref_dir}")
-        refs = [prep_for_metric(_load_image(p), bg_color=cfg.background_color,
-                                rembg_fallback=cfg.rembg_fallback) for p in ref_paths]
         reference_cache[lora_id] = refs
         reference_paths_cache[lora_id] = ref_paths
         return refs, ref_paths
+
+    def _training_for_lora(lora_id: str) -> list[Image.Image] | None:
+        """Returns the training set if training_dir is set AND the folder has images.
+        None means "fall back to held-out reference for the memorization metric"."""
+        if lora_id in training_cache:
+            return training_cache[lora_id]
+        lora = models.lora_by_id(lora_id)
+        if not lora.training_dir:
+            training_cache[lora_id] = None
+            return None
+        train_dir = (eval_dir / lora.training_dir).resolve()
+        if not train_dir.exists():
+            log.warning("training_dir for LoRA '%s' does not exist: %s — falling back to held-out", lora_id, train_dir)
+            training_cache[lora_id] = None
+            return None
+        imgs, paths = _load_image_dir(train_dir)
+        if not paths:
+            log.warning("training_dir for LoRA '%s' is empty: %s — falling back to held-out", lora_id, train_dir)
+            training_cache[lora_id] = None
+            return None
+        log.info("training set for LoRA '%s': %d images at %s", lora_id, len(paths), train_dir)
+        training_cache[lora_id] = imgs
+        return imgs
 
     # Pick a default LoRA reference for LoRA-off conditions: first lora_under_test.
     fallback_lora_id = models.loras_under_test[0].id if models.loras_under_test else None
@@ -264,7 +292,14 @@ def compute_metrics(
         dino_centroid, _dino_max = m_dino.score_against_reference(
             prepped_gen, ref_imgs, model_name=cfg.dinov2_model
         )
-        mem_dists = m_mem.score(prepped_gen, ref_imgs, model_name=cfg.dinov2_model)
+
+        # Memorization: prefer the training set if available (strict copying-detection),
+        # otherwise fall back to held-out references (style-resemblance proxy).
+        training_imgs = _training_for_lora(lora_id_for_ref)
+        mem_against_training = training_imgs is not None
+        mem_comparison = training_imgs if mem_against_training else ref_imgs
+        mem_dists = m_mem.score(prepped_gen, mem_comparison, model_name=cfg.dinov2_model)
+
         fid_value = m_fid.score_images(raw_paths, ref_paths)
 
         # LPIPS diversity: per-prompt group, average across prompts.
@@ -299,7 +334,10 @@ def compute_metrics(
             "pixel_art": np.array(pixel_art_per_image, dtype=np.float32),
         }
 
-        per_condition[cid] = {"metrics": {}}
+        per_condition[cid] = {
+            "metrics": {},
+            "memorization_against": "training_set" if mem_against_training else "held_out_reference",
+        }
         for metric_name, vals in per_metric.items():
             mean, lo, hi = bootstrap_mean_ci(
                 vals, n=cfg.bootstrap_n, ci=cfg.bootstrap_ci, rng=rng

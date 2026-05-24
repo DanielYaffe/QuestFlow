@@ -1,6 +1,5 @@
 {
   "_comment": "User-editable model catalogue. Add new checkpoints/LoRAs here without touching code. See USER_GUIDE.md §8 for examples.",
-
   "checkpoints": [
     {
       "id": "pixelart_xl",
@@ -15,7 +14,6 @@
       "notes": "vanilla baseline"
     }
   ],
-
   "always_on_loras": [
     {
       "id": "dmd2",
@@ -25,7 +23,6 @@
       "notes": "DMD2 4-step distillation — applied to every condition (matches production)"
     }
   ],
-
   "loras_under_test": [
     {
       "id": "cb_e1",
@@ -35,7 +32,8 @@
       "prompt_prefix": "",
       "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
       "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 1"
+      "notes": "epoch 1",
+      "training_dir": "data/training_set/cb/"
     },
     {
       "id": "cb_e2",
@@ -45,7 +43,8 @@
       "prompt_prefix": "",
       "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
       "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 2"
+      "notes": "epoch 2",
+      "training_dir": "data/training_set/cb/"
     },
     {
       "id": "cb_e3",
@@ -55,7 +54,8 @@
       "prompt_prefix": "",
       "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
       "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 3"
+      "notes": "epoch 3",
+      "training_dir": "data/training_set/cb/"
     },
     {
       "id": "cb_e4",
@@ -65,7 +65,8 @@
       "prompt_prefix": "",
       "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
       "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 4"
+      "notes": "epoch 4",
+      "training_dir": "data/training_set/cb/"
     },
     {
       "id": "cb_e5",
@@ -75,7 +76,8 @@
       "prompt_prefix": "",
       "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
       "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 5"
+      "notes": "epoch 5",
+      "training_dir": "data/training_set/cb/"
     },
     {
       "id": "cb_final",
@@ -85,20 +87,61 @@
       "prompt_prefix": "",
       "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
       "reference_dir": "data/reference_sprites/cb/",
-      "notes": "final checkpoint shipped to production"
+      "notes": "final checkpoint shipped to production",
+      "training_dir": "data/training_set/cb/"
     }
   ],
-
   "conditions": [
-    { "id": "pa_xl__no_lora",      "checkpoint": "pixelart_xl", "lora": null,       "strength": 0.0,  "strength_clip": 0.0  },
-    { "id": "pa_xl__cb_e1_085",    "checkpoint": "pixelart_xl", "lora": "cb_e1",    "strength": 0.85, "strength_clip": 0.80 },
-    { "id": "pa_xl__cb_e2_085",    "checkpoint": "pixelart_xl", "lora": "cb_e2",    "strength": 0.85, "strength_clip": 0.80 },
-    { "id": "pa_xl__cb_e3_085",    "checkpoint": "pixelart_xl", "lora": "cb_e3",    "strength": 0.85, "strength_clip": 0.80 },
-    { "id": "pa_xl__cb_e4_085",    "checkpoint": "pixelart_xl", "lora": "cb_e4",    "strength": 0.85, "strength_clip": 0.80 },
-    { "id": "pa_xl__cb_e5_085",    "checkpoint": "pixelart_xl", "lora": "cb_e5",    "strength": 0.85, "strength_clip": 0.80 },
-    { "id": "pa_xl__cb_final_085", "checkpoint": "pixelart_xl", "lora": "cb_final", "strength": 0.85, "strength_clip": 0.80 }
+    {
+      "id": "pa_xl__no_lora",
+      "checkpoint": "pixelart_xl",
+      "lora": null,
+      "strength": 0.0,
+      "strength_clip": 0.0
+    },
+    {
+      "id": "pa_xl__cb_e1_085",
+      "checkpoint": "pixelart_xl",
+      "lora": "cb_e1",
+      "strength": 0.85,
+      "strength_clip": 0.8
+    },
+    {
+      "id": "pa_xl__cb_e2_085",
+      "checkpoint": "pixelart_xl",
+      "lora": "cb_e2",
+      "strength": 0.85,
+      "strength_clip": 0.8
+    },
+    {
+      "id": "pa_xl__cb_e3_085",
+      "checkpoint": "pixelart_xl",
+      "lora": "cb_e3",
+      "strength": 0.85,
+      "strength_clip": 0.8
+    },
+    {
+      "id": "pa_xl__cb_e4_085",
+      "checkpoint": "pixelart_xl",
+      "lora": "cb_e4",
+      "strength": 0.85,
+      "strength_clip": 0.8
+    },
+    {
+      "id": "pa_xl__cb_e5_085",
+      "checkpoint": "pixelart_xl",
+      "lora": "cb_e5",
+      "strength": 0.85,
+      "strength_clip": 0.8
+    },
+    {
+      "id": "pa_xl__cb_final_085",
+      "checkpoint": "pixelart_xl",
+      "lora": "cb_final",
+      "strength": 0.85,
+      "strength_clip": 0.8
+    }
   ],
-
   "sampler": {
     "steps": 4,
     "cfg": 1.2,
@@ -107,6 +150,5 @@
     "width": 1024,
     "height": 1024
   },
-
   "target_size_px": 64
 }

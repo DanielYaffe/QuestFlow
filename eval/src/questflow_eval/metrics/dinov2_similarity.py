@@ -1,9 +1,34 @@
-"""DINOv2 style fidelity — cosine similarity of generated images to reference centroid.
+"""DINOv2 style fidelity — cosine similarity of generated images to a reference centroid.
+
+What this measures: embed every reference sprite into DINOv2 ViT-B/14 feature space,
+average them into a "reference centroid", then score each generated image by its
+cosine similarity to that centroid. Higher = the output looks more like the reference
+distribution.
+
+Why this is the load-bearing metric: the whole point of training a style LoRA is to
+make a model produce a specific look on demand. DINOv2 fidelity is the most direct
+quantitative measurement of "did the LoRA learn the style". Without it you'd only
+have visual inspection.
+
+Why DINOv2 specifically (not CLIP) for style: CLIP's embeddings are entangled with
+text concepts — two CB sprites would land near each other in CLIP space partly
+because both are "creatures", a text-shaped concept. DINOv2 is image-only and self-
+supervised, so its embeddings capture visual structure (shape, texture, palette,
+line weight) without that bias. Standard in style-transfer literature (DreamBooth's
+DINO-I score, StyleDrop).
+
+Also used for the memorization metric: the same embeddings power the NN-distance
+check in metrics/memorization.py — different question (closest reference vs centroid)
+but the same model produces the embeddings, loaded once.
+
+Limitation: DINOv2 wasn't trained on sprites specifically. Generalisation to pixel-
+art domains is empirically good but not guaranteed.
 
 References:
 - Oquab et al. 2023 — DINOv2: Learning Robust Visual Features without Supervision.
-- Subject/style fidelity method adapted from Ruiz et al. 2023 (DreamBooth) and
-  Sohn et al. 2023 (StyleDrop).
+  https://arxiv.org/abs/2304.07193
+- Ruiz et al. 2023 — DreamBooth (DINO-I subject-fidelity score). https://arxiv.org/abs/2208.12242
+- Sohn et al. 2023 — StyleDrop. https://arxiv.org/abs/2306.00983
 """
 from __future__ import annotations
 

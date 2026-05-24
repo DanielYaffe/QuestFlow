@@ -6,6 +6,8 @@ results/
 !results/.gitkeep
 data/reference_sprites/*/
 !data/reference_sprites/README.md
+data/training_set/*/
+!data/training_set/README.md
 .coverage
 .pytest_cache/
 .mypy_cache/

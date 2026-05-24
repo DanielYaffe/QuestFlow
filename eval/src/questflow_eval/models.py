@@ -31,6 +31,12 @@ class LoraUnderTest(BaseModel):
     prompt_prefix: str = ""
     negative_prompt: str = ""
     reference_dir: str
+    # Optional path to the LoRA's training images. When set and the folder is
+    # non-empty, the memorization metric scores against these images instead of
+    # the held-out reference set. Missing / None / empty folder → falls back to
+    # nearest-neighbour distance vs the held-out set, with the report column
+    # relabelled to make the distinction clear.
+    training_dir: str | None = None
     notes: str = ""
 
 
