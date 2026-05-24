@@ -26,13 +26,17 @@ export async function snapAndResize(
   const input = new Uint8Array(png);
   const snapped = wasm.process_image(input, kColors, undefined);
 
-  // Crop off the +1 walker-overshoot edge artifact (129→128)
-  const BASE_SIZE = 128;
-  const cropped = await sharp(Buffer.from(snapped))
-    .extract({ left: 0, top: 0, width: BASE_SIZE, height: BASE_SIZE })
+  const snappedBuf = Buffer.from(snapped);
+  const { width, height } = await sharp(snappedBuf).metadata();
+  if (!width || !height) throw new Error('Pixel snapper returned image with no dimensions');
+
+  // Crop the +1 walker-overshoot artifact only when the image is larger than targetSize
+  const cropSize = Math.min(width, height, targetSize);
+  const cropped = await sharp(snappedBuf)
+    .extract({ left: 0, top: 0, width: cropSize, height: cropSize })
     .toBuffer();
 
-  if (targetSize === BASE_SIZE) return cropped;
+  if (cropSize === targetSize) return cropped;
 
   return sharp(cropped)
     .resize(targetSize, targetSize, { kernel: 'nearest' })

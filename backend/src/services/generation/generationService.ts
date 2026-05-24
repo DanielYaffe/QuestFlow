@@ -26,8 +26,9 @@ function patchWorkflow(composed: ComposedImagePrompt): Workflow {
 
   w['1'].inputs['ckpt_name'] = composed.checkpoint;
 
+  // lora_1 is DMD2, baked into the template — style loras start at lora_2
   composed.loras.forEach((lora, i) => {
-    const key = `lora_${i + 1}`;
+    const key = `lora_${i + 2}`;
     w['2'].inputs[key] = {
       on: true,
       lora: lora.filename,

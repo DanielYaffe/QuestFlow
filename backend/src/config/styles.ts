@@ -29,12 +29,7 @@ export interface Style {
   isDefault?: boolean;
 }
 
-const DMD2: StyleLora = {
-  filename: 'dmd2_sdxl_4step_lora.safetensors',
-  strength: 1.0,
-  strengthClip: 1.0,
-};
-
+// DMD2 is baked into the workflow template (lora_1) — not listed in style loras[]
 const DMD2_SAMPLER: StyleSamplerParams = {
   steps: 4,
   cfg: 1.2,
@@ -58,7 +53,6 @@ export const STYLES: Style[] = [
         strengthClip: 0.8,
         triggerWord: 'cbstyle',
       },
-      DMD2,
     ],
     promptPrefix: 'cbstyle, monster creature, pixel art, clean outline,',
     negativePrompt:
@@ -75,7 +69,7 @@ export const STYLES: Style[] = [
     category: 'illustrated',
     baseModel: 'SDXL',
     checkpoint: 'animagineXL_v3.safetensors',
-    loras: [DMD2],
+    loras: [],
     promptPrefix: 'anime style, creature, full body, white background,',
     negativePrompt:
       'photo, realistic, 3d render, blurry, low quality, text, watermark, signature, jpeg artifacts',
@@ -90,7 +84,7 @@ export const STYLES: Style[] = [
     category: 'realistic',
     baseModel: 'SDXL',
     checkpoint: 'juggernautXL_v9.safetensors',
-    loras: [DMD2],
+    loras: [],
     promptPrefix: 'fantasy creature, detailed, dramatic lighting, dark background,',
     negativePrompt:
       'cartoon, anime, pixel art, blurry, low quality, text, watermark, signature, jpeg artifacts',
@@ -105,7 +99,7 @@ export const STYLES: Style[] = [
     category: 'raw',
     baseModel: 'SDXL',
     checkpoint: 'sd_xl_base_1.0.safetensors',
-    loras: [DMD2],
+    loras: [],
     promptPrefix: '',
     negativePrompt:
       'blurry, low quality, text, watermark, signature, jpeg artifacts',

@@ -11,15 +11,15 @@
       "clip": ["1", 1],
       "lora_1": {
         "on": true,
-        "lora": "cb-000006.safetensors",
-        "strength": 0.85,
-        "strengthTwo": 0.8
+        "lora": "dmd2_sdxl_4step_lora_fp16.safetensors",
+        "strength": 1.0,
+        "strengthTwo": 1.0
       },
       "lora_2": {
         "on": true,
-        "lora": "dmd2_sdxl_4step_lora.safetensors",
-        "strength": 1.0,
-        "strengthTwo": 1.0
+        "lora": "cb-000006.safetensors",
+        "strength": 0.85,
+        "strengthTwo": 0.8
       },
       "➕ Add Lora": ""
     },
@@ -73,18 +73,12 @@
   },
   "9": {
     "inputs": {
-      "rembg_session": "u2net",
-      "image": ["7", 0]
+      "images": ["7", 0],
+      "rem_mode": "RMBG-1.4",
+      "image_output": "Save",
+      "save_prefix": "cbstyle_output"
     },
     "class_type": "easy imageRemBg",
     "_meta": { "title": "Easy Image Remove Background" }
-  },
-  "8": {
-    "inputs": {
-      "filename_prefix": "cbstyle_output",
-      "images": ["9", 0]
-    },
-    "class_type": "SaveImage",
-    "_meta": { "title": "Save Image" }
   }
 }
