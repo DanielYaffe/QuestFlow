@@ -1,0 +1,51 @@
+# Full-profile evaluation set: 40 prompts, 4 categories.
+# Used when --full is passed to `questflow_eval run`.
+
+prompts:
+  # ── Cute / friendly creatures ─────────────────────────────────
+  - { id: c01, text: "round fluffy slime with big eyes",          category: cute, expected_keywords: [slime, round, eyes] }
+  - { id: c02, text: "small forest fox spirit with leaf tail",    category: cute, expected_keywords: [fox, leaf, forest] }
+  - { id: c03, text: "horned goat creature with thick wool",      category: cute, expected_keywords: [goat, horns, wool] }
+  - { id: c04, text: "small dragon hatchling with iridescent scales", category: cute, expected_keywords: [dragon, scales] }
+  - { id: c05, text: "fluffy owl creature with starry feathers",  category: cute, expected_keywords: [owl, feathers, stars] }
+  - { id: c06, text: "tiny mushroom sprite with glowing cap",     category: cute, expected_keywords: [mushroom, glow] }
+  - { id: c07, text: "chubby penguin creature with knit scarf",   category: cute, expected_keywords: [penguin, scarf] }
+  - { id: c08, text: "smiling jellyfish with trailing ribbons",   category: cute, expected_keywords: [jellyfish, ribbons] }
+  - { id: c09, text: "round hedgehog creature with leaf spines",  category: cute, expected_keywords: [hedgehog, leaves] }
+  - { id: c10, text: "fluffy moth with patterned wings",          category: cute, expected_keywords: [moth, wings, pattern] }
+
+  # ── Mechanical / hard-surface ─────────────────────────────────
+  - { id: m01, text: "clockwork beetle with copper plating",      category: mechanical, expected_keywords: [beetle, copper, clockwork] }
+  - { id: m02, text: "robot dragon assembled from train parts",   category: mechanical, expected_keywords: [robot, dragon, train] }
+  - { id: m03, text: "steam-powered crab with brass claws",       category: mechanical, expected_keywords: [crab, brass, steam] }
+  - { id: m04, text: "wind-up rabbit with exposed gears",         category: mechanical, expected_keywords: [rabbit, gears] }
+  - { id: m05, text: "armored knight beetle with shield carapace", category: mechanical, expected_keywords: [beetle, armor, shield] }
+  - { id: m06, text: "robotic owl with chrome feathers and red eyes", category: mechanical, expected_keywords: [owl, chrome, red eyes] }
+  - { id: m07, text: "tank-treaded turtle creature",              category: mechanical, expected_keywords: [turtle, treads, tank] }
+  - { id: m08, text: "drone wasp with rotor wings",               category: mechanical, expected_keywords: [wasp, rotor, drone] }
+  - { id: m09, text: "submarine angler fish with rivets",         category: mechanical, expected_keywords: [fish, submarine, rivets] }
+  - { id: m10, text: "construction-mech creature with crane arm", category: mechanical, expected_keywords: [crane, mech, construction] }
+
+  # ── Elemental / abstract ──────────────────────────────────────
+  - { id: e01, text: "creature made of swirling water and bubbles", category: elemental, expected_keywords: [water, bubbles] }
+  - { id: e02, text: "ghostly flame entity wearing a tattered cloak", category: elemental, expected_keywords: [flame, ghost, cloak] }
+  - { id: e03, text: "crystal lizard with refracting body",       category: elemental, expected_keywords: [crystal, lizard] }
+  - { id: e04, text: "storm cloud creature crackling with lightning", category: elemental, expected_keywords: [cloud, lightning, storm] }
+  - { id: e05, text: "lava slug leaving a glowing trail",         category: elemental, expected_keywords: [lava, slug, glow] }
+  - { id: e06, text: "wind spirit shaped like a coiled serpent",  category: elemental, expected_keywords: [wind, serpent, coil] }
+  - { id: e07, text: "ice fox with frost crystals on its fur",    category: elemental, expected_keywords: [ice, fox, frost] }
+  - { id: e08, text: "shadow creature with one glowing eye",      category: elemental, expected_keywords: [shadow, eye, glow] }
+  - { id: e09, text: "sun spirit with golden flame mane",         category: elemental, expected_keywords: [sun, flame, gold] }
+  - { id: e10, text: "moon hare with silver pelt and starlight eyes", category: elemental, expected_keywords: [moon, hare, silver] }
+
+  # ── Compositional stress tests ────────────────────────────────
+  - { id: s01, text: "two-headed plant creature holding a sword", category: compositional, expected_keywords: [plant, two, sword] }
+  - { id: s02, text: "winged lizard with crystalline tail and three eyes", category: compositional, expected_keywords: [lizard, wings, crystal] }
+  - { id: s03, text: "robot beetle with copper plating and four legs", category: compositional, expected_keywords: [robot, beetle, copper] }
+  - { id: s04, text: "ghostly flame entity wearing a tattered cloak", category: compositional, expected_keywords: [ghost, flame, cloak] }
+  - { id: s05, text: "creature with bear body, fish tail, and antlers", category: compositional, expected_keywords: [bear, fish, antlers] }
+  - { id: s06, text: "centaur fox with bow and quiver of arrows", category: compositional, expected_keywords: [fox, centaur, bow] }
+  - { id: s07, text: "tiger-striped owl perched on a stone pillar", category: compositional, expected_keywords: [owl, tiger, pillar] }
+  - { id: s08, text: "snail with a crystal castle on its back",   category: compositional, expected_keywords: [snail, castle, crystal] }
+  - { id: s09, text: "six-legged spider monkey with a lantern tail", category: compositional, expected_keywords: [spider, monkey, lantern] }
+  - { id: s10, text: "armored fish wearing a crown and holding a trident", category: compositional, expected_keywords: [fish, crown, trident] }

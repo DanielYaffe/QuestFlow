@@ -1,0 +1,45 @@
+# Quick-profile evaluation set: 10 prompts, 2 categories.
+# Fixed and committed so results are reproducible across runs.
+
+prompts:
+  - id: c01
+    text: "round fluffy slime with big eyes"
+    category: creatures
+    expected_keywords: ["slime", "round", "eyes"]
+  - id: c02
+    text: "small forest fox spirit with leaf tail"
+    category: creatures
+    expected_keywords: ["fox", "leaf", "forest"]
+  - id: c03
+    text: "horned goat creature with thick wool"
+    category: creatures
+    expected_keywords: ["goat", "horns", "wool"]
+  - id: c04
+    text: "small dragon hatchling with iridescent scales"
+    category: creatures
+    expected_keywords: ["dragon", "scales", "hatchling"]
+  - id: c05
+    text: "fluffy owl creature with starry feathers"
+    category: creatures
+    expected_keywords: ["owl", "feathers", "stars"]
+
+  - id: s01
+    text: "two-headed plant creature holding a sword"
+    category: compositional
+    expected_keywords: ["plant", "two", "sword"]
+  - id: s02
+    text: "winged lizard with crystalline tail and three eyes"
+    category: compositional
+    expected_keywords: ["lizard", "wings", "crystal"]
+  - id: s03
+    text: "robot beetle with copper plating and four legs"
+    category: compositional
+    expected_keywords: ["robot", "beetle", "copper"]
+  - id: s04
+    text: "ghostly flame entity wearing a tattered cloak"
+    category: compositional
+    expected_keywords: ["ghost", "flame", "cloak"]
+  - id: s05
+    text: "creature made of swirling water and bubbles"
+    category: compositional
+    expected_keywords: ["water", "bubbles", "swirl"]

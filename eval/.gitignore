@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+results/
+!results/.gitkeep
+data/reference_sprites/*/
+!data/reference_sprites/README.md
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.DS_Store
+
+# Metric model downloads (clean-fid drops these into cwd at runtime)
+*.pt
+inception-*
