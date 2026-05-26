@@ -7,6 +7,11 @@ export type Format =
   | 'unreal-datatable'
   | 'godot-tres';
 
+export interface ExportFile {
+  path: string;
+  content: string;
+}
+
 export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'questflow-json',   label: 'QuestFlow JSON' },
   { id: 'questflow-yaml',   label: 'QuestFlow YAML' },
@@ -18,7 +23,7 @@ export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
 export async function previewExport(
   questlineId: string,
   format: Format,
-): Promise<{ filename: string; content: string }> {
+): Promise<{ filename: string; files: ExportFile[] }> {
   const { data } = await api.get(`/questlines/${questlineId}/export/preview`, {
     params: { format },
   });
@@ -34,26 +39,14 @@ export async function downloadExport(
     responseType: 'blob',
   });
 
-  // Extract filename from Content-Disposition header or build a fallback
   const disposition: string = response.headers['content-disposition'] ?? '';
   const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match?.[1] ?? `questline${getExtension(format)}`;
+  const filename = match?.[1] ?? `questline_${format}.zip`;
 
-  const url = URL.createObjectURL(new Blob([response.data]));
+  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }));
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function getExtension(format: Format): string {
-  const map: Record<Format, string> = {
-    'questflow-json':   '.json',
-    'questflow-yaml':   '.yaml',
-    'unity-asset':      '.asset',
-    'unreal-datatable': '.json',
-    'godot-tres':       '.tres',
-  };
-  return map[format];
 }

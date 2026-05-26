@@ -18,6 +18,7 @@ function parseFormat(raw: unknown): Format | null {
 }
 
 // GET /questlines/:id/export/preview?format=
+// Returns { filename, files } for the file-tree preview
 export async function previewExport(req: QuestlineRequest, res: Response): Promise<void> {
   const format = parseFormat(req.query.format);
   if (!format) {
@@ -26,13 +27,14 @@ export async function previewExport(req: QuestlineRequest, res: Response): Promi
   }
   try {
     const result = await exportQuestline(String(req.params.id), format);
-    res.json({ filename: result.filename, content: result.content });
+    res.json({ filename: result.filename, files: result.files });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
   }
 }
 
 // GET /questlines/:id/export?format=
+// Returns the ZIP as a file download
 export async function downloadExport(req: QuestlineRequest, res: Response): Promise<void> {
   const format = parseFormat(req.query.format);
   if (!format) {
@@ -42,8 +44,8 @@ export async function downloadExport(req: QuestlineRequest, res: Response): Prom
   try {
     const result = await exportQuestline(String(req.params.id), format);
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-    res.setHeader('Content-Type', result.mimeType);
-    res.send(result.content);
+    res.setHeader('Content-Type', 'application/zip');
+    res.send(result.zipBuffer);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
   }

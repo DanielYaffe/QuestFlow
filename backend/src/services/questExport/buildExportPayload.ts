@@ -18,7 +18,6 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, '') || 'unknown';
 }
 
-// Ensure unique slugs by appending an index when names collide
 function uniqueSlug(base: string, seen: Set<string>): string {
   let slug = base;
   let counter = 2;
@@ -42,6 +41,7 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
       name:       c.name,
       appearance: c.appearance ?? '',
       background: c.background ?? '',
+      imageUrl:   c.imageUrl ?? '',
     };
   });
 
@@ -55,17 +55,18 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
       title:       r.title,
       description: r.description ?? '',
       rarity:      r.rarity,
+      imageUrl:    r.imageUrl ?? '',
     };
   });
 
-  // ── Objectives: objectiveId → "obj_<slug>" ───────────────────────────────
+  // ── Objectives ───────────────────────────────────────────────────────────
   const objectives: CanonicalObjective[] = questline.objectives.map((o) => ({
     id:          o.objectiveId,
     title:       o.title,
     description: o.description ?? '',
   }));
 
-  // ── Chapters: _id → "chapter_<slug>" ────────────────────────────────────
+  // ── Chapters ─────────────────────────────────────────────────────────────
   const chapterIdMap = new Map<string, string>();
   const chapters: CanonicalChapter[] = questline.chapters.map((ch) => {
     const slug = uniqueSlug(`chapter_${slugify(ch.title)}`, seenSlugs);
@@ -77,7 +78,7 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
     };
   });
 
-  // ── Nodes: nodeId → "quest_<nodeId>" ────────────────────────────────────
+  // ── Nodes ────────────────────────────────────────────────────────────────
   const nodeIdMap = new Map<string, string>();
   questline.nodes.forEach((n) => {
     nodeIdMap.set(n.nodeId, `quest_${n.nodeId}`);
@@ -102,12 +103,18 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
     target: nodeIdMap.get(e.target) ?? `quest_${e.target}`,
   }));
 
+  // ── StartNodeId: node with no incoming edges ─────────────────────────────
+  const targetIds = new Set(edges.map((e) => e.target));
+  const startNode = nodes.find((n) => !targetIds.has(n.id)) ?? nodes[0];
+  const startNodeId = startNode?.id ?? '';
+
   return {
     meta: {
       id:          slugify(questline.title),
       title:       questline.title,
       genre:       questline.genre ?? '',
       description: questline.description ?? '',
+      startNodeId,
     },
     nodes,
     edges,

@@ -3,6 +3,7 @@ export interface CanonicalMeta {
   title: string;
   genre: string;
   description: string;
+  startNodeId: string;
 }
 
 export interface CanonicalNode {
@@ -26,6 +27,7 @@ export interface CanonicalCharacter {
   name: string;
   appearance: string;
   background: string;
+  imageUrl: string;
 }
 
 export interface CanonicalReward {
@@ -33,6 +35,7 @@ export interface CanonicalReward {
   title: string;
   description: string;
   rarity: 'common' | 'rare' | 'epic';
+  imageUrl: string;
 }
 
 export interface CanonicalObjective {
@@ -64,16 +67,22 @@ export type Format =
   | 'unreal-datatable'
   | 'godot-tres';
 
+export interface ExportFile {
+  path: string;
+  content: string;
+}
+
 export interface FormatModule {
   id: Format;
   label: string;
   extension: string;
   mimeType: string;
-  render: (payload: CanonicalExport) => string;
+  render: (payload: CanonicalExport) => ExportFile[];
 }
 
 export interface ExportResult {
   filename: string;
-  content: string;
+  files: ExportFile[];
+  zipBuffer: Buffer;
   mimeType: string;
 }
