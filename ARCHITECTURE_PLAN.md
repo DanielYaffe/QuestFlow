@@ -9,6 +9,8 @@
 **Revised:** May 11, 2026 — Plan 4 Character editor reframed from a sequenced "STEP 1 form → STEP 2 sprite → STEP 3 done" wireframe into a real **dedicated full page** at `/projects/:projectId/characters/:characterId` (canonical) + flat redirect aliases. Sections coexist; no enforced order. QuestBuilder "+ Create new" now full-page-navigates with `?returnTo=quest:<questId>:<nodeId>` (instead of opening a modal). CB-7.1 updated to match. In-progress sprite/animation jobs are queue-backed and survive navigation away from the page.
 **Revised:** May 11, 2026 — Design refresh split out to [design-plan.md](design-plan.md). Sibling plan (same level as [CB-plan.md](CB-plan.md)) covering token rewrite, AI-trope removal inventory, shadcn component refresh, page-by-page audit, and a new public marketing/landing surface. Direction: retro/game-flavored dark UI. Not in this plan's execution scope.
 **Revised:** May 16, 2026 — Pixel Snapper moved out of ComfyUI (Python port was 2-5s per image) into the Node sprite worker as a vendored WASM module (`backend/vendor/pixel-snapper/`, built from Hugo-Dz/spritefusion-pixel-snapper via `wasm-pack`, ~0.5-1.5s per image). `cbstyle.json` workflow now ends at `easy imageRemBg`; SaveImage reads from RMBG. New `pixelSnapper.ts` worker module does snap → crop 129→128 edge artifact → optional nearest-neighbor resize to `targetSize`. `targetSize` resolution order: character `targetSizeOverride` → style `targetSize` → global default `128`. Plan 3.4 Style interface, Plan 4 Character.assets schema, and Phase 3 sub-task table updated.
+**Revised:** May 16, 2026 — Plan 2 (AWS Bedrock) cut entirely. Quest generation stays on Gemini for all themes. No Bedrock agents, no S3 Vectors KB, no AWS AI dependency. Theme-awareness (tone, naming, dialogue style) remains via GameTheme injected into Gemini prompts. Bedrock client/services deleted from scope. Plan 11 agent templates removed. References updated throughout.
+**Revised:** May 16, 2026 — DMD2 baked into workflow template as `lora_1` (it is acceleration infrastructure, not a style LoRA). Style `loras[]` contains only style-specific LoRAs; `generationService.ts` patches them starting at `lora_2`. Alpha-threshold pre-processing step added in `pixelSnapper.ts` before WASM call to zero out low-alpha halo pixels left by RMBG-1.4. Fallback `SaveImage` node (id 100) appended at runtime by `generationService.ts` to guarantee history output if `easy imageRemBg` Save sink produces empty outputs.
 
 ---
 
@@ -26,25 +28,25 @@
 - Storage: S3 (or MinIO) for sprites with presigned URLs.
 - Queues: `spriteQueue`, `monsterQueue`, `questQueue` via BullMQ + Redis. ✅ DONE
 - Universal SSE job streaming route (`GET /jobs/:queue/:jobId/stream`). ✅ DONE
-- Bedrock client + agent service wired, waiting for real agent IDs. ✅ DONE
-- ComfyUI LoRA service built with workflow patching (`loraService.ts` + `cbstyle.json`). ✅ DONE
+- Bedrock client + agent service — **REMOVED** (Plan 2 cut, Gemini-only).
+- ComfyUI generation service (`generationService.ts` + `sdxl_power_lora.json` template). ✅ DONE
 - Theme seeds: `generic_rpg` and `cassette_beasts` seeded on startup. ✅ DONE
 
 **Frontend** (React 18 + Vite + Tailwind 4 + Radix UI + shadcn):
 - Pages: Login, Dashboard, QuestCreate (wizard), QuestBuilder (flow graph via @xyflow/react), SpriteGenerator, SpriteAnimator.
 - SpriteAnimator is a **stub** — hardcoded frames/animations, no actual sprite sheet loading, no PNG+JSON support.
 - No admin page exists.
-- SpriteGenerator uses Gemini-era filters (artStyle, perspective, etc.) — needs rework for ComfyUI style picker. ⬜ Phase 3.5
+- SpriteGenerator uses Gemini-era filters (artStyle, perspective, etc.) — needs rework for ComfyUI style picker. ⬜ Phase 3.9
 - QuestCreate has no theme picker yet. ⬜ Phase 3
 
 ### Key Problems Still to Solve
 
-1. **Sprite generator backend swapped to ComfyUI** ✅ — UI still needs style picker instead of Gemini filters (Phase 3.4–3.5).
-2. **No Bedrock agent IDs yet** — quest generation falls back to Gemini with theme context injected. Full Bedrock swap happens after Phase 6 admin panel wires up agents.
-3. **Monster pipeline not built** — Bedrock stats + ComfyUI sprite + PixelLab animation + auto-tagger + .tres export.
-4. **SpriteAnimator is a placeholder** — needs to parse Aseprite-format PNG+JSON and play back real animations.
-5. **No admin panel** — no way to manage themes, styles, agents, knowledge bases, or jobs.
-6. **No export system** — export format stored on questline but no exporters built yet.
+1. **Sprite generator UI** — backend is ComfyUI + Style Catalog ✅; UI still shows Gemini filters and needs the Style picker (Plan 3.9). ⬜
+2. **Character & Monster page not built** — Plan 4 interactive editor page with lore/appearance/stats/sprite sections. ⬜
+3. **SpriteAnimator is a placeholder** — needs to parse Aseprite-format PNG+JSON and play back real animations. ⬜
+4. **No admin panel** — no way to manage themes, styles, or jobs. ⬜
+5. **No export system** — export format stored on questline but no exporters built yet. ⬜
+6. **Plan 3.7.8 pending** — alpha-threshold pre-processing in `pixelSnapper.ts` and SaveImage fallback node in `generationService.ts`. ⬜
 
 ### Key Design Decisions
 
@@ -101,66 +103,34 @@ AWS_BEDROCK_REGION=us-east-1
 
 ---
 
-## Plan 2: AWS Bedrock Agent & Knowledge Base Integration ✅ PARTIALLY COMPLETE
+## Plan 2: Theme-Aware Quest Generation ✅ COMPLETE
+
+> **Scope change (May 16, 2026):** AWS Bedrock integration cut entirely. No Bedrock agents, no S3 Vectors knowledge bases, no AWS AI dependency. Quest generation runs on Gemini for all themes. Theme-awareness is preserved via the `GameTheme` model — tone, naming conventions, reward types, dialogue style are injected into every Gemini prompt. The `@aws-sdk/client-bedrock-agent*` packages and `services/bedrock/` directory are removed.
 
 ### Goal
-Every theme gets its own Bedrock Agent backed by its own Knowledge Base. Quest generation is grounded in structured data, never pure hallucination.
-
-### Architecture
-
-```
-────────────────────────────────────────────────────────────────
-                        AWS Bedrock
-
-  ┌─────────────────────┐   ┌─────────────────────┐
-  │  CB Agent (Haiku)   │   │  Generic RPG Agent  │   (+ more...)
-  └──────────┬──────────┘   └──────────┬──────────┘
-             │                         │
-  ┌──────────▼──────────┐   ┌──────────▼──────────┐
-  │  CB Knowledge Base  │   │  RPG Knowledge Base │
-  │  (S3 Vectors)       │   │  (S3 Vectors)       │
-  └──────────┬──────────┘   └──────────┬──────────┘
-             │                         │
-  ┌──────────▼──────────┐   ┌──────────▼──────────┐
-  │  S3: cb_kb/         │   │  S3: generic_kb/    │
-  │  type_chart.json    │   │  stat_formulas      │
-  │  all_beasts.json    │   │  archetype_lib      │
-  │  all_moves.json     │   │  quest_patterns     │
-  │  world_lore.md      │   │  trope_catalog      │
-  └─────────────────────┘   └─────────────────────┘
-────────────────────────────────────────────────────────────────
-                    │
-               ┌────▼─────┐
-               │ QuestFlow│
-               │ Backend  │
-               └──────────┘
-```
+Quest generation is theme-aware: the same generation pipeline produces different output depending on the active theme (Generic RPG vs Cassette Beasts vs any future theme). The model is Gemini; theme data provides the grounding context.
 
 ### What Was Built
 
-#### 2.1 Bedrock Client + Services ✅
-- `services/bedrock/bedrockClient.ts` — `BedrockAgentRuntimeClient` + `BedrockAgentClient` singletons
-- `services/bedrock/agentService.ts` — `invokeAgent(agentId, aliasId, prompt)` streams response chunks
-- `services/bedrock/knowledgeBaseService.ts` — `syncKnowledgeBase`, `deleteKnowledgeBase` (KB creation stubbed, wired in Phase 6 admin panel with S3 Vectors config)
-
-#### 2.2 Models ✅
-- `models/themeConfigModel.ts` — themeId, displayName, category, bedrockAgentId, bedrockAliasId, knowledgeBaseId, s3KBPath, loraModelPath, loraTriggerWord, exportFormats, spriteSpecs (note: `loraModelPath`/`loraTriggerWord` to be replaced with `defaultStyleId` per revised Plan 3.4)
+#### 2.1 Theme Models ✅
+- `models/themeConfigModel.ts` — themeId, displayName, category, defaultStyleId (replaces old `loraModelPath`/`loraTriggerWord`), exportFormats, spriteSpecs
 - `models/gameThemeModel.ts` — questTone, namingStyle, rewardTypes, questTypes, locationRules, dialogueStyle
-- `models/monsterModel.ts` — speciesData, assets, jobId, status (superseded by `models/characterModel.ts` with `kind: 'monster'` per revised Plans 4 and 9.2; to be deleted after migration)
-- `models/questlineModel.ts` — added `themeId` + `exportFormat` fields ✅
-- `models/seedThemes.ts` — seeds `generic_rpg` and `cassette_beasts` on startup ✅
+- `models/questlineModel.ts` — `themeId` + `exportFormat` fields
+- `models/seedThemes.ts` — seeds `generic_rpg` and `cassette_beasts` on startup
 
-#### 2.3 Theme-Aware Quest Generation ✅
+#### 2.2 Theme-Aware Quest Generation ✅
 - All three endpoints (`/generate`, `/generate-characters`, `/generate-questline`) accept `themeId`
 - `GameTheme` context (tone, naming, rewards, locations, dialogue) injected into Gemini prompts
 - `themeId` + `exportFormat` saved on questline at creation
 - Export format resolved: request body → ThemeConfig default → `'json'`
 
-#### 2.4 Still Needed ⬜
-- Build Generic RPG KB files and upload to S3
-- (CB-specific KB files moved to [CB-plan.md](CB-plan.md) CB-1.2 — not in this plan's scope)
-- Create Bedrock Agents in AWS (one per theme), save agent IDs to ThemeConfig via admin panel
-- Quest generation auto-upgrades to full Bedrock agent once IDs are set (no code change needed — `invokeAgent` already wired)
+#### 2.3 Removed (was 2.1 Bedrock) ~~⬜~~
+The following are explicitly cut and should not be re-introduced:
+- `services/bedrock/bedrockClient.ts`, `agentService.ts`, `knowledgeBaseService.ts`
+- `@aws-sdk/client-bedrock-agent`, `@aws-sdk/client-bedrock-agent-runtime` packages
+- `bedrockAgentId`, `bedrockAliasId`, `knowledgeBaseId`, `s3KBPath` fields on ThemeConfig
+- S3 Vectors knowledge base setup, KB sync routes, admin KB management
+- Per-theme Bedrock agent IDs, agent alias IDs
 
 ---
 
@@ -207,7 +177,7 @@ Replace Gemini image generation with ComfyUI. Replace Gemini-specific filter UI 
 
 ### Still Needed
 
-#### 3.4 Static Style Catalog (replaces dynamic LoRA catalog) ⬜
+#### 3.4 Static Style Catalog (replaces dynamic LoRA catalog) ✅
 
 New file: `backend/src/config/styles.ts`. A pure TypeScript module — no DB, no routes, no upload pipeline.
 
@@ -292,7 +262,7 @@ A short README in `backend/src/config/` will document where each file came from 
 
 The following are explicitly cut: `models/loraModel.ts`, `routes/loraRoute.ts`, `services/lora/civitaiClient.ts`, `services/lora/loraSync.ts`, `POST /api/loras/upload`, `POST /api/loras/import-civitai`, S3 storage of `.safetensors` files. Any future "add a style" flow is a PR, not a runtime feature.
 
-#### 3.5 Workflow Parameterization & Updates ⬜
+#### 3.5 Workflow Parameterization & Updates ✅
 
 `cbstyle.json` has been rewritten to use the new shape (Power Lora Loader with style LoRA + DMD2, euler/simple, 4 steps, CFG 1.2). It now serves as the template for a generic `sdxl_power_lora.json` that any style can use. `base.json` is no longer needed because "No Style" is just a Style entry with `loras: [DMD2 only]`.
 
@@ -317,7 +287,7 @@ The existing `cbstyle.json` already uses this shape (Power Lora Loader, DMD2 sta
 - Delete `base.json` (one workflow template replaces both).
 - Rename `loraService.ts` → `generationService.ts` and drop the `generateWithLora` / `generateBase` distinction; one entry point.
 
-#### 3.6 Image Prompt Composition (cross-references Plan 11.7) ⬜
+#### 3.6 Image Prompt Composition ✅
 
 A new `services/generation/imagePromptComposer.ts`:
 ```typescript
@@ -352,7 +322,7 @@ The composer is what `generationService.generateWithStyle()` (renamed from `lora
 
 User guidance baked into the UI tooltip: *"Describe what the creature is (e.g. 'a fire dragon with horns, lava-cracked skin'). Don't describe how it should look (e.g. 'pixel art, detailed') — the Style handles that."*
 
-#### 3.7 Always-On Sprite Cleanup (BG Removal in ComfyUI + Pixel Snap + Resize in Worker) ⬜
+#### 3.7 Always-On Sprite Cleanup (BG Removal in ComfyUI + Pixel Snap + Resize in Worker) ✅ (3.7.8 pending)
 
 Every sprite generation produces a clean, transparent-background, grid-snapped, target-sized PNG. The cleanup runs in two stages, split between ComfyUI and the Node worker. Both stages are mandatory, single-pipeline, hidden from the user.
 
@@ -454,7 +424,23 @@ The old plan had:
 
 If a future use case needs standalone re-snapping (e.g. user uploads their own sprite and wants snapping applied), reintroduce a thin route then. Not in scope now.
 
-#### 3.8 Styles API Endpoint ⬜
+##### 3.7.8 Implementation corrections (from eval harness findings)
+
+These refinements were discovered during the LoRA evaluation harness work and must be applied to the production backend:
+
+**DMD2 baked into workflow template (done).**
+`lora_1` in `sdxl_power_lora.json` is hardcoded to `dmd2_sdxl_4step_lora_fp16.safetensors`. It is acceleration infrastructure, not a style LoRA. Style `loras[]` in `styles.ts` contains only style-specific LoRAs; `generationService.ts` patches them into `lora_2`, `lora_3`, etc.
+
+**Prompt composition simplified (done).**
+`imagePromptComposer.ts` now produces: `{triggerWords}, {userSubject}, solid flat blue background` — no style prefix injected by the composer. Style prefixes (e.g. `cbstyle, monster creature, pixel art`) belong in `style.promptPrefix` which is prepended at the workflow prompt level, not in the composer string. This prevents double-injection and makes LoRA-off baselines comparable without a stylistic head-start.
+
+**Alpha-threshold pre-processing in `pixelSnapper.ts` (⬜ to implement).**
+RMBG-1.4 leaves a halo of pixels with alpha 5–200 around the subject. The Rust pixel-snapper crate only filters `alpha == 0` from k-means, so halo pixels steal centroid slots and reappear as a fringe. Fix: in `pixelSnapper.ts`, hard-threshold alpha to 0/255 before passing the PNG to the WASM call (any pixel with alpha < 128 → alpha 0; any pixel with alpha ≥ 128 → alpha 255). No Rust fork — keeps upstream crate pristine.
+
+**SaveImage fallback node (⬜ to implement).**
+`easy imageRemBg` with `image_output: "Save"` sometimes produces empty outputs in the history response. `generationService.ts` should append a standard `SaveImage` node (id `100`) at runtime that reads from the RMBG node's output `[9, 0]`. `pollForResult` already iterates all node outputs so it will find the image from whichever node actually produces it.
+
+#### 3.8 Styles API Endpoint ✅
 - `GET /api/styles` — returns the static `STYLES` array (filtered to active, omitting internal fields like raw filenames). Frontend caches indefinitely; it changes only on deploys.
 - Each entry returns: `id`, `name`, `description`, `previewImageUrl`, `category`, `defaultDimensions`.
 - No `POST`, `PATCH`, `DELETE` endpoints. The catalog is read-only at runtime.

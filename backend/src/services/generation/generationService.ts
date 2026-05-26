@@ -47,6 +47,15 @@ function patchWorkflow(composed: ComposedImagePrompt): Workflow {
   w['6'].inputs['sampler_name'] = composed.sampler.sampler;
   w['6'].inputs['scheduler'] = composed.sampler.scheduler;
 
+  // Fallback SaveImage: guarantees a history output if easy imageRemBg's Save
+  // sink produces empty outputs (observed intermittently). pollForResult iterates
+  // all node outputs so it picks up whichever node actually writes the image.
+  w['100'] = {
+    inputs: { filename_prefix: 'questflow_fallback', images: ['9', 0] },
+    class_type: 'SaveImage',
+    _meta: { title: 'SaveImage Fallback' },
+  };
+
   return w;
 }
 
