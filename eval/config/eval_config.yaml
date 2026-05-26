@@ -1,0 +1,48 @@
+comfy_endpoint: "http://127.0.0.1:8188"
+comfy_poll_interval_s: 1.5
+comfy_timeout_s: 180
+
+results_dir: "results"
+
+rng_seed: 1337
+seeds_per_prompt: 2
+bootstrap_n: 1000
+bootstrap_ci: 0.95
+
+# Image-prep / background normalisation
+background_color: [255, 255, 255]
+rembg_fallback: true
+
+# Aggregate score weights (must sum to 1.0)
+weights:
+  default:
+    dinov2_fidelity: 0.30
+    clipscore:       0.20
+    fid:             0.15
+    pixel_art:       0.15
+    lpips_diversity: 0.10
+    memorization:    0.10
+  style_heavy:
+    dinov2_fidelity: 0.50
+    clipscore:       0.10
+    fid:             0.20
+    pixel_art:       0.10
+    lpips_diversity: 0.05
+    memorization:    0.05
+  prompt_heavy:
+    dinov2_fidelity: 0.15
+    clipscore:       0.40
+    fid:             0.10
+    pixel_art:       0.15
+    lpips_diversity: 0.10
+    memorization:    0.10
+
+# Metric model choices
+clip_model: "ViT-L-14"
+clip_pretrained: "openai"
+dinov2_model: "dinov2_vitb14"
+lpips_net: "alex"
+
+# Profiles
+prompt_set: "config/prompt_set.yaml"
+prompt_set_full: "config/prompt_set.full.yaml"
