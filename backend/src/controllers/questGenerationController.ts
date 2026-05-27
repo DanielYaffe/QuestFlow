@@ -88,31 +88,35 @@ A player has provided the following story premise:
 ${story}
 """
 
-Your task is to extract exactly 5 quest objectives and exactly 5 rewards that fit naturally within this story.
+Your task is to extract 3 to 7 objective types and 3 to 7 reward types that fit naturally within this story.
 
 Rules:
-- Objectives must be concrete, actionable tasks a player can complete (investigate, defeat, collect, escort, speak to, etc.)
-- Each objective description should explain WHY it matters to the story, not just what to do
-- Rewards must feel appropriate to the story's tone and setting
-- Rarity distribution: at least 2 common, at least 1 rare, at least 1 epic
-- Do NOT repeat themes — each objective and reward must be distinct
+- Objectives must be broad gameplay categories, not specific story events.
+- Objective titles should describe the general kind of activity the player performs, in 1 to 3 words.
+- Objective titles must be inferred from the story premise and genre, not copied from a fixed list.
+- Objective titles must not include proper names, unique locations, named items, or exact enemies from the story.
+- Objective descriptions should explain how this type of objective could support the story, without naming one exact scene.
+- Rewards must be broad reward types, not specific items or named treasures.
+- Reward titles should describe the general kind of benefit the player receives, in 1 to 3 words.
+- Reward titles must be inferred from the story premise and genre, not copied from a fixed list.
+- Reward titles must not include proper names, unique locations, named items, or exact enemies from the story.
+- Rarity should represent how impactful the reward type is in this quest context.
+- Reward rarity must be exactly one of these lowercase strings: "common", "rare", "epic".
+- Include between 3 and 7 objectives and between 3 and 7 rewards.
+- Do NOT repeat themes - each objective type and reward type must be distinct.
 - Return ONLY valid JSON, no markdown, no explanation
 
-Return this exact JSON structure:
+Return this exact JSON structure, with as many entries as needed between 3 and 7:
 {
   "objectives": [
-    { "id": "obj-1", "title": "short title", "description": "one sentence explaining what and why" },
-    { "id": "obj-2", "title": "short title", "description": "one sentence explaining what and why" },
-    { "id": "obj-3", "title": "short title", "description": "one sentence explaining what and why" },
-    { "id": "obj-4", "title": "short title", "description": "one sentence explaining what and why" },
-    { "id": "obj-5", "title": "short title", "description": "one sentence explaining what and why" }
+    { "id": "obj-1", "title": "objective type", "description": "one sentence explaining how this objective type supports the story" },
+    { "id": "obj-2", "title": "objective type", "description": "one sentence explaining how this objective type supports the story" },
+    { "id": "obj-3", "title": "objective type", "description": "one sentence explaining how this objective type supports the story" }
   ],
   "rewards": [
-    { "id": "rew-1", "title": "reward name", "rarity": "common" },
-    { "id": "rew-2", "title": "reward name", "rarity": "common" },
-    { "id": "rew-3", "title": "reward name", "rarity": "rare" },
-    { "id": "rew-4", "title": "reward name", "rarity": "rare" },
-    { "id": "rew-5", "title": "reward name", "rarity": "epic" }
+    { "id": "rew-1", "title": "reward type", "rarity": "common" },
+    { "id": "rew-2", "title": "reward type", "rarity": "rare" },
+    { "id": "rew-3", "title": "reward type", "rarity": "epic" }
   ]
 }`;
 }

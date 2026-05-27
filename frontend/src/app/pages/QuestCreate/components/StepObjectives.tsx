@@ -22,6 +22,8 @@ const rarityConfig = {
   epic:   { label: 'Epic',   color: 'text-purple-400', icon: Gem  },
 };
 
+const fallbackRarity = rarityConfig.common;
+
 export function StepObjectives({
   objectives,
   rewards,
@@ -114,7 +116,7 @@ export function StepObjectives({
           </div>
           {rewards.map((rew) => {
             const isSelected = selectedRewards.includes(rew.id);
-            const rarity = rarityConfig[rew.rarity];
+            const rarity = rarityConfig[rew.rarity] ?? fallbackRarity;
             const RarityIcon = rarity.icon;
             return (
               <button
