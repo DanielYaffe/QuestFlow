@@ -12,6 +12,7 @@ const formatSchema = z.enum([
   'unity-asset',
   'unreal-datatable',
   'godot-tres',
+  'maple-img',
 ]);
 
 function parseFormat(raw: unknown): Format | null {
@@ -28,8 +29,8 @@ export async function previewExport(req: QuestlineRequest, res: Response): Promi
     return;
   }
   try {
-    const result = await exportQuestline(String(req.params.id), format);
-    res.json({ filename: result.filename, content: result.content });
+    const result = await exportQuestline(String(req.params.id), format, { previewOnly: true });
+    res.json({ filename: result.filename, content: result.previewContent ?? result.content.toString() });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
   }
@@ -94,6 +95,11 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
       return;
     }
 
+    if (parsedFormat === 'maple-img') {
+      res.status(400).json({ error: 'Maple IMG export is binary and cannot be pushed to GitHub from this dialog yet. Download it instead.' });
+      return;
+    }
+
     const { filename, content } = await exportQuestline(String(req.params.id), parsedFormat);
     // Strip both leading and trailing slashes so a user-supplied path like
     // "/Assets/Quests/" never produces a double-slash in the GitHub API URL.
@@ -106,7 +112,7 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
       repo,
       branch,
       filePath,
-      content,
+      content: content.toString(),
       commitMessage: commitMessage ?? `Update ${req.questline?.title ?? 'quest'}`,
     });
 

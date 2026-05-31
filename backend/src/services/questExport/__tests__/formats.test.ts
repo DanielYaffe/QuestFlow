@@ -13,14 +13,14 @@ describe('Export format renderers', () => {
         expect(mod.extension).toMatchSnapshot();
       });
 
-      test('renders content matching snapshot', () => {
-        const content = mod.render(payload);
-        expect(content).toMatchSnapshot();
+      test('renders content matching snapshot', async () => {
+        const content = await mod.render(payload);
+        expect(Buffer.isBuffer(content) ? `<Buffer length=${content.length}>` : content).toMatchSnapshot();
       });
 
-      test('content is non-empty string', () => {
-        const content = mod.render(payload);
-        expect(typeof content).toBe('string');
+      test('content is non-empty string or buffer', async () => {
+        const content = await mod.render(payload);
+        expect(typeof content === 'string' || Buffer.isBuffer(content)).toBe(true);
         expect(content.length).toBeGreaterThan(0);
       });
     });

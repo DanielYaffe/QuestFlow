@@ -1,0 +1,76 @@
+{
+  "meta": {
+    "id": "sample-quest",
+    "title": "Sample Quest",
+    "genre": "Fantasy",
+    "description": "A tiny export fixture for MapleLib proof-of-concept testing."
+  },
+  "nodes": [
+    {
+      "id": "quest_1",
+      "variant": "story",
+      "title": "Begin",
+      "body": "The player enters the quest.",
+      "npcIds": ["npc_guide"],
+      "monsterIds": [],
+      "rewardIds": []
+    },
+    {
+      "id": "quest_2",
+      "variant": "combat",
+      "title": "Trial",
+      "body": "The player survives the first challenge.",
+      "npcIds": [],
+      "monsterIds": ["npc_watcher"],
+      "rewardIds": ["reward_training"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1-2",
+      "source": "quest_1",
+      "target": "quest_2"
+    }
+  ],
+  "characters": [
+    {
+      "id": "npc_guide",
+      "name": "Guide",
+      "appearance": "A calm guide in travel clothes.",
+      "background": "The guide introduces the quest."
+    },
+    {
+      "id": "npc_watcher",
+      "name": "Watcher",
+      "appearance": "A quiet observer near the trial.",
+      "background": "The watcher tests the player."
+    }
+  ],
+  "rewards": [
+    {
+      "id": "reward_training",
+      "title": "Training Reward",
+      "description": "A small reward for completing the first challenge.",
+      "rarity": "common"
+    }
+  ],
+  "objectives": [
+    {
+      "id": "obj-1",
+      "title": "Progression",
+      "description": "The player moves from setup into challenge."
+    }
+  ],
+  "chapters": [
+    {
+      "id": "chapter_intro",
+      "title": "Intro",
+      "scenes": [
+        {
+          "id": "quest_1",
+          "title": "Begin"
+        }
+      ]
+    }
+  ]
+}

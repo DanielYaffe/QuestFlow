@@ -1,0 +1,4 @@
+bin/
+obj/
+samples/*.img
+samples/*.xml

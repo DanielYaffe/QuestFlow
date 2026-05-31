@@ -89,6 +89,10 @@ objectives = [SubResource("10"), SubResource("11")]
 "
 `;
 
+exports[`Export format renderers MapleStory IMG filename extension matches format 1`] = `".img"`;
+
+exports[`Export format renderers MapleStory IMG renders content matching snapshot 1`] = `"<Buffer length=1964>"`;
+
 exports[`Export format renderers QuestFlow JSON filename extension matches format 1`] = `".json"`;
 
 exports[`Export format renderers QuestFlow JSON renders content matching snapshot 1`] = `

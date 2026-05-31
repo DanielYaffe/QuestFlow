@@ -5,7 +5,8 @@ export type Format =
   | 'questflow-yaml'
   | 'unity-asset'
   | 'unreal-datatable'
-  | 'godot-tres';
+  | 'godot-tres'
+  | 'maple-img';
 
 export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'questflow-json',   label: 'QuestFlow JSON' },
@@ -13,6 +14,7 @@ export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'unity-asset',      label: 'Unity ScriptableObject (.asset)' },
   { id: 'unreal-datatable', label: 'Unreal DataTable (.json)' },
   { id: 'godot-tres',       label: 'Godot Resource (.tres)' },
+  { id: 'maple-img',        label: 'MapleStory IMG (.img)' },
 ];
 
 export async function previewExport(
@@ -69,6 +71,7 @@ function getExtension(format: Format): string {
     'unity-asset':      '.asset',
     'unreal-datatable': '.json',
     'godot-tres':       '.tres',
+    'maple-img':        '.img',
   };
   return map[format];
 }

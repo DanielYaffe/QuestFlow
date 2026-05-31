@@ -62,18 +62,21 @@ export type Format =
   | 'questflow-yaml'
   | 'unity-asset'
   | 'unreal-datatable'
-  | 'godot-tres';
+  | 'godot-tres'
+  | 'maple-img';
 
 export interface FormatModule {
   id: Format;
   label: string;
   extension: string;
   mimeType: string;
-  render: (payload: CanonicalExport) => string;
+  render: (payload: CanonicalExport) => string | Buffer | Promise<string | Buffer>;
+  preview?: (payload: CanonicalExport) => string | Promise<string>;
 }
 
 export interface ExportResult {
   filename: string;
-  content: string;
+  content: string | Buffer;
   mimeType: string;
+  previewContent?: string;
 }

@@ -18,6 +18,7 @@ function slugifyTitle(title: string): string {
 export async function exportQuestline(
   questlineId: string,
   format: Format,
+  options: { previewOnly?: boolean } = {},
 ): Promise<ExportResult> {
   const formatModule = formats[format];
   if (!formatModule) {
@@ -30,8 +31,15 @@ export async function exportQuestline(
   }
 
   const payload = buildExportPayload(questline);
-  const content = formatModule.render(payload);
   const filename = `${slugifyTitle(questline.title)}${formatModule.extension}`;
 
-  return { filename, content, mimeType: formatModule.mimeType };
+  if (options.previewOnly && formatModule.preview) {
+    const previewContent = await formatModule.preview(payload);
+    return { filename, content: previewContent, mimeType: 'text/plain', previewContent };
+  }
+
+  const content = await formatModule.render(payload);
+  const previewContent = typeof content === 'string' ? content : undefined;
+
+  return { filename, content, mimeType: formatModule.mimeType, previewContent };
 }

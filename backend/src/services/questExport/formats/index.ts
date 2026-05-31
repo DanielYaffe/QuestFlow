@@ -4,6 +4,7 @@ import questflowYaml from './questflowYaml';
 import unityAsset from './unityAsset';
 import unrealDataTable from './unrealDataTable';
 import godotTres from './godotTres';
+import mapleImg from './mapleImg';
 
 export const formats: Record<Format, FormatModule> = {
   'questflow-json':   questflowJson,
@@ -11,4 +12,5 @@ export const formats: Record<Format, FormatModule> = {
   'unity-asset':      unityAsset,
   'unreal-datatable': unrealDataTable,
   'godot-tres':       godotTres,
+  'maple-img':        mapleImg,
 };

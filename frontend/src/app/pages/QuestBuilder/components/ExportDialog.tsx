@@ -38,6 +38,7 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
   const [error, setError] = useState<string | null>(null);
   const [isPushOpen, setIsPushOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isBinaryFormat = format === 'maple-img';
 
   const loadPreview = useCallback(
     (selectedFormat: Format) => {
@@ -123,7 +124,9 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
           {/* Preview */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <label className="text-zinc-400 text-sm">Preview</label>
+              <label className="text-zinc-400 text-sm">
+                {isBinaryFormat ? 'XML Preview' : 'Preview'}
+              </label>
               {filename && !isLoading && (
                 <span className="text-zinc-500 text-xs font-mono">{filename}</span>
               )}
@@ -154,7 +157,8 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
           <div className="flex items-center justify-between pt-1">
             <button
               onClick={() => setIsPushOpen(true)}
-              disabled={isLoading || !!error}
+              disabled={isLoading || !!error || isBinaryFormat}
+              title={isBinaryFormat ? 'Binary IMG export cannot be pushed to GitHub yet' : undefined}
               className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 rounded-lg transition-colors text-sm"
             >
               <Github className="w-4 h-4" />
@@ -164,7 +168,8 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
             <div className="flex gap-3">
               <button
                 onClick={handleCopy}
-                disabled={isLoading || !!error || !content}
+                disabled={isLoading || !!error || !content || isBinaryFormat}
+                title={isBinaryFormat ? 'Copy is disabled for binary IMG exports' : undefined}
                 className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm"
               >
                 <Copy className="w-4 h-4" />
