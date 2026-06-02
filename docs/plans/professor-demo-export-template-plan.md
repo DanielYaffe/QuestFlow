@@ -2,7 +2,7 @@
 
 ## Demo Goal
 
-Show a complete path from editing a generated quest in the web UI to pushing exported questline files into a Git repository in a selected format.
+Show a complete path from editing generated quest nodes in the web UI to pushing exported quest files into a Git repository in a selected format.
 
 Target demo story:
 
@@ -12,14 +12,13 @@ Target demo story:
 4. If a template is chosen, AI uses it as context when extracting objectives and rewards.
 5. If no template is chosen, AI keeps the current story-only behavior and creates objectives/rewards from the story.
 6. Generated questline is opened in Quest Builder.
-7. User edits at least one quest node in the UI.
+7. User edits at least one quest node in the UI; each node represents one quest.
 8. User opens Export.
-9. User selects game asset categories to export, such as Quests and NPCs.
-10. User selects quest data sections, such as objectives and rewards, inside the Quest asset.
-11. User selects an export format/template.
-12. User selects a destination root folder.
-13. User clicks Push to Git.
-14. Exported files appear under a questline-specific folder inside the selected repository folder.
+9. User selects which quest nodes to export, or chooses the whole questline.
+10. User selects an export format/template.
+11. User selects a destination root folder.
+12. User clicks Push to Git.
+13. Exported files appear under a questline-specific folder inside the selected repository folder.
 
 ## Current State Observed
 
@@ -58,10 +57,10 @@ Missing or incomplete pieces on the current branch:
 - Selected template is not sent to the objective/reward generation endpoint.
 - Selected template is not persisted on the generated questline.
 - Export dialog has a format selector, preview, download, and GitHub push, but no template selector.
-- Export dialog does not have game asset category filtering.
+- Export dialog does not have quest-node selection for exporting specific quests.
 - Current GitHub push writes one exported file to the selected path; it does not create a separate folder per questline.
 - Backend export templates are not yet connected to final questline export.
-- Game asset category filtering is not modeled in the export pipeline.
+- Per-node quest export is not modeled in the export pipeline.
 
 ## Phase 1: Define The Demo Contract
 
@@ -70,64 +69,59 @@ Create one demo template format and use it throughout the first demo.
 Example demo template name:
 
 ```text
-Professor Quest Template
+Free Tier 3
 ```
 
 Required template capabilities:
 
-- Defines final export shape.
-- Declares top-level game asset categories:
-  - quests
-  - NPCs
-- Declares Quest asset sections:
-  - objectives
-  - rewards
-  - nodes/steps
-  - edges
-  - chapters
-- Treats objectives and rewards as part of the Quest asset, not as standalone game assets.
+- Defines the final export shape for one quest.
+- Applies to a specific quest node, not the whole questline.
+- Lets the user export one selected quest node, multiple selected quest nodes, or the whole questline as a set of quest-node exports.
+- Treats objectives and rewards as fields inside the exported quest file.
+- Does not treat NPCs as exportable game assets. NPCs stay as story/context data for the quest, and future NPC images can be handled by a separate image/game-asset export path.
 - Declares placeholder fields the app can fill.
+- Supports one output file per exported quest node.
 - Can be previewed before export.
 - Can be used as AI context during objective/reward extraction.
-- Defines what happens when no template is selected: use normal story-only generation and a default export format.
+- Defines what happens when no template is selected: use normal story-only generation and export YAML by default.
 
-Suggested template schema:
+Demo template example:
 
 ```json
 {
-  "name": "Professor Quest Template",
-  "engine": "custom-json",
-  "gameAssetCategories": ["quests", "npcs"],
-  "questSections": ["objectives", "rewards", "nodes", "edges", "chapters"],
-  "folderStrategy": "questline-folder",
-  "structure": {
-    "QuestPackage": {
-      "Quest": {
-        "Id": "{{id}}",
-        "Title": "{{title}}",
-        "Genre": "{{genre}}",
-        "Steps": "{{nodes}}",
-        "Objectives": "{{objectives}}",
-        "Rewards": "{{rewards}}",
-        "Links": "{{edges}}",
-        "Chapters": "{{chapters}}"
-      },
-      "NPCs": "{{characters}}"
-    }
-  },
-  "aiHints": {
-    "objectiveStyle": "Use objective types that match the template's Objectives section.",
-    "rewardStyle": "Use reward types that match the template's Rewards section."
+  "name": "Free Tier 3",
+  "quest_id": 2,
+  "silent": "true",
+  "pre_quest": [-1],
+  "daily": "false",
+  "to_kill": [
+    { "id": 100134, "amount": 200 }
+  ],
+  "to_collect": [
+    { "item_id": 4000002, "amount": 80 }
+  ],
+  "rewards": {
+    "items": [
+      { "id": 4000006, "amount": 100 },
+      { "id": 5072000, "amount": 20 }
+    ]
   }
 }
 ```
 
+Template parsing notes:
+
+- Templates should be accepted as JSON, YAML, or XML.
+- For the demo, each template defines one output file shape.
+- The app should infer field guidance from the template structure instead of requiring the user to write `aiHints`.
+- `aiHints` can be an internal generated summary only: it explains to the AI what fields like `to_kill`, `to_collect`, and `rewards.items` mean. It should not be a required user-facing template field.
+- If the user chooses "No template", the default export format should be YAML.
+
 Review questions:
 
-- Should templates be JSON only for the demo, or should XML upload also be accepted?
-- Should templates store `aiHints` explicitly, or should hints be inferred from the uploaded structure?
-- Should a template be allowed to define multiple output files, or only one file for the first demo?
-- What should the default export format be when the user chooses "No template"?
+- Which exact node fields should map into `quest_id`, `pre_quest`, `silent`, and `daily`?
+- Should `to_kill` and `to_collect` be manually editable arrays, AI-filled arrays, or both?
+- Should reward item IDs be typed manually for the demo, or chosen from a small controlled list?
 
 ## Phase 2: Backend Template Model
 
@@ -142,17 +136,19 @@ engine
 isBuiltIn
 structure
 description?: string
-gameAssetCategories?: string[]
-questSections?: string[]
-aiHints?: {
-  objectiveStyle?: string
-  rewardStyle?: string
+acceptedInputFormat?: "json" | "yaml" | "xml"
+targetScope: "quest-node"
+defaultOutputFormat?: "json" | "yaml" | "xml"
+fieldSchema?: object
+inferredAiGuidance?: {
+  objectiveFields?: string[]
+  rewardFields?: string[]
   structureSummary?: string
 }
 output?: {
   extension: string
   mimeType: string
-  mode: "json" | "xml" | "img"
+  mode: "json" | "yaml" | "xml" | "img"
 }
 ```
 
@@ -161,18 +157,22 @@ Implementation tasks:
 1. Add `ExportTemplateSchema`, model, controller, and route.
 2. Add frontend API helpers for export templates.
 3. Default missing values:
-   - `gameAssetCategories` to `["quests", "npcs"]`
-   - `questSections` to `["objectives", "rewards", "nodes", "edges", "chapters"]`
-   - `output.extension` from `engine` or `.json`
+   - `targetScope` to `"quest-node"`
+   - `defaultOutputFormat` to `"yaml"`
+   - `output.extension` from selected template format
 4. Add validation in `exportTemplateController.create`.
 5. Add `PUT /export-templates/:id` for editing templates.
 6. Add ownership checks for update and delete.
-7. Add a small helper that normalizes template records for frontend use.
+7. Add a parser that can normalize JSON, YAML, and XML templates into a common template object.
+8. Infer a `fieldSchema` from the template so quest nodes can render a matching edit form.
+9. Add a small helper that normalizes template records for frontend use.
 
 Acceptance criteria:
 
 - Built-in templates load for every user.
-- User-created templates can include `gameAssetCategories`, `questSections`, and `aiHints`.
+- User-created templates can be JSON, YAML, or XML.
+- User-created templates define one quest-node output file shape.
+- The system can infer editable fields from the template structure.
 - Invalid template uploads return a useful error.
 
 ## Phase 3: Settings Page Template Manager
@@ -191,11 +191,11 @@ frontend/src/app/api/exportTemplateApi.ts
 Template UI tasks:
 
 1. Show list of built-in and user templates.
-2. Allow upload/paste of template JSON.
+2. Allow upload/paste of template JSON, YAML, or XML.
 3. Let user give each template a name.
 4. Validate template before saving.
-5. Show detected game asset categories.
-6. Show detected Quest asset sections.
+5. Show detected template fields.
+6. Show detected objective/reward arrays such as `to_kill`, `to_collect`, and `rewards.items`.
 7. Allow delete/edit for custom templates.
 8. Show read-only badge for built-in templates.
 
@@ -204,16 +204,17 @@ Suggested UI fields:
 - Template name
 - Template engine/type
 - File extension
-- Game asset category checkboxes
-- Quest section checkboxes
-- Raw JSON editor or upload box
+- Input format: JSON, YAML, or XML
+- Default output format
+- Parsed field summary
+- Raw template editor or upload box
 - Validation status
 
 Acceptance criteria:
 
 - User can create a template from Settings.
 - Template appears later in Create flow.
-- Bad JSON does not save.
+- Invalid template input does not save.
 - Built-in templates remain available.
 
 ## Phase 4: Template Dropdown Under Story Input
@@ -243,7 +244,7 @@ UI changes:
 1. Under the story textbox, add template dropdown.
 2. Load templates on QuestCreate mount.
 3. Default to "No template".
-4. Show template description/categories beneath dropdown.
+4. Show template description and field summary beneath dropdown.
 5. Keep genre chips below the template selector.
 6. When "No template" is selected, do not send template data to the AI.
 
@@ -282,9 +283,8 @@ Request shape:
   template?: {
     name: string;
     structure: object;
-    gameAssetCategories?: string[];
-    questSections?: string[];
-    aiHints?: object;
+    targetScope: "quest-node";
+    inferredAiGuidance?: object;
   };
 }
 ```
@@ -295,14 +295,14 @@ Backend behavior:
    - built-in, or
    - owned by current user.
 2. Summarize the template structure for the prompt.
-3. Ask AI to infer objectives and rewards that fit the template's Quest sections.
+3. Ask AI to infer objectives and rewards that fit the template's quest-node fields.
 4. If no template is supplied, keep the current story-only generation behavior.
 
 Prompt requirements:
 
 - Do not copy placeholder names as final objective/reward names.
-- Use the template to understand expected Quest sections and level of detail.
-- Still return 3 to 7 objectives and 3 to 7 rewards.
+- When a template is supplied, follow the template structure instead of forcing 3 to 7 objectives and 3 to 7 rewards.
+- When no template is supplied, still return 3 to 7 objectives and 3 to 7 rewards.
 - Still return valid JSON only.
 
 Acceptance criteria:
@@ -349,8 +349,9 @@ Demo action:
 
 1. Open generated questline.
 2. Click one node.
-3. Edit title/body/variant or linked NPC/reward.
-4. Save graph.
+3. Edit the node through a modular form generated from the selected template schema.
+4. For the example template, the form should include fields such as `name`, `quest_id`, `silent`, `pre_quest`, `daily`, `to_kill`, `to_collect`, and `rewards.items`.
+5. Save graph.
 
 Existing areas to verify:
 
@@ -362,56 +363,49 @@ backend/src/controllers/questlineController.ts
 
 Acceptance criteria:
 
+- Node edit forms can change based on the selected template.
+- The example template creates a useful form without hardcoding only that template.
 - Edited node persists after refresh.
 - Export uses edited values, not stale generation values.
 
-## Phase 8: Export Dialog With Game Asset Categories
+## Phase 8: Export Dialog With Quest Node Selection
 
-Add game asset category selection to export.
+Add quest-node selection to export.
 
 UI requirements:
 
-- Show top-level game asset categories:
-  - Quests
-  - NPCs
-- When Quests is selected, show Quest asset sections:
-  - Steps/Nodes
-  - Rewards
-  - Objectives
-  - Edges
-  - Chapters
-- Treat rewards and objectives as Quest asset sections, not standalone game assets.
-- Each game asset category has a checkbox.
-- Each Quest section has a checkbox inside the Quest category.
+- Show all quest nodes in the questline.
+- Each node has a checkbox because each node represents one exportable quest.
+- Include a "Whole questline" option that exports all quest nodes.
+- Do not show NPCs as an exportable category.
+- Rewards/objectives are edited and exported as fields inside each selected quest node.
 - User can select all/none.
-- Template-selected game asset categories and Quest sections default to checked.
-- Export preview updates when categories change.
+- Export preview updates when selected nodes change.
 - Show the target folder layout before pushing.
 
 Backend export request:
 
 ```text
-GET /questlines/:id/export/preview?format=template-json&templateId=...&gameAssets=quests,npcs&questSections=objectives,rewards,nodes,edges,chapters
-GET /questlines/:id/export?format=template-json&templateId=...&gameAssets=quests,npcs&questSections=objectives,rewards,nodes,edges,chapters
+GET /questlines/:id/export/preview?format=template-json&templateId=...&nodeIds=node-a,node-b
+GET /questlines/:id/export?format=template-json&templateId=...&nodeIds=node-a,node-b
 ```
 
 Backend tasks:
 
-1. Add game asset and Quest section filters to the canonical export builder or export renderer.
+1. Add node selection to the canonical export builder or export renderer.
 2. Do not delete data from the database; filter only export output.
-3. If `quests` is unchecked, do not export the Quest asset.
-4. If `quests` is checked, apply Quest section filters inside that Quest asset.
-5. Template renderer receives:
+3. If `nodeIds` is omitted for "Whole questline", export all quest nodes.
+4. Template renderer receives:
    - canonical export payload
-   - selected game asset categories
-   - selected Quest sections
+   - selected quest nodes
    - template snapshot
+   - selected output format
 
 Acceptance criteria:
 
-- Unchecked game asset category does not appear in exported output.
-- Unchecked Quest section does not appear inside the Quest asset.
-- Checked game asset categories export in the chosen template format.
+- Unchecked quest nodes do not appear in exported output.
+- Each selected node can render as one quest file using the selected template.
+- Whole questline export uses the same node renderer for every node.
 - Preview matches downloaded file.
 
 ## Phase 9: Push To Git
@@ -436,8 +430,8 @@ Backend requirements:
 - Treat the selected destination path as a root folder.
 - Create a different child folder for each questline under that root folder.
 - Use a stable folder name, such as `questline-slug-questlineId`.
-- For single-file exports, push to `<root>/<questline-folder>/<filename>`.
-- For multi-file/template exports, push files under `<root>/<questline-folder>/quests`, `<root>/<questline-folder>/npcs`, and similar folders.
+- Always push exported files to `<root>/<questline-folder>/<filename>`.
+- Use the same path pattern when exporting one node, multiple nodes, or the whole questline.
 - Return final repository paths to UI.
 
 Existing endpoints to extend:
@@ -452,6 +446,7 @@ Demo acceptance criteria:
 
 - User clicks Push to Git.
 - Git repository receives a new questline-specific folder under the selected root folder.
+- Every exported file is placed directly under `<root>/<questline-folder>/`.
 - Exported content matches the export preview.
 - Commit message is readable.
 - If no template was chosen, push still works using the selected standard export format.
@@ -480,12 +475,11 @@ Live demo:
 8. Generate questline.
 9. Edit one node in Quest Builder.
 10. Open Export.
-11. Select game asset categories.
-12. Select Quest asset sections.
-13. Confirm the questline folder path.
-14. Preview export.
-15. Push to Git.
-16. Open Git repository and show the questline folder.
+11. Select one or more quest nodes, or select the whole questline.
+12. Confirm the questline folder path.
+13. Preview export.
+14. Push to Git.
+15. Open Git repository and show the questline folder.
 
 Backup plan:
 
@@ -497,10 +491,9 @@ Backup plan:
 ## Review Checklist
 
 - Confirm desired export file extension.
-- Confirm whether template upload is JSON-only for demo.
-- Confirm exact top-level game asset categories.
-- Confirm exact Quest asset sections.
+- Confirm exact template input formats: JSON, YAML, and XML.
+- Confirm exact editable fields for the Free Tier 3 example.
 - Confirm Git provider is GitHub only.
-- Confirm whether generated sprites/images are part of the demo export.
+- Confirm whether NPC images are out of scope for this demo export.
 - Confirm first demo template example.
 - Confirm whether template should affect only objectives/rewards or also full questline generation.
