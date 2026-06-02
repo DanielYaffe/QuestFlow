@@ -14,6 +14,7 @@ import { QuestCreate } from './pages/QuestCreate/QuestCreate';
 import { SpriteGenerator } from './pages/SpriteGenerator/SpriteGenerator';
 import { SpriteAnimator } from './pages/SpriteAnimator/SpriteAnimator';
 import { Settings } from './pages/Settings/Settings';
+import { EditQuestData } from './pages/EditQuestData/EditQuestData';
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/quest-builder" element={<QuestBuilderLanding />} />
               <Route path="/quest-builder/:questlineId" element={<QuestBuilder />} />
+              <Route path="/quest-builder/:questlineId/edit-data" element={<EditQuestData />} />
               <Route path="/create" element={<QuestCreate />} />
               <Route path="/sprite-generator" element={<SpriteGenerator />} />
               <Route path="/sprite-animator" element={<SpriteAnimator />} />

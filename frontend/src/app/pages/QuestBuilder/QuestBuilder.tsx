@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
@@ -68,6 +68,7 @@ type QuestFlowNode = Node<QuestNodeData>;
 
 export function QuestBuilder() {
   const { questlineId = '' } = useParams<{ questlineId: string }>();
+  const navigate = useNavigate();
   const { nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, isLoading, error } = useQuestlineData(questlineId);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<QuestFlowNode>([]);
@@ -319,6 +320,7 @@ export function QuestBuilder() {
         isSidebarOpen={isLeftSidebarOpen}
         onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
         onExport={() => setIsExportOpen(true)}
+        onEditData={() => navigate(`/quest-builder/${questlineId}/edit-data`)}
         isSaving={isSaving}
         hasUnsavedChanges={hasUnsavedChanges}
       />

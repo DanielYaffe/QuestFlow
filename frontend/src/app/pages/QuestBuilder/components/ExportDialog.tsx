@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Download, Copy, Loader2, FileText, FolderOpen, Github } from 'lucide-react';
+import { Download, Copy, Loader2, FileText, FolderOpen, Github, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -228,7 +228,17 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
         <DialogContent className="bg-zinc-900 border-zinc-800 text-white !max-w-6xl w-full">
           <DialogHeader>
-            <DialogTitle className="text-white text-lg">Export Quest</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-white text-lg">Export Quest</DialogTitle>
+              <button
+                onClick={() => loadPreview(format)}
+                disabled={isLoading}
+                title="Refresh preview from DB"
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 disabled:opacity-40 transition-colors mr-6"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </DialogHeader>
 
           {/* Format selector + zip filename */}

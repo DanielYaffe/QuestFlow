@@ -1,5 +1,5 @@
 import { Node } from '@xyflow/react';
-import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft, Loader2, Check } from 'lucide-react';
+import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft, Loader2, Check, Pencil } from 'lucide-react';
 import { QuestNodeData } from '../../../types/quest';
 
 interface QuestBuilderHeaderProps {
@@ -10,11 +10,12 @@ interface QuestBuilderHeaderProps {
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
   onExport: () => void;
+  onEditData: () => void;
   isSaving: boolean;
   hasUnsavedChanges: boolean;
 }
 
-export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, onEditData, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
   return (
     <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between z-10">
       <div className="flex items-center gap-3">
@@ -87,6 +88,13 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
           </span>
         ) : null}
 
+        <button
+          onClick={onEditData}
+          className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+        >
+          <Pencil className="w-4 h-4" />
+          Edit Data
+        </button>
         <button
           onClick={onExport}
           className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"

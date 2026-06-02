@@ -20,6 +20,7 @@ export interface IQuestNode {
   npcIds: string[];
   monsterIds: string[];
   rewardIds: string[];
+  exportKey?: string;
 }
 
 export interface IQuestEdge {
@@ -42,6 +43,7 @@ export interface ICharacter {
   background: string;
   imageUrl: string;
   questIds: string[];
+  exportKey?: string;
 }
 
 export interface IObjective {
@@ -57,6 +59,7 @@ export interface IReward {
   description: string;
   rarity: 'common' | 'rare' | 'epic';
   imageUrl?: string;
+  exportKey?: string;
 }
 
 export interface IScene {
@@ -103,6 +106,7 @@ const QuestNodeSchema = new Schema<IQuestNode>({
   npcIds:     { type: [String], default: [] },
   monsterIds: { type: [String], default: [] },
   rewardIds:  { type: [String], default: [] },
+  exportKey:  { type: String, default: '' },
 });
 
 const QuestEdgeSchema = new Schema<IQuestEdge>({
@@ -122,6 +126,7 @@ const CharacterSchema = new Schema<ICharacter>({
   background: { type: String, default: '' },
   imageUrl:   { type: String, default: '' },
   questIds:   { type: [String], default: [] },
+  exportKey:  { type: String, default: '' },
 });
 
 const ObjectiveSchema = new Schema<IObjective>({
@@ -135,6 +140,7 @@ const RewardSchema = new Schema<IReward>({
   description: { type: String, default: '' },
   rarity:      { type: String, enum: ['common', 'rare', 'epic'], default: 'common' },
   imageUrl:    { type: String, default: '' },
+  exportKey:   { type: String, default: '' },
 });
 
 const SceneSchema = new Schema<IScene>(

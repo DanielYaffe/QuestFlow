@@ -31,10 +31,11 @@ function uniqueSlug(base: string, seen: Set<string>): string {
 export function buildExportPayload(questline: IQuestline): CanonicalExport {
   const seenSlugs = new Set<string>();
 
-  // ── Characters: _id → "npc_<slug>" ──────────────────────────────────────
+  // ── Characters: prefer exportKey, else "npc_<slug>" ─────────────────────
   const charIdMap = new Map<string, string>();
   const characters: CanonicalCharacter[] = questline.characters.map((c) => {
-    const slug = uniqueSlug(`npc_${slugify(c.name)}`, seenSlugs);
+    const base = c.exportKey?.trim() || `npc_${slugify(c.name)}`;
+    const slug = uniqueSlug(base, seenSlugs);
     charIdMap.set(c._id.toString(), slug);
     return {
       id:         slug,
@@ -45,10 +46,11 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
     };
   });
 
-  // ── Rewards: _id → "reward_<slug>" ──────────────────────────────────────
+  // ── Rewards: prefer exportKey, else "reward_<slug>" ──────────────────────
   const rewardIdMap = new Map<string, string>();
   const rewards: CanonicalReward[] = questline.rewards.map((r) => {
-    const slug = uniqueSlug(`reward_${slugify(r.title)}`, seenSlugs);
+    const base = r.exportKey?.trim() || `reward_${slugify(r.title)}`;
+    const slug = uniqueSlug(base, seenSlugs);
     rewardIdMap.set(r._id.toString(), slug);
     return {
       id:          slug,
@@ -78,17 +80,18 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
     };
   });
 
-  // ── Nodes ────────────────────────────────────────────────────────────────
+  // ── Nodes: prefer exportKey, else "quest_<nodeId>" ───────────────────────
   const nodeIdMap = new Map<string, string>();
   questline.nodes.forEach((n) => {
-    nodeIdMap.set(n.nodeId, `quest_${n.nodeId}`);
+    const slug = n.exportKey?.trim() || `quest_${n.nodeId}`;
+    nodeIdMap.set(n.nodeId, slug);
   });
 
   const remap = (id: string): string =>
     charIdMap.get(id) ?? rewardIdMap.get(id) ?? nodeIdMap.get(id) ?? id;
 
   const nodes: CanonicalNode[] = questline.nodes.map((n) => ({
-    id:         `quest_${n.nodeId}`,
+    id:         nodeIdMap.get(n.nodeId) ?? `quest_${n.nodeId}`,
     variant:    n.variant ?? 'story',
     title:      n.title,
     body:       n.body,

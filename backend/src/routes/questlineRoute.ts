@@ -2,6 +2,7 @@ import { Router, RequestHandler } from 'express';
 import questlineController from '../controllers/questlineController';
 import { requireQuestlineOwnership } from '../middlewares/requireQuestlineOwnership';
 import { previewExport, downloadExport, pushToGithub } from '../controllers/questExportController';
+import { getEditData, renderPreview, saveEditData } from '../controllers/editQuestDataController';
 
 const questlineRouter = Router();
 
@@ -722,6 +723,12 @@ questlineRouter.get('/:id/quests', questlineController.getQuestSummaries.bind(qu
 
 questlineRouter.get( '/:id/export/preview', requireQuestlineOwnership as RequestHandler, previewExport  as RequestHandler);
 questlineRouter.post('/:id/export',         requireQuestlineOwnership as RequestHandler, downloadExport as RequestHandler);
-questlineRouter.post('/:id/push-to-github', requireQuestlineOwnership as RequestHandler, pushToGithub as RequestHandler);
+questlineRouter.post('/:id/push-to-github', requireQuestlineOwnership as RequestHandler, pushToGithub   as RequestHandler);
+
+// ── Edit Quest Data ──────────────────────────────────────────────────────────
+
+questlineRouter.get( '/:id/edit-data',       requireQuestlineOwnership as RequestHandler, getEditData     as RequestHandler);
+questlineRouter.post('/:id/render-preview',  requireQuestlineOwnership as RequestHandler, renderPreview   as RequestHandler);
+questlineRouter.put( '/:id/edit-data',       requireQuestlineOwnership as RequestHandler, saveEditData    as RequestHandler);
 
 export default questlineRouter;
