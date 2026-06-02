@@ -33,9 +33,9 @@ export async function previewExport(
 export async function downloadExport(
   questlineId: string,
   format: Format,
+  paths: string[],
 ): Promise<void> {
-  const response = await api.get(`/questlines/${questlineId}/export`, {
-    params: { format },
+  const response = await api.post(`/questlines/${questlineId}/export`, { format, paths }, {
     responseType: 'blob',
   });
 
@@ -69,6 +69,7 @@ export async function downloadExport(
 
 export interface PushToGithubPayload {
   format: Format;
+  paths: string[];
   repoOwner?: string;
   repoName?: string;
   branch?: string;

@@ -720,8 +720,8 @@ questlineRouter.get('/:id/quests', questlineController.getQuestSummaries.bind(qu
 
 // ── Export ──────────────────────────────────────────────────────────────────
 
-questlineRouter.get('/:id/export/preview', requireQuestlineOwnership as RequestHandler, previewExport as RequestHandler);
-questlineRouter.get('/:id/export',         requireQuestlineOwnership as RequestHandler, downloadExport as RequestHandler);
+questlineRouter.get( '/:id/export/preview', requireQuestlineOwnership as RequestHandler, previewExport  as RequestHandler);
+questlineRouter.post('/:id/export',         requireQuestlineOwnership as RequestHandler, downloadExport as RequestHandler);
 questlineRouter.post('/:id/push-to-github', requireQuestlineOwnership as RequestHandler, pushToGithub as RequestHandler);
 
 export default questlineRouter;

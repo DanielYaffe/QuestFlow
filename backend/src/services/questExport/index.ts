@@ -4,8 +4,20 @@ import { buildExportPayload } from './buildExportPayload';
 import { formats } from './formats';
 import { Format, ExportResult } from './types';
 
-export type { Format, ExportResult } from './types';
+export type { Format, ExportResult, ExportFile } from './types';
 export { formats } from './formats';
+
+export async function zipFiles(
+  files: import('./types').ExportFile[],
+  filename: string,
+): Promise<{ zipBuffer: Buffer; filename: string }> {
+  const zip = new JSZip();
+  for (const file of files) {
+    zip.file(file.path, file.content);
+  }
+  const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  return { zipBuffer, filename };
+}
 
 function slugifyTitle(title: string): string {
   return title

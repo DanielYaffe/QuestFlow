@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { z } from 'zod';
-import { exportQuestline, Format } from '../services/questExport';
+import { exportQuestline, zipFiles, Format } from '../services/questExport';
 import { QuestlineRequest } from '../middlewares/requireQuestlineOwnership';
 import { pushFile } from '../services/githubService';
 import UserModel from '../models/userModel';
@@ -35,18 +35,23 @@ export async function previewExport(req: QuestlineRequest, res: Response): Promi
   }
 }
 
-// GET /questlines/:id/export?format=
+// POST /questlines/:id/export  { format, paths }
 export async function downloadExport(req: QuestlineRequest, res: Response): Promise<void> {
-  const format = parseFormat(req.query.format);
+  const { format: rawFormat, paths } = req.body as { format: unknown; paths?: string[] };
+  const format = parseFormat(rawFormat);
   if (!format) {
     res.status(400).json({ error: `Invalid format. Must be one of: ${formatSchema.options.join(', ')}` });
     return;
   }
   try {
     const result = await exportQuestline(String(req.params.id), format);
-    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    const chosen = Array.isArray(paths) && paths.length > 0
+      ? result.files.filter((f) => paths.includes(f.path))
+      : result.files;
+    const { zipBuffer, filename } = await zipFiles(chosen, result.filename);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/zip');
-    res.send(result.zipBuffer);
+    res.send(zipBuffer);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
   }
@@ -57,6 +62,7 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
   const userId = req.user?._id;
   const {
     format,
+    paths,
     repoOwner: bodyOwner,
     repoName: bodyRepo,
     branch: bodyBranch,
@@ -64,6 +70,7 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
     commitMessage,
   } = req.body as {
     format: string;
+    paths?: string[];
     repoOwner?: string;
     repoName?: string;
     branch?: string;
@@ -94,15 +101,15 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
       return;
     }
 
-    const { files } = await exportQuestline(String(req.params.id), parsedFormat);
-    // Strip both leading and trailing slashes so a user-supplied path like
-    // "/Assets/Quests/" never produces a double-slash in the GitHub API URL.
+    const { files: allFiles } = await exportQuestline(String(req.params.id), parsedFormat);
+    const files = Array.isArray(paths) && paths.length > 0
+      ? allFiles.filter((f) => paths.includes(f.path))
+      : allFiles;
+
     const baseDir = (bodyFilePath ?? g.defaultFilePath ?? '').replace(/^\/+|\/+$/g, '');
     const token = decrypt(g.encryptedToken!);
     const message = commitMessage ?? `Update ${req.questline?.title ?? 'quest'}`;
 
-    // The export is now a set of files (one per quest plus companion code), so
-    // push each one individually — pushFile commits a single file at a time.
     for (const file of files) {
       const filePath = baseDir ? `${baseDir}/${file.path}` : file.path;
       await pushFile({ token, owner, repo, branch, filePath, content: file.content, commitMessage: message });
