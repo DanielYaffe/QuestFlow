@@ -13,6 +13,7 @@ import {
   EditObjective,
 } from '../../api/editQuestDataApi';
 import { FORMAT_OPTIONS, Format, ExportFile } from '../../api/questExportApi';
+import { listCustomFormats } from '../../api/customFormatApi';
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -257,7 +258,16 @@ export function EditQuestData() {
   const [isSaving, setIsSaving]                 = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [loadError, setLoadError]               = useState<string | null>(null);
+  const [customOptions, setCustomOptions]       = useState<{ id: string; label: string }[]>([]);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const formatOptions = [...FORMAT_OPTIONS, ...customOptions];
+
+  useEffect(() => {
+    listCustomFormats()
+      .then((items) => setCustomOptions(items.map((f) => ({ id: `custom:${f.id}`, label: `${f.name} (custom)` }))))
+      .catch(() => setCustomOptions([]));
+  }, []);
 
   useEffect(() => {
     if (!questlineId) return;
@@ -425,7 +435,7 @@ export function EditQuestData() {
               onChange={(e) => setFormat(e.target.value as Format)}
               className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-purple-500"
             >
-              {FORMAT_OPTIONS.map((opt) => (
+              {formatOptions.map((opt) => (
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}
             </select>

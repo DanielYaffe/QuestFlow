@@ -14,8 +14,11 @@ const formatSchema = z.enum([
   'godot-tres',
 ]);
 
-function parseFormat(raw: unknown): Format | null {
+const CUSTOM_FORMAT_RE = /^custom:[a-f0-9]{24}$/;
+
+function parseFormat(raw: unknown): string | null {
   const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value === 'string' && CUSTOM_FORMAT_RE.test(value)) return value;
   const result = formatSchema.safeParse(value);
   return result.success ? (result.data as Format) : null;
 }
@@ -28,7 +31,7 @@ export async function previewExport(req: QuestlineRequest, res: Response): Promi
     return;
   }
   try {
-    const result = await exportQuestline(String(req.params.id), format);
+    const result = await exportQuestline(String(req.params.id), format, req.user?._id);
     res.json({ filename: result.filename, files: result.files });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
@@ -44,7 +47,7 @@ export async function downloadExport(req: QuestlineRequest, res: Response): Prom
     return;
   }
   try {
-    const result = await exportQuestline(String(req.params.id), format);
+    const result = await exportQuestline(String(req.params.id), format, req.user?._id);
     const chosen = Array.isArray(paths) && paths.length > 0
       ? result.files.filter((f) => paths.includes(f.path))
       : result.files;
@@ -101,7 +104,7 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
       return;
     }
 
-    const { files: allFiles } = await exportQuestline(String(req.params.id), parsedFormat);
+    const { files: allFiles } = await exportQuestline(String(req.params.id), parsedFormat, userId);
     const files = Array.isArray(paths) && paths.length > 0
       ? allFiles.filter((f) => paths.includes(f.path))
       : allFiles;

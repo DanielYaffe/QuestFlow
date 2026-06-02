@@ -1,5 +1,6 @@
 import React from 'react';
 import { GitHubSettingsCard } from './components/GitHubSettingsCard';
+import { CustomFormatsCard } from './components/CustomFormatsCard';
 
 export function Settings() {
   return (
@@ -9,6 +10,7 @@ export function Settings() {
         <p className="text-zinc-400 text-sm mt-1">Manage your integrations and preferences</p>
       </div>
       <GitHubSettingsCard />
+      <CustomFormatsCard />
     </div>
   );
 }

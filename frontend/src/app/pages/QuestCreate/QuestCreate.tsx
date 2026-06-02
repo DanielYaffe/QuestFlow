@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Objective, Reward, GeneratedCharacter, generateObjectives, generateCharacters } from '../../api/questCreateApi';
 import { StepStory } from './components/StepStory';
 import { StepStyle } from './components/StepStyle';
+import { StepFormat } from './components/StepFormat';
 import { StepObjectives } from './components/StepObjectives';
 import { StepCharacters } from './components/StepCharacters';
 import { StepOutput } from './components/StepOutput';
 import { QuestLoadingScreen } from './components/QuestLoadingScreen';
 
 interface WizardState {
-  step: 1 | 2 | 3 | 4 | 5;
+  step: 1 | 2 | 3 | 4 | 5 | 6;
   storyInput: string;
   selectedGenre: string;
   selectedStyleId: string;
@@ -56,7 +57,7 @@ export function QuestCreate() {
         rewards: result.rewards,
         selectedObjectives: [],
         selectedRewards: [],
-        step: 3,
+        step: 4,
       }));
     } catch (err) {
       setState((s) => ({
@@ -76,7 +77,7 @@ export function QuestCreate() {
         isLoadingCharacters: false,
         characters: result.characters,
         selectedCharacters: result.characters.map((c) => c.id),
-        step: 4,
+        step: 5,
       }));
     } catch (err) {
       setState((s) => ({
@@ -187,11 +188,18 @@ export function QuestCreate() {
             selectedStyleId={state.selectedStyleId}
             onSelect={(id) => setState((s) => ({ ...s, selectedStyleId: id }))}
             onBack={() => setState((s) => ({ ...s, step: 1 }))}
-            onSubmit={handleStyleSubmit}
+            onSubmit={() => setState((s) => ({ ...s, step: 3 }))}
           />
         )}
 
         {state.step === 3 && (
+          <StepFormat
+            onBack={() => setState((s) => ({ ...s, step: 2 }))}
+            onSubmit={handleStyleSubmit}
+          />
+        )}
+
+        {state.step === 4 && (
           <StepObjectives
             objectives={state.objectives}
             rewards={state.rewards}
@@ -201,25 +209,25 @@ export function QuestCreate() {
             onToggleReward={handleToggleReward}
             onSelectAllObjectives={handleSelectAllObjectives}
             onSelectAllRewards={handleSelectAllRewards}
-            onBack={() => setState((s) => ({ ...s, step: 2 }))}
+            onBack={() => setState((s) => ({ ...s, step: 3 }))}
             onSubmit={handleFetchCharacters}
           />
         )}
 
-        {state.step === 4 && (
+        {state.step === 5 && (
           <StepCharacters
             characters={state.characters}
             selectedCharacters={state.selectedCharacters}
             isLoading={state.isLoadingCharacters}
             onToggleCharacter={handleToggleCharacter}
             onSelectAllCharacters={handleSelectAllCharacters}
-            onBack={() => setState((s) => ({ ...s, step: 3 }))}
-            onSubmit={() => setState((s) => ({ ...s, step: 5 }))}
+            onBack={() => setState((s) => ({ ...s, step: 4 }))}
+            onSubmit={() => setState((s) => ({ ...s, step: 6 }))}
             onRegenerate={handleRegenerateCharacters}
           />
         )}
 
-        {state.step === 5 && (
+        {state.step === 6 && (
           <StepOutput
             story={state.storyInput}
             genre={state.selectedGenre}
@@ -229,7 +237,7 @@ export function QuestCreate() {
             selectedRewards={state.selectedRewards}
             characters={state.characters.filter((c) => state.selectedCharacters.includes(c.id))}
             styleId={state.selectedStyleId}
-            onBack={() => setState((s) => ({ ...s, step: 4 }))}
+            onBack={() => setState((s) => ({ ...s, step: 5 }))}
           />
         )}
       </div>

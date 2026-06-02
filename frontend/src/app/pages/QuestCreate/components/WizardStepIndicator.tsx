@@ -2,15 +2,16 @@ import React from 'react';
 import { Check } from 'lucide-react';
 
 interface WizardStepIndicatorProps {
-  currentStep: 1 | 2 | 3 | 4 | 5;
+  currentStep: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 const STEPS = [
   { number: 1, label: 'Story' },
   { number: 2, label: 'Style' },
-  { number: 3, label: 'Objectives' },
-  { number: 4, label: 'Characters' },
-  { number: 5, label: 'Output' },
+  { number: 3, label: 'Format' },
+  { number: 4, label: 'Objectives' },
+  { number: 5, label: 'Characters' },
+  { number: 6, label: 'Output' },
 ];
 
 export function WizardStepIndicator({ currentStep }: WizardStepIndicatorProps) {

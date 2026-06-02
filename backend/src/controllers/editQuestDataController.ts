@@ -2,8 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import QuestlineModel, { IQuestline } from '../models/questlineModel';
 import { buildExportPayload } from '../services/questExport/buildExportPayload';
-import { formats } from '../services/questExport/formats';
-import { Format } from '../services/questExport/types';
+import { resolveFormat } from '../services/questExport';
 import { QuestlineRequest } from '../middlewares/requireQuestlineOwnership';
 
 const formatSchema = z.enum([
@@ -13,6 +12,14 @@ const formatSchema = z.enum([
   'unreal-datatable',
   'godot-tres',
 ]);
+
+const CUSTOM_FORMAT_RE = /^custom:[a-f0-9]{24}$/;
+
+function parseFormatId(raw: unknown): string | null {
+  if (typeof raw === 'string' && CUSTOM_FORMAT_RE.test(raw)) return raw;
+  const result = formatSchema.safeParse(raw);
+  return result.success ? result.data : null;
+}
 
 type NodeEdit       = { _ref: string; title?: string; body?: string; variant?: string; exportKey?: string };
 type CharacterEdit  = { _ref: string; name?: string; appearance?: string; background?: string; exportKey?: string };
@@ -121,14 +128,14 @@ function applyEdits(
 export async function renderPreview(req: QuestlineRequest, res: Response): Promise<void> {
   const { format: rawFormat, ...edits } = req.body as { format: unknown } & Parameters<typeof applyEdits>[1];
 
-  const parsed = formatSchema.safeParse(rawFormat);
-  if (!parsed.success) {
+  const format = parseFormatId(rawFormat);
+  if (!format) {
     res.status(400).json({ error: 'Invalid format' });
     return;
   }
-  const formatModule = formats[parsed.data as Format];
 
   try {
+    const formatModule = await resolveFormat(format, req.user?._id);
     // Mutate the in-memory document (never saved) so buildExportPayload sees the edits
     applyEdits(req.questline!, edits);
     const payload = buildExportPayload(req.questline!);

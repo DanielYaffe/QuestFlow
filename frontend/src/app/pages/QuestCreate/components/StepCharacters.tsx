@@ -37,7 +37,7 @@ export function StepCharacters({
 
   return (
     <div className="h-full flex flex-col gap-6">
-      <WizardStepIndicator currentStep={4} />
+      <WizardStepIndicator currentStep={5} />
 
       <div className="text-center flex flex-col gap-2">
         <h2 className="text-3xl font-bold text-white">Characters in your story</h2>

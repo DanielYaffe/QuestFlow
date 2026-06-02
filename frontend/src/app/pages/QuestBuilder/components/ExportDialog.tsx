@@ -22,6 +22,7 @@ import {
   previewExport,
   downloadExport,
 } from '../../../api/questExportApi';
+import { listCustomFormats } from '../../../api/customFormatApi';
 import { PushToGithubDialog } from './PushToGithubDialog';
 
 interface ExportDialogProps {
@@ -141,7 +142,10 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [isPushOpen, setIsPushOpen]       = useState(false);
+  const [customOptions, setCustomOptions] = useState<{ id: string; label: string }[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const formatOptions = [...FORMAT_OPTIONS, ...customOptions];
 
   const selectedFile = files.find((f) => f.path === selectedPath) ?? null;
   const allChecked   = files.length > 0 && files.every((f) => checkedPaths.has(f.path));
@@ -176,6 +180,13 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
   useEffect(() => {
     if (isOpen) loadPreview(format);
   }, [isOpen, format, loadPreview]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    listCustomFormats()
+      .then((items) => setCustomOptions(items.map((f) => ({ id: `custom:${f.id}`, label: `${f.name} (custom)` }))))
+      .catch(() => setCustomOptions([]));
+  }, [isOpen]);
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
@@ -250,7 +261,7 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-800 border-zinc-700">
-                  {FORMAT_OPTIONS.map((opt) => (
+                  {formatOptions.map((opt) => (
                     <SelectItem
                       key={opt.id}
                       value={opt.id}

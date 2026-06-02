@@ -62,7 +62,7 @@ export function StepOutput({
   return (
     <div className="h-full flex flex-col gap-5">
       <QuestLoadingScreen visible={generating} mode="questline" />
-      <WizardStepIndicator currentStep={5} />
+      <WizardStepIndicator currentStep={6} />
 
       <div className="text-center flex flex-col gap-1">
         <h2 className="text-3xl font-bold text-white">Ready to generate</h2>

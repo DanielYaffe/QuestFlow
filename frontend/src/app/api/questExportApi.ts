@@ -1,6 +1,10 @@
 import api from './axiosInstance';
 
-export type Format =
+// Built-in ids are the literals below; custom formats use `custom:<id>`,
+// so the type is widened to string.
+export type Format = string;
+
+export type BuiltinFormat =
   | 'questflow-json'
   | 'questflow-yaml'
   | 'unity-asset'
