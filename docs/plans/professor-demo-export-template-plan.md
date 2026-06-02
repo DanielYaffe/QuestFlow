@@ -2,33 +2,46 @@
 
 ## Demo Goal
 
-Show a complete path from editing a generated quest in the web UI to pushing an exported quest file into a Git repository in a selected format.
+Show a complete path from editing a generated quest in the web UI to pushing exported questline files into a Git repository in a selected format.
 
 Target demo story:
 
-1. User configures a quest export template under Settings.
+1. User optionally configures a quest export template under Settings.
 2. User creates a questline from a story prompt.
-3. User chooses one configured template during creation.
-4. AI uses the chosen template as context when extracting objectives and rewards.
-5. Generated questline is opened in Quest Builder.
-6. User edits at least one quest node in the UI.
-7. User opens Export.
-8. User selects asset categories to export, such as quests, NPCs, rewards, and objectives.
-9. User selects an export format/template.
-10. User clicks Push to Git.
-11. Exported files appear in the configured Git repository.
+3. User chooses one configured template during creation, or leaves the selector on "No template".
+4. If a template is chosen, AI uses it as context when extracting objectives and rewards.
+5. If no template is chosen, AI keeps the current story-only behavior and creates objectives/rewards from the story.
+6. Generated questline is opened in Quest Builder.
+7. User edits at least one quest node in the UI.
+8. User opens Export.
+9. User selects game asset categories to export, such as Quests and NPCs.
+10. User selects quest data sections, such as objectives and rewards, inside the Quest asset.
+11. User selects an export format/template.
+12. User selects a destination root folder.
+13. User clicks Push to Git.
+14. Exported files appear under a questline-specific folder inside the selected repository folder.
 
 ## Current State Observed
 
 Existing pieces:
 
-- Backend has export template persistence:
-  - `backend/src/models/exportTemplateModel.ts`
-  - `backend/src/controllers/exportTemplateController.ts`
-  - `backend/src/routes/exportTemplateRoute.ts`
-- Export templates already support built-in and user-owned templates.
-- Frontend has `frontend/src/app/api/exportTemplateApi.ts`.
-- Quest creation `StepOutput` already loads templates, previews template-applied JSON, saves a copy of a template, and deletes custom templates.
+- Settings route/page is present:
+  - `frontend/src/app/pages/Settings/Settings.tsx`
+  - `frontend/src/app/App.tsx`
+  - `frontend/src/app/components/layout/TopNav.tsx`
+- Settings currently contains GitHub integration only:
+  - `frontend/src/app/pages/Settings/components/GitHubSettingsCard.tsx`
+- GitHub settings persistence already exists:
+  - `backend/src/models/userModel.ts`
+  - `backend/src/controllers/userSettingsController.ts`
+  - `backend/src/routes/userSettingsRoute.ts`
+- Quest Builder already has export and push UI:
+  - `frontend/src/app/pages/QuestBuilder/components/ExportDialog.tsx`
+  - `frontend/src/app/pages/QuestBuilder/components/PushToGithubDialog.tsx`
+- Backend export and GitHub push already exist:
+  - `backend/src/controllers/questExportController.ts`
+  - `backend/src/services/questExport`
+  - `backend/src/services/githubService.ts`
 - Quest generation already has multi-step flow:
   - story input
   - style selection
@@ -39,14 +52,16 @@ Existing pieces:
 
 Missing or incomplete pieces on the current branch:
 
-- No Settings route/page is present in `frontend/src/app/App.tsx`.
-- No Settings UI for managing export templates is present.
-- Template choice is currently late in `StepOutput`, not under the story textbox.
+- No active export-template model/controller/routes/frontend API are present on this base branch.
+- No Settings UI for managing quest export templates is present.
+- Template choice is not under the story textbox.
 - Selected template is not sent to the objective/reward generation endpoint.
 - Selected template is not persisted on the generated questline.
-- Export dialog and Git push UI are not present on the current branch.
+- Export dialog has a format selector, preview, download, and GitHub push, but no template selector.
+- Export dialog does not have game asset category filtering.
+- Current GitHub push writes one exported file to the selected path; it does not create a separate folder per questline.
 - Backend export templates are not yet connected to final questline export.
-- Asset-category filtering is not modeled in the export pipeline.
+- Game asset category filtering is not modeled in the export pipeline.
 
 ## Phase 1: Define The Demo Contract
 
@@ -61,16 +76,20 @@ Professor Quest Template
 Required template capabilities:
 
 - Defines final export shape.
-- Declares asset categories:
+- Declares top-level game asset categories:
   - quests
   - NPCs
-  - rewards
+- Declares Quest asset sections:
   - objectives
+  - rewards
+  - nodes/steps
   - edges
   - chapters
+- Treats objectives and rewards as part of the Quest asset, not as standalone game assets.
 - Declares placeholder fields the app can fill.
 - Can be previewed before export.
 - Can be used as AI context during objective/reward extraction.
+- Defines what happens when no template is selected: use normal story-only generation and a default export format.
 
 Suggested template schema:
 
@@ -78,19 +97,22 @@ Suggested template schema:
 {
   "name": "Professor Quest Template",
   "engine": "custom-json",
-  "assetCategories": ["quests", "npcs", "rewards", "objectives", "edges"],
+  "gameAssetCategories": ["quests", "npcs"],
+  "questSections": ["objectives", "rewards", "nodes", "edges", "chapters"],
+  "folderStrategy": "questline-folder",
   "structure": {
     "QuestPackage": {
-      "QuestInfo": {
+      "Quest": {
         "Id": "{{id}}",
         "Title": "{{title}}",
-        "Genre": "{{genre}}"
+        "Genre": "{{genre}}",
+        "Steps": "{{nodes}}",
+        "Objectives": "{{objectives}}",
+        "Rewards": "{{rewards}}",
+        "Links": "{{edges}}",
+        "Chapters": "{{chapters}}"
       },
-      "Quests": "{{nodes}}",
-      "NPCs": "{{characters}}",
-      "Rewards": "{{rewards}}",
-      "Objectives": "{{objectives}}",
-      "Links": "{{edges}}"
+      "NPCs": "{{characters}}"
     }
   },
   "aiHints": {
@@ -105,26 +127,23 @@ Review questions:
 - Should templates be JSON only for the demo, or should XML upload also be accepted?
 - Should templates store `aiHints` explicitly, or should hints be inferred from the uploaded structure?
 - Should a template be allowed to define multiple output files, or only one file for the first demo?
+- What should the default export format be when the user chooses "No template"?
 
 ## Phase 2: Backend Template Model
 
-Extend export templates to support generation and export metadata.
+Add export templates to support generation and export metadata on top of `feat/quest-export-github-push`.
 
-Current model fields:
+Initial model fields:
 
 ```text
-ownerId
+ownerId?
 name
 engine
 isBuiltIn
 structure
-```
-
-Proposed fields:
-
-```text
 description?: string
-assetCategories?: string[]
+gameAssetCategories?: string[]
+questSections?: string[]
 aiHints?: {
   objectiveStyle?: string
   rewardStyle?: string
@@ -139,37 +158,35 @@ output?: {
 
 Implementation tasks:
 
-1. Add fields to `ExportTemplateSchema`.
-2. Keep old templates backward-compatible by defaulting:
-   - `assetCategories` to all categories
+1. Add `ExportTemplateSchema`, model, controller, and route.
+2. Add frontend API helpers for export templates.
+3. Default missing values:
+   - `gameAssetCategories` to `["quests", "npcs"]`
+   - `questSections` to `["objectives", "rewards", "nodes", "edges", "chapters"]`
    - `output.extension` from `engine` or `.json`
-3. Add validation in `exportTemplateController.create`.
-4. Add `PUT /export-templates/:id` for editing templates.
-5. Add ownership checks for update and delete.
-6. Add a small helper that normalizes template records for frontend use.
+4. Add validation in `exportTemplateController.create`.
+5. Add `PUT /export-templates/:id` for editing templates.
+6. Add ownership checks for update and delete.
+7. Add a small helper that normalizes template records for frontend use.
 
 Acceptance criteria:
 
-- Existing built-in templates still load.
-- User-created templates can include `assetCategories` and `aiHints`.
+- Built-in templates load for every user.
+- User-created templates can include `gameAssetCategories`, `questSections`, and `aiHints`.
 - Invalid template uploads return a useful error.
 
 ## Phase 3: Settings Page Template Manager
 
-Create a Settings page and add template management under it.
+Add template management to the existing Settings page.
 
-Files to add:
+Files to update/add:
 
 ```text
 frontend/src/app/pages/Settings/Settings.tsx
 frontend/src/app/pages/Settings/components/QuestTemplateSettingsCard.tsx
 frontend/src/app/pages/Settings/components/TemplateUploadModal.tsx
+frontend/src/app/api/exportTemplateApi.ts
 ```
-
-Routing tasks:
-
-1. Add Settings route in `App.tsx`.
-2. Add Settings navigation item in `TopNav.tsx`.
 
 Template UI tasks:
 
@@ -177,16 +194,18 @@ Template UI tasks:
 2. Allow upload/paste of template JSON.
 3. Let user give each template a name.
 4. Validate template before saving.
-5. Show detected asset categories.
-6. Allow delete/edit for custom templates.
-7. Show read-only badge for built-in templates.
+5. Show detected game asset categories.
+6. Show detected Quest asset sections.
+7. Allow delete/edit for custom templates.
+8. Show read-only badge for built-in templates.
 
 Suggested UI fields:
 
 - Template name
 - Template engine/type
 - File extension
-- Asset categories checkboxes
+- Game asset category checkboxes
+- Quest section checkboxes
 - Raw JSON editor or upload box
 - Validation status
 
@@ -215,7 +234,7 @@ State changes:
 Add to `WizardState`:
 
 ```ts
-selectedTemplateId: string;
+selectedTemplateId?: string;
 selectedTemplateSnapshot?: ExportTemplate;
 ```
 
@@ -223,15 +242,17 @@ UI changes:
 
 1. Under the story textbox, add template dropdown.
 2. Load templates on QuestCreate mount.
-3. Default to "No template" or the built-in QuestFlow template.
+3. Default to "No template".
 4. Show template description/categories beneath dropdown.
 5. Keep genre chips below the template selector.
+6. When "No template" is selected, do not send template data to the AI.
 
 Acceptance criteria:
 
 - User sees templates created in Settings.
 - User can create without choosing a template.
 - Selected template stays selected through all creation steps.
+- No-template creation produces objectives/rewards from the story only.
 
 ## Phase 5: Send Template To Objective/Reward AI
 
@@ -261,7 +282,8 @@ Request shape:
   template?: {
     name: string;
     structure: object;
-    assetCategories?: string[];
+    gameAssetCategories?: string[];
+    questSections?: string[];
     aiHints?: object;
   };
 }
@@ -273,13 +295,13 @@ Backend behavior:
    - built-in, or
    - owned by current user.
 2. Summarize the template structure for the prompt.
-3. Ask AI to infer objectives and rewards that fit the template categories.
+3. Ask AI to infer objectives and rewards that fit the template's Quest sections.
 4. If no template is supplied, keep the current story-only generation behavior.
 
 Prompt requirements:
 
 - Do not copy placeholder names as final objective/reward names.
-- Use the template to understand expected categories.
+- Use the template to understand expected Quest sections and level of detail.
 - Still return 3 to 7 objectives and 3 to 7 rewards.
 - Still return valid JSON only.
 
@@ -343,56 +365,66 @@ Acceptance criteria:
 - Edited node persists after refresh.
 - Export uses edited values, not stale generation values.
 
-## Phase 8: Export Dialog With Asset Categories
+## Phase 8: Export Dialog With Game Asset Categories
 
-Add asset-category selection to export.
+Add game asset category selection to export.
 
 UI requirements:
 
-- Show categories grouped as:
+- Show top-level game asset categories:
   - Quests
   - NPCs
+- When Quests is selected, show Quest asset sections:
+  - Steps/Nodes
   - Rewards
   - Objectives
   - Edges
   - Chapters
-- Each category has a checkbox.
+- Treat rewards and objectives as Quest asset sections, not standalone game assets.
+- Each game asset category has a checkbox.
+- Each Quest section has a checkbox inside the Quest category.
 - User can select all/none.
-- Template-selected categories default to checked.
+- Template-selected game asset categories and Quest sections default to checked.
 - Export preview updates when categories change.
+- Show the target folder layout before pushing.
 
 Backend export request:
 
 ```text
-GET /questlines/:id/export/preview?format=template-json&templateId=...&categories=quests,npcs,rewards
-GET /questlines/:id/export?format=template-json&templateId=...&categories=quests,npcs,rewards
+GET /questlines/:id/export/preview?format=template-json&templateId=...&gameAssets=quests,npcs&questSections=objectives,rewards,nodes,edges,chapters
+GET /questlines/:id/export?format=template-json&templateId=...&gameAssets=quests,npcs&questSections=objectives,rewards,nodes,edges,chapters
 ```
 
 Backend tasks:
 
-1. Add category filter to canonical export builder or export renderer.
+1. Add game asset and Quest section filters to the canonical export builder or export renderer.
 2. Do not delete data from the database; filter only export output.
-3. Template renderer receives:
+3. If `quests` is unchecked, do not export the Quest asset.
+4. If `quests` is checked, apply Quest section filters inside that Quest asset.
+5. Template renderer receives:
    - canonical export payload
-   - selected categories
+   - selected game asset categories
+   - selected Quest sections
    - template snapshot
 
 Acceptance criteria:
 
-- Unchecked category does not appear in exported file.
-- Checked categories export in the chosen template format.
+- Unchecked game asset category does not appear in exported output.
+- Unchecked Quest section does not appear inside the Quest asset.
+- Checked game asset categories export in the chosen template format.
 - Preview matches downloaded file.
 
 ## Phase 9: Push To Git
 
-Create or restore Git push flow for the demo.
+Extend the existing Git push flow for the demo.
 
 Required UI:
 
 - Button: `Push to Git`
 - Repository owner/name
 - Branch
-- Destination path
+- Destination root folder
+- Questline folder preview
 - Commit message
 - Selected format/template
 
@@ -401,22 +433,28 @@ Backend requirements:
 - Store Git token securely in Settings.
 - Push exported content to configured repository.
 - Support the selected template format.
-- Return final repository path to UI.
+- Treat the selected destination path as a root folder.
+- Create a different child folder for each questline under that root folder.
+- Use a stable folder name, such as `questline-slug-questlineId`.
+- For single-file exports, push to `<root>/<questline-folder>/<filename>`.
+- For multi-file/template exports, push files under `<root>/<questline-folder>/quests`, `<root>/<questline-folder>/npcs`, and similar folders.
+- Return final repository paths to UI.
 
-Suggested endpoints:
+Existing endpoints to extend:
 
 ```text
-GET /user-settings/git
-PUT /user-settings/git
+GET /users/me/git-settings
+PUT /users/me/git-settings
 POST /questlines/:id/push-to-github
 ```
 
 Demo acceptance criteria:
 
 - User clicks Push to Git.
-- Git repository receives a new file.
-- File content matches the export preview.
+- Git repository receives a new questline-specific folder under the selected root folder.
+- Exported content matches the export preview.
 - Commit message is readable.
+- If no template was chosen, push still works using the selected standard export format.
 
 ## Phase 10: Professor Demo Script
 
@@ -442,10 +480,12 @@ Live demo:
 8. Generate questline.
 9. Edit one node in Quest Builder.
 10. Open Export.
-11. Select asset categories.
-12. Preview export.
-13. Push to Git.
-14. Open Git repository and show file.
+11. Select game asset categories.
+12. Select Quest asset sections.
+13. Confirm the questline folder path.
+14. Preview export.
+15. Push to Git.
+16. Open Git repository and show the questline folder.
 
 Backup plan:
 
@@ -458,7 +498,8 @@ Backup plan:
 
 - Confirm desired export file extension.
 - Confirm whether template upload is JSON-only for demo.
-- Confirm exact asset categories.
+- Confirm exact top-level game asset categories.
+- Confirm exact Quest asset sections.
 - Confirm Git provider is GitHub only.
 - Confirm whether generated sprites/images are part of the demo export.
 - Confirm first demo template example.
