@@ -117,13 +117,46 @@ Template parsing notes:
 - `aiHints` can be an internal generated summary only: it explains to the AI what fields like `to_kill`, `to_collect`, and `rewards.items` mean. It should not be a required user-facing template field.
 - If the user chooses "No template", the default export format should be YAML.
 
-Review questions:
+Resolved decisions:
 
-- Which exact node fields should map into `quest_id`, `pre_quest`, `silent`, and `daily`?
-- Should `to_kill` and `to_collect` be manually editable arrays, AI-filled arrays, or both?
-- Should reward item IDs be typed manually for the demo, or chosen from a small controlled list?
+- Add a dedicated phase for mapping required template fields to quest-node data.
+- `to_kill` and `to_collect` should be both AI-filled and manually editable.
+- Reward item IDs should be manually typed for the first demo.
 
-## Phase 2: Backend Template Model
+## Phase 2: Map Required Quest Fields
+
+Define how one Quest Builder node becomes one file matching the selected quest template.
+
+Required mapping for the example template:
+
+| Template field | Source for first demo | Notes |
+| --- | --- | --- |
+| `name` | Quest node title | Editable in the node form. |
+| `quest_id` | Quest-node export metadata | Generate a stable default per node, then allow manual override. |
+| `silent` | Quest-node export metadata | Default from the template, manually editable. |
+| `pre_quest` | Quest graph dependencies | Derive from incoming connected quest nodes when possible, then allow manual override. |
+| `daily` | Quest-node export metadata | Default from the template, manually editable. |
+| `to_kill` | AI suggestion plus manual rows | AI can suggest combat targets from objectives; user can add, remove, and edit IDs/amounts. |
+| `to_collect` | AI suggestion plus manual rows | AI can suggest collection requirements from objectives; user can add, remove, and edit item IDs/amounts. |
+| `rewards.items` | Manual rows for first demo | User types reward item IDs and amounts manually. |
+
+Implementation tasks:
+
+1. Add per-node export metadata storage for required scalar fields.
+2. Add a deterministic default `quest_id` generator for nodes that do not have one yet.
+3. Add a graph helper that can suggest `pre_quest` from incoming edges.
+4. Add editable row controls for combat targets and collection requirements.
+5. Add manual reward item rows with item ID and amount fields.
+6. Preserve raw generated objective/reward text separately from template-mapped export fields.
+
+Acceptance criteria:
+
+- Every required field in the example template has a clear source.
+- AI suggestions can prefill objectives, but the user can manually correct them.
+- Reward item IDs are manual for the demo.
+- Export uses the mapped node fields, not only the original generated text.
+
+## Phase 3: Backend Template Model
 
 Add export templates to support generation and export metadata on top of `feat/quest-export-github-push`.
 
@@ -175,7 +208,7 @@ Acceptance criteria:
 - The system can infer editable fields from the template structure.
 - Invalid template uploads return a useful error.
 
-## Phase 3: Settings Page Template Manager
+## Phase 4: Settings Page Template Manager
 
 Add template management to the existing Settings page.
 
@@ -195,9 +228,13 @@ Template UI tasks:
 3. Let user give each template a name.
 4. Validate template before saving.
 5. Show detected template fields.
-6. Show detected objective/reward arrays such as `to_kill`, `to_collect`, and `rewards.items`.
-7. Allow delete/edit for custom templates.
-8. Show read-only badge for built-in templates.
+6. Summarize detected gameplay requirements with friendly labels:
+   - Combat objectives
+   - Collection objectives
+   - Item rewards
+7. Keep raw template keys as secondary technical details, not as the main UI labels.
+8. Allow delete/edit for custom templates.
+9. Show read-only badge for built-in templates.
 
 Suggested UI fields:
 
@@ -206,7 +243,8 @@ Suggested UI fields:
 - File extension
 - Input format: JSON, YAML, or XML
 - Default output format
-- Parsed field summary
+- Parsed field summary with friendly labels
+- Optional advanced source-field details
 - Raw template editor or upload box
 - Validation status
 
@@ -217,7 +255,7 @@ Acceptance criteria:
 - Invalid template input does not save.
 - Built-in templates remain available.
 
-## Phase 4: Template Dropdown Under Story Input
+## Phase 5: Template Dropdown Under Story Input
 
 Move template selection earlier into the Create page.
 
@@ -255,7 +293,7 @@ Acceptance criteria:
 - Selected template stays selected through all creation steps.
 - No-template creation produces objectives/rewards from the story only.
 
-## Phase 5: Send Template To Objective/Reward AI
+## Phase 6: Send Template To Objective/Reward AI
 
 Update objective/reward generation so the selected template informs the AI.
 
@@ -311,7 +349,7 @@ Acceptance criteria:
 - No-template flow still works.
 - Unauthorized template ID is rejected.
 
-## Phase 6: Persist Template Choice On Questline
+## Phase 7: Persist Template Choice On Questline
 
 The export step must know which template was used during generation.
 
@@ -341,7 +379,7 @@ Acceptance criteria:
 - Newly generated questline records remember the selected template.
 - Export can use the snapshot even if the source template changes.
 
-## Phase 7: Quest Builder Edit Demo
+## Phase 8: Quest Builder Edit Demo
 
 Make sure the edit path is demo-ready.
 
@@ -368,7 +406,7 @@ Acceptance criteria:
 - Edited node persists after refresh.
 - Export uses edited values, not stale generation values.
 
-## Phase 8: Export Dialog With Quest Node Selection
+## Phase 9: Export Dialog With Quest Node Selection
 
 Add quest-node selection to export.
 
@@ -408,7 +446,7 @@ Acceptance criteria:
 - Whole questline export uses the same node renderer for every node.
 - Preview matches downloaded file.
 
-## Phase 9: Push To Git
+## Phase 10: Push To Git
 
 Extend the existing Git push flow for the demo.
 
@@ -451,7 +489,7 @@ Demo acceptance criteria:
 - Commit message is readable.
 - If no template was chosen, push still works using the selected standard export format.
 
-## Phase 10: Professor Demo Script
+## Phase 11: Professor Demo Script
 
 Script the exact demo path.
 
