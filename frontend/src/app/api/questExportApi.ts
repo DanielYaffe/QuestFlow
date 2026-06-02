@@ -7,6 +7,11 @@ export type Format =
   | 'unreal-datatable'
   | 'godot-tres';
 
+export interface ExportFile {
+  path: string;
+  content: string;
+}
+
 export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'questflow-json',   label: 'QuestFlow JSON' },
   { id: 'questflow-yaml',   label: 'QuestFlow YAML' },
@@ -18,7 +23,7 @@ export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
 export async function previewExport(
   questlineId: string,
   format: Format,
-): Promise<{ filename: string; content: string }> {
+): Promise<{ filename: string; files: ExportFile[] }> {
   const { data } = await api.get(`/questlines/${questlineId}/export/preview`, {
     params: { format },
   });
@@ -36,8 +41,8 @@ export async function downloadExport(
 
   const disposition: string = response.headers['content-disposition'] ?? '';
   const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match?.[1] ?? `questline${getExtension(format)}`;
-  const blob = new Blob([response.data]);
+  const filename = match?.[1] ?? `questline_${format}.zip`;
+  const blob = new Blob([response.data], { type: 'application/zip' });
 
   // Prefer the File System Access API when available: it shows a "Save As"
   // dialog so the user can overwrite an existing file directly.
@@ -60,17 +65,6 @@ export async function downloadExport(
   anchor.click();
   document.body.removeChild(anchor);
   setTimeout(() => URL.revokeObjectURL(url), 100);
-}
-
-function getExtension(format: Format): string {
-  const map: Record<Format, string> = {
-    'questflow-json':   '.json',
-    'questflow-yaml':   '.yaml',
-    'unity-asset':      '.asset',
-    'unreal-datatable': '.json',
-    'godot-tres':       '.tres',
-  };
-  return map[format];
 }
 
 export interface PushToGithubPayload {

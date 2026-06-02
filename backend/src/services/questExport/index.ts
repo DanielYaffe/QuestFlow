@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import QuestlineModel from '../../models/questlineModel';
 import { buildExportPayload } from './buildExportPayload';
 import { formats } from './formats';
@@ -29,9 +30,16 @@ export async function exportQuestline(
     throw new Error('Questline not found');
   }
 
-  const payload = buildExportPayload(questline);
-  const content = formatModule.render(payload);
-  const filename = `${slugifyTitle(questline.title)}${formatModule.extension}`;
+  const payload  = buildExportPayload(questline);
+  const files    = formatModule.render(payload);
+  const titleSlug = slugifyTitle(questline.title);
+  const filename  = `${titleSlug}_${format}.zip`;
 
-  return { filename, content, mimeType: formatModule.mimeType };
+  const zip = new JSZip();
+  for (const file of files) {
+    zip.file(file.path, file.content);
+  }
+  const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+  return { filename, files, zipBuffer, mimeType: 'application/zip' };
 }

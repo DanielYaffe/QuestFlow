@@ -1,140 +1,301 @@
 // Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
-exports[`Export format renderers Godot Resource (.tres) filename extension matches format 1`] = `".tres"`;
+exports[`Export format renderers Godot Resource (.tres) file paths and content match snapshot: file contents 1`] = `
+[
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowQuestline" load_steps=5 format=3]
 
-exports[`Export format renderers Godot Resource (.tres) renders content matching snapshot 1`] = `
-"[gd_resource type="Resource" load_steps=12 format=3]
-
-[sub_resource type="Resource" id="1"]
-node_id = "quest_1"
-variant = "story"
-title = "The Awakening"
-body = "A red glow erupts from the mountain."
-npc_ids = ["npc_taras-the-elder"]
-monster_ids = []
-reward_ids = []
-
-[sub_resource type="Resource" id="2"]
-node_id = "quest_2"
-variant = "combat"
-title = "Confront the Dragon"
-body = "The beast emerges from the peak."
-npc_ids = []
-monster_ids = ["npc_igrath-the-dragon"]
-reward_ids = ["reward_dragon-scale"]
-
-[sub_resource type="Resource" id="3"]
-node_id = "quest_3"
-variant = "treasure"
-title = "The Reward"
-body = "The curse is lifted and peace returns."
-npc_ids = []
-monster_ids = []
-reward_ids = ["reward_ancient-sword"]
-
-[sub_resource type="Resource" id="4"]
-edge_id = "e1-2"
-source = "quest_1"
-target = "quest_2"
-
-[sub_resource type="Resource" id="5"]
-edge_id = "e2-3"
-source = "quest_2"
-target = "quest_3"
-
-[sub_resource type="Resource" id="6"]
-character_id = "npc_taras-the-elder"
-name = "Taras the Elder"
-appearance = "A tall man with a grey beard."
-background = "The village elder who knows of the curse."
-
-[sub_resource type="Resource" id="7"]
-character_id = "npc_igrath-the-dragon"
-name = "Igrath the Dragon"
-appearance = "A massive red dragon with burning eyes."
-background = "The source of the curse."
-
-[sub_resource type="Resource" id="8"]
-reward_id = "reward_dragon-scale"
-title = "Dragon Scale"
-description = "A scale from the defeated dragon."
-rarity = "rare"
-
-[sub_resource type="Resource" id="9"]
-reward_id = "reward_ancient-sword"
-title = "Ancient Sword"
-description = "A legendary blade."
-rarity = "epic"
-
-[sub_resource type="Resource" id="10"]
-objective_id = "obj-1"
-title = "Find the source"
-description = "Locate the mountain."
-
-[sub_resource type="Resource" id="11"]
-objective_id = "obj-2"
-title = "Defeat the dragon"
-description = "Slay Igrath."
+[ext_resource type="Script" path="res://addons/questflow/scripts/questline.gd" id="1"]
+[ext_resource type="Resource" path="res://addons/questflow/quests/quest_1.tres" id="2"]
+[ext_resource type="Resource" path="res://addons/questflow/quests/quest_2.tres" id="3"]
+[ext_resource type="Resource" path="res://addons/questflow/quests/quest_3.tres" id="4"]
 
 [resource]
-quest_id = "dragons-curse"
+script = ExtResource("1")
+id = "dragons-curse"
 title = "Dragon's Curse"
 genre = "fantasy"
 description = "A dark curse spreads across the kingdom."
-nodes = [SubResource("1"), SubResource("2"), SubResource("3")]
-edges = [SubResource("4"), SubResource("5")]
-characters = [SubResource("6"), SubResource("7")]
-rewards = [SubResource("8"), SubResource("9")]
-objectives = [SubResource("10"), SubResource("11")]
-"
+start_node_id = "quest_1"
+quests = [ExtResource("2"), ExtResource("3"), ExtResource("4")]
+edges = [
+  {"id": "e1-2", "source": "quest_1", "target": "quest_2"},
+  {"id": "e2-3", "source": "quest_2", "target": "quest_3"}
+]
+",
+    "path": "questline.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowQuest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "quest_1"
+variant = "story"
+title = "The Awakening"
+body = "A red glow erupts from the mountain."
+npc_ids = PackedStringArray("npc_taras-the-elder")
+monster_ids = PackedStringArray()
+reward_ids = PackedStringArray()
+",
+    "path": "quests/quest_1.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowQuest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "quest_2"
+variant = "combat"
+title = "Confront the Dragon"
+body = "The beast emerges from the peak."
+npc_ids = PackedStringArray()
+monster_ids = PackedStringArray("npc_igrath-the-dragon")
+reward_ids = PackedStringArray("reward_dragon-scale")
+",
+    "path": "quests/quest_2.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowQuest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "quest_3"
+variant = "treasure"
+title = "The Reward"
+body = "The curse is lifted and peace returns."
+npc_ids = PackedStringArray()
+monster_ids = PackedStringArray()
+reward_ids = PackedStringArray("reward_ancient-sword")
+",
+    "path": "quests/quest_3.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowCharacter" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/character.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "npc_taras-the-elder"
+character_name = "Taras the Elder"
+appearance = "A tall man with a grey beard."
+background = "The village elder who knows of the curse."
+image_url = ""
+",
+    "path": "characters/npc_taras-the-elder.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowCharacter" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/character.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "npc_igrath-the-dragon"
+character_name = "Igrath the Dragon"
+appearance = "A massive red dragon with burning eyes."
+background = "The source of the curse."
+image_url = ""
+",
+    "path": "characters/npc_igrath-the-dragon.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowReward" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/reward.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "reward_dragon-scale"
+title = "Dragon Scale"
+description = "A scale from the defeated dragon."
+rarity = 1
+image_url = ""
+",
+    "path": "rewards/reward_dragon-scale.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowReward" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/reward.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "reward_ancient-sword"
+title = "Ancient Sword"
+description = "A legendary blade."
+rarity = 2
+image_url = ""
+",
+    "path": "rewards/reward_ancient-sword.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowObjective" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/objective.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "obj-1"
+title = "Find the source"
+description = "Locate the mountain."
+",
+    "path": "objectives/obj-1.tres",
+  },
+  {
+    "content": "[gd_resource type="Resource" script_class="QuestFlowObjective" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/questflow/scripts/objective.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "obj-2"
+title = "Defeat the dragon"
+description = "Slay Igrath."
+",
+    "path": "objectives/obj-2.tres",
+  },
+  {
+    "content": "class_name QuestFlowQuest extends Resource
+
+@export var id: String
+@export var variant: String
+@export var title: String
+@export var body: String
+@export var npc_ids: PackedStringArray
+@export var monster_ids: PackedStringArray
+@export var reward_ids: PackedStringArray
+",
+    "path": "scripts/quest.gd",
+  },
+  {
+    "content": "class_name QuestFlowCharacter extends Resource
+
+@export var id: String
+@export var character_name: String
+@export var appearance: String
+@export var background: String
+@export var image_url: String
+",
+    "path": "scripts/character.gd",
+  },
+  {
+    "content": "class_name QuestFlowReward extends Resource
+
+## 0 = Common, 1 = Rare, 2 = Epic
+@export var id: String
+@export var title: String
+@export var description: String
+@export var rarity: int
+@export var image_url: String
+",
+    "path": "scripts/reward.gd",
+  },
+  {
+    "content": "class_name QuestFlowObjective extends Resource
+
+@export var id: String
+@export var title: String
+@export var description: String
+",
+    "path": "scripts/objective.gd",
+  },
+  {
+    "content": "class_name QuestFlowQuestline extends Resource
+
+@export var id: String
+@export var title: String
+@export var genre: String
+@export var description: String
+@export var start_node_id: String
+@export var quests: Array[QuestFlowQuest]
+@export var edges: Array[Dictionary]
+",
+    "path": "scripts/questline.gd",
+  },
+  {
+    "content": "# QuestFlow Godot Export — Dragon's Curse
+
+## Setup
+1. Copy the \`scripts/\` folder to \`res://addons/questflow/scripts/\` in your project.
+2. Copy \`questline.tres\` and the \`quests/\`, \`characters/\`, \`rewards/\` folders
+   to \`res://addons/questflow/\`.
+3. The scripts must be in place before loading the \`.tres\` files, or Godot
+   will not find the class definitions.
+
+## Files
+| File | Description |
+|---|---|
+| questline.tres | Root resource with quest references and edges |
+| quests/quest_N.tres | One resource per quest node |
+| characters/npc_*.tres | Character resources |
+| rewards/reward_*.tres | Reward resources |
+| objectives/obj_*.tres | Objective resources |
+| scripts/quest.gd | QuestFlowQuest class |
+| scripts/character.gd | QuestFlowCharacter class |
+| scripts/reward.gd | QuestFlowReward class |
+| scripts/objective.gd | QuestFlowObjective class |
+| scripts/questline.gd | QuestFlowQuestline class |
+
+## Loading at runtime (GDScript)
+\`\`\`gdscript
+var questline: QuestFlowQuestline = load("res://addons/questflow/questline.tres")
+var start_quest: QuestFlowQuest = questline.quests.filter(
+    func(q): return q.id == questline.start_node_id
+)[0]
+\`\`\`
+
+## Notes
+- Rarity values: 0 = Common, 1 = Rare, 2 = Epic
+",
+    "path": "README.md",
+  },
+]
 `;
 
-exports[`Export format renderers QuestFlow JSON filename extension matches format 1`] = `".json"`;
+exports[`Export format renderers Godot Resource (.tres) file paths and content match snapshot: file paths 1`] = `
+[
+  "questline.tres",
+  "quests/quest_1.tres",
+  "quests/quest_2.tres",
+  "quests/quest_3.tres",
+  "characters/npc_taras-the-elder.tres",
+  "characters/npc_igrath-the-dragon.tres",
+  "rewards/reward_dragon-scale.tres",
+  "rewards/reward_ancient-sword.tres",
+  "objectives/obj-1.tres",
+  "objectives/obj-2.tres",
+  "scripts/quest.gd",
+  "scripts/character.gd",
+  "scripts/reward.gd",
+  "scripts/objective.gd",
+  "scripts/questline.gd",
+  "README.md",
+]
+`;
 
-exports[`Export format renderers QuestFlow JSON renders content matching snapshot 1`] = `
-"{
+exports[`Export format renderers QuestFlow JSON file paths and content match snapshot: file contents 1`] = `
+[
+  {
+    "content": "{
   "meta": {
     "id": "dragons-curse",
     "title": "Dragon's Curse",
     "genre": "fantasy",
-    "description": "A dark curse spreads across the kingdom."
+    "description": "A dark curse spreads across the kingdom.",
+    "startNodeId": "quest_1"
   },
-  "nodes": [
-    {
-      "id": "quest_1",
-      "variant": "story",
-      "title": "The Awakening",
-      "body": "A red glow erupts from the mountain.",
-      "npcIds": [
-        "npc_taras-the-elder"
-      ],
-      "monsterIds": [],
-      "rewardIds": []
-    },
-    {
-      "id": "quest_2",
-      "variant": "combat",
-      "title": "Confront the Dragon",
-      "body": "The beast emerges from the peak.",
-      "npcIds": [],
-      "monsterIds": [
-        "npc_igrath-the-dragon"
-      ],
-      "rewardIds": [
-        "reward_dragon-scale"
-      ]
-    },
-    {
-      "id": "quest_3",
-      "variant": "treasure",
-      "title": "The Reward",
-      "body": "The curse is lifted and peace returns.",
-      "npcIds": [],
-      "monsterIds": [],
-      "rewardIds": [
-        "reward_ancient-sword"
-      ]
-    }
+  "questIds": [
+    "quest_1",
+    "quest_2",
+    "quest_3"
   ],
   "edges": [
     {
@@ -147,96 +308,227 @@ exports[`Export format renderers QuestFlow JSON renders content matching snapsho
       "source": "quest_2",
       "target": "quest_3"
     }
-  ],
-  "characters": [
-    {
-      "id": "npc_taras-the-elder",
-      "name": "Taras the Elder",
-      "appearance": "A tall man with a grey beard.",
-      "background": "The village elder who knows of the curse."
-    },
-    {
-      "id": "npc_igrath-the-dragon",
-      "name": "Igrath the Dragon",
-      "appearance": "A massive red dragon with burning eyes.",
-      "background": "The source of the curse."
-    }
-  ],
-  "rewards": [
-    {
-      "id": "reward_dragon-scale",
-      "title": "Dragon Scale",
-      "description": "A scale from the defeated dragon.",
-      "rarity": "rare"
-    },
-    {
-      "id": "reward_ancient-sword",
-      "title": "Ancient Sword",
-      "description": "A legendary blade.",
-      "rarity": "epic"
-    }
-  ],
-  "objectives": [
-    {
-      "id": "obj-1",
-      "title": "Find the source",
-      "description": "Locate the mountain."
-    },
-    {
-      "id": "obj-2",
-      "title": "Defeat the dragon",
-      "description": "Slay Igrath."
-    }
-  ],
-  "chapters": [
-    {
-      "id": "chapter_chapter-one",
-      "title": "Chapter One",
-      "scenes": [
-        {
-          "id": "sc-1",
-          "title": "The Village"
-        }
-      ]
-    }
   ]
-}"
+}",
+    "path": "questline.json",
+  },
+  {
+    "content": "{
+  "id": "quest_1",
+  "variant": "story",
+  "title": "The Awakening",
+  "body": "A red glow erupts from the mountain.",
+  "npcIds": [
+    "npc_taras-the-elder"
+  ],
+  "monsterIds": [],
+  "rewardIds": []
+}",
+    "path": "quests/quest_1.json",
+  },
+  {
+    "content": "{
+  "id": "quest_2",
+  "variant": "combat",
+  "title": "Confront the Dragon",
+  "body": "The beast emerges from the peak.",
+  "npcIds": [],
+  "monsterIds": [
+    "npc_igrath-the-dragon"
+  ],
+  "rewardIds": [
+    "reward_dragon-scale"
+  ]
+}",
+    "path": "quests/quest_2.json",
+  },
+  {
+    "content": "{
+  "id": "quest_3",
+  "variant": "treasure",
+  "title": "The Reward",
+  "body": "The curse is lifted and peace returns.",
+  "npcIds": [],
+  "monsterIds": [],
+  "rewardIds": [
+    "reward_ancient-sword"
+  ]
+}",
+    "path": "quests/quest_3.json",
+  },
+  {
+    "content": "[
+  {
+    "id": "npc_taras-the-elder",
+    "name": "Taras the Elder",
+    "appearance": "A tall man with a grey beard.",
+    "background": "The village elder who knows of the curse.",
+    "imageUrl": ""
+  },
+  {
+    "id": "npc_igrath-the-dragon",
+    "name": "Igrath the Dragon",
+    "appearance": "A massive red dragon with burning eyes.",
+    "background": "The source of the curse.",
+    "imageUrl": ""
+  }
+]",
+    "path": "characters.json",
+  },
+  {
+    "content": "[
+  {
+    "id": "reward_dragon-scale",
+    "title": "Dragon Scale",
+    "description": "A scale from the defeated dragon.",
+    "rarity": "rare",
+    "imageUrl": ""
+  },
+  {
+    "id": "reward_ancient-sword",
+    "title": "Ancient Sword",
+    "description": "A legendary blade.",
+    "rarity": "epic",
+    "imageUrl": ""
+  }
+]",
+    "path": "rewards.json",
+  },
+  {
+    "content": "[
+  {
+    "id": "obj-1",
+    "title": "Find the source",
+    "description": "Locate the mountain."
+  },
+  {
+    "id": "obj-2",
+    "title": "Defeat the dragon",
+    "description": "Slay Igrath."
+  }
+]",
+    "path": "objectives.json",
+  },
+  {
+    "content": "// QuestFlow — TypeScript type definitions (generated by QuestFlow)
+
+export type Rarity = 'common' | 'rare' | 'epic';
+
+export interface QuestMeta {
+  id: string;
+  title: string;
+  genre: string;
+  description: string;
+  startNodeId: string;
+}
+
+export interface QuestEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+export interface Quest {
+  id: string;
+  variant: string;
+  title: string;
+  body: string;
+  npcIds: string[];
+  monsterIds: string[];
+  rewardIds: string[];
+}
+
+export interface Character {
+  id: string;
+  name: string;
+  appearance: string;
+  background: string;
+  imageUrl: string;
+}
+
+export interface Reward {
+  id: string;
+  title: string;
+  description: string;
+  rarity: Rarity;
+  imageUrl: string;
+}
+
+export interface Objective {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface Questline {
+  meta: QuestMeta;
+  questIds: string[];
+  edges: QuestEdge[];
+}
+",
+    "path": "questline.d.ts",
+  },
+  {
+    "content": "# QuestFlow JSON Export — Dragon's Curse
+
+## Files
+| File | Description |
+|---|---|
+| questline.json | Root file: meta, quest ID list, edges |
+| quests/quest_N.json | One file per quest node |
+| characters.json | Shared character definitions |
+| rewards.json | Shared reward definitions |
+| objectives.json | Questline objectives |
+| questline.d.ts | TypeScript type definitions |
+
+## Usage (TypeScript)
+\`\`\`typescript
+import type { Questline, Quest, Character, Reward } from './questline.d.ts';
+import * as fs from 'fs';
+
+const questline: Questline = JSON.parse(fs.readFileSync('questline.json', 'utf8'));
+const quests: Quest[] = questline.questIds.map(id =>
+  JSON.parse(fs.readFileSync(\`quests/\${id}.json\`, 'utf8'))
+);
+const characters: Character[] = JSON.parse(fs.readFileSync('characters.json', 'utf8'));
+const rewards: Reward[] = JSON.parse(fs.readFileSync('rewards.json', 'utf8'));
+
+// Start the quest at:
+const startQuest = quests.find(q => q.id === questline.meta.startNodeId);
+\`\`\`
+",
+    "path": "README.md",
+  },
+]
 `;
 
-exports[`Export format renderers QuestFlow YAML filename extension matches format 1`] = `".yaml"`;
+exports[`Export format renderers QuestFlow JSON file paths and content match snapshot: file paths 1`] = `
+[
+  "questline.json",
+  "quests/quest_1.json",
+  "quests/quest_2.json",
+  "quests/quest_3.json",
+  "characters.json",
+  "rewards.json",
+  "objectives.json",
+  "questline.d.ts",
+  "README.md",
+]
+`;
 
-exports[`Export format renderers QuestFlow YAML renders content matching snapshot 1`] = `
-"meta:
+exports[`Export format renderers QuestFlow YAML file paths and content match snapshot: file contents 1`] = `
+[
+  {
+    "content": "meta:
   id: dragons-curse
   title: Dragon's Curse
   genre: fantasy
   description: A dark curse spreads across the kingdom.
-nodes:
-  - id: quest_1
-    variant: story
-    title: The Awakening
-    body: A red glow erupts from the mountain.
-    npcIds:
-      - npc_taras-the-elder
-    monsterIds: []
-    rewardIds: []
-  - id: quest_2
-    variant: combat
-    title: Confront the Dragon
-    body: The beast emerges from the peak.
-    npcIds: []
-    monsterIds:
-      - npc_igrath-the-dragon
-    rewardIds:
-      - reward_dragon-scale
-  - id: quest_3
-    variant: treasure
-    title: The Reward
-    body: The curse is lifted and peace returns.
-    npcIds: []
-    monsterIds: []
-    rewardIds:
-      - reward_ancient-sword
+  startNodeId: quest_1
+questIds:
+  - quest_1
+  - quest_2
+  - quest_3
 edges:
   - id: e1-2
     source: quest_1
@@ -244,211 +536,676 @@ edges:
   - id: e2-3
     source: quest_2
     target: quest_3
-characters:
-  - id: npc_taras-the-elder
-    name: Taras the Elder
-    appearance: A tall man with a grey beard.
-    background: The village elder who knows of the curse.
-  - id: npc_igrath-the-dragon
-    name: Igrath the Dragon
-    appearance: A massive red dragon with burning eyes.
-    background: The source of the curse.
-rewards:
-  - id: reward_dragon-scale
-    title: Dragon Scale
-    description: A scale from the defeated dragon.
-    rarity: rare
-  - id: reward_ancient-sword
-    title: Ancient Sword
-    description: A legendary blade.
-    rarity: epic
-objectives:
-  - id: obj-1
-    title: Find the source
-    description: Locate the mountain.
-  - id: obj-2
-    title: Defeat the dragon
-    description: Slay Igrath.
-chapters:
-  - id: chapter_chapter-one
-    title: Chapter One
-    scenes:
-      - id: sc-1
-        title: The Village
-"
+",
+    "path": "questline.yaml",
+  },
+  {
+    "content": "id: quest_1
+variant: story
+title: The Awakening
+body: A red glow erupts from the mountain.
+npcIds:
+  - npc_taras-the-elder
+monsterIds: []
+rewardIds: []
+",
+    "path": "quests/quest_1.yaml",
+  },
+  {
+    "content": "id: quest_2
+variant: combat
+title: Confront the Dragon
+body: The beast emerges from the peak.
+npcIds: []
+monsterIds:
+  - npc_igrath-the-dragon
+rewardIds:
+  - reward_dragon-scale
+",
+    "path": "quests/quest_2.yaml",
+  },
+  {
+    "content": "id: quest_3
+variant: treasure
+title: The Reward
+body: The curse is lifted and peace returns.
+npcIds: []
+monsterIds: []
+rewardIds:
+  - reward_ancient-sword
+",
+    "path": "quests/quest_3.yaml",
+  },
+  {
+    "content": "- id: npc_taras-the-elder
+  name: Taras the Elder
+  appearance: A tall man with a grey beard.
+  background: The village elder who knows of the curse.
+  imageUrl: ""
+- id: npc_igrath-the-dragon
+  name: Igrath the Dragon
+  appearance: A massive red dragon with burning eyes.
+  background: The source of the curse.
+  imageUrl: ""
+",
+    "path": "characters.yaml",
+  },
+  {
+    "content": "- id: reward_dragon-scale
+  title: Dragon Scale
+  description: A scale from the defeated dragon.
+  rarity: rare
+  imageUrl: ""
+- id: reward_ancient-sword
+  title: Ancient Sword
+  description: A legendary blade.
+  rarity: epic
+  imageUrl: ""
+",
+    "path": "rewards.yaml",
+  },
+  {
+    "content": "- id: obj-1
+  title: Find the source
+  description: Locate the mountain.
+- id: obj-2
+  title: Defeat the dragon
+  description: Slay Igrath.
+",
+    "path": "objectives.yaml",
+  },
+  {
+    "content": "# QuestFlow YAML Export — Dragon's Curse
+
+## Files
+| File | Description |
+|---|---|
+| questline.yaml | Root file: meta, quest ID list, edges |
+| quests/quest_N.yaml | One file per quest node |
+| characters.yaml | Shared character definitions |
+| rewards.yaml | Shared reward definitions |
+| objectives.yaml | Questline objectives |
+
+## Usage (Python example)
+\`\`\`python
+import yaml, os
+
+with open('questline.yaml') as f:
+    questline = yaml.safe_load(f)
+
+quests = []
+for quest_id in questline['questIds']:
+    with open(f"quests/{quest_id}.yaml") as f:
+        quests.append(yaml.safe_load(f))
+
+start_quest = next(q for q in quests if q['id'] == questline['meta']['startNodeId'])
+\`\`\`
+",
+    "path": "README.md",
+  },
+]
 `;
 
-exports[`Export format renderers Unity ScriptableObject (.asset) filename extension matches format 1`] = `".asset"`;
+exports[`Export format renderers QuestFlow YAML file paths and content match snapshot: file paths 1`] = `
+[
+  "questline.yaml",
+  "quests/quest_1.yaml",
+  "quests/quest_2.yaml",
+  "quests/quest_3.yaml",
+  "characters.yaml",
+  "rewards.yaml",
+  "objectives.yaml",
+  "README.md",
+]
+`;
 
-exports[`Export format renderers Unity ScriptableObject (.asset) renders content matching snapshot 1`] = `
-"%YAML 1.1
+exports[`Export format renderers Unity ScriptableObject (.asset) file paths and content match snapshot: file contents 1`] = `
+[
+  {
+    "content": "%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
-  m_Name: Dragon's Curse
-  questData:
-    QuestId: "dragons-curse"
+  m_Name: dragons-curse
+  questlineData:
+    Id: "dragons-curse"
     Title: "Dragon's Curse"
     Genre: "fantasy"
     Description: "A dark curse spreads across the kingdom."
-    Nodes:
-    - NodeId: "quest_1"
-      Variant: "story"
-      Title: "The Awakening"
-      Body: "A red glow erupts from the mountain."
-      NpcIds: ["npc_taras-the-elder"]
-      MonsterIds: []
-      RewardIds: []
-    - NodeId: "quest_2"
-      Variant: "combat"
-      Title: "Confront the Dragon"
-      Body: "The beast emerges from the peak."
-      NpcIds: []
-      MonsterIds: ["npc_igrath-the-dragon"]
-      RewardIds: ["reward_dragon-scale"]
-    - NodeId: "quest_3"
-      Variant: "treasure"
-      Title: "The Reward"
-      Body: "The curse is lifted and peace returns."
-      NpcIds: []
-      MonsterIds: []
-      RewardIds: ["reward_ancient-sword"]
-    Edges:
-    - EdgeId: "e1-2"
-      Source: "quest_1"
-      Target: "quest_2"
-    - EdgeId: "e2-3"
-      Source: "quest_2"
-      Target: "quest_3"
-    Characters:
-    - Id: "npc_taras-the-elder"
-      Name: "Taras the Elder"
-      Appearance: "A tall man with a grey beard."
-      Background: "The village elder who knows of the curse."
-    - Id: "npc_igrath-the-dragon"
-      Name: "Igrath the Dragon"
-      Appearance: "A massive red dragon with burning eyes."
-      Background: "The source of the curse."
-    Rewards:
-    - Id: "reward_dragon-scale"
-      Title: "Dragon Scale"
-      Description: "A scale from the defeated dragon."
-      Rarity: "rare"
-    - Id: "reward_ancient-sword"
-      Title: "Ancient Sword"
-      Description: "A legendary blade."
-      Rarity: "epic"
-    Objectives:
-    - Id: "obj-1"
-      Title: "Find the source"
-      Description: "Locate the mountain."
-    - Id: "obj-2"
-      Title: "Defeat the dragon"
-      Description: "Slay Igrath."
-"
+    StartNodeId: "quest_1"
+    QuestIds: 
+      - QuestId: "quest_1"
+      - QuestId: "quest_2"
+      - QuestId: "quest_3"
+    Edges: 
+      - EdgeId: "e1-2"
+        Source: "quest_1"
+        Target: "quest_2"
+      - EdgeId: "e2-3"
+        Source: "quest_2"
+        Target: "quest_3"
+",
+    "path": "Questline.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: quest_1
+  questData:
+    Id: "quest_1"
+    Variant: "story"
+    Title: "The Awakening"
+    Body: "A red glow erupts from the mountain."
+    NpcIds: 
+      - "npc_taras-the-elder"
+    MonsterIds: []
+    RewardIds: []
+",
+    "path": "Quests/quest_1.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: quest_2
+  questData:
+    Id: "quest_2"
+    Variant: "combat"
+    Title: "Confront the Dragon"
+    Body: "The beast emerges from the peak."
+    NpcIds: []
+    MonsterIds: 
+      - "npc_igrath-the-dragon"
+    RewardIds: 
+      - "reward_dragon-scale"
+",
+    "path": "Quests/quest_2.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: quest_3
+  questData:
+    Id: "quest_3"
+    Variant: "treasure"
+    Title: "The Reward"
+    Body: "The curse is lifted and peace returns."
+    NpcIds: []
+    MonsterIds: []
+    RewardIds: 
+      - "reward_ancient-sword"
+",
+    "path": "Quests/quest_3.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: npc_taras-the-elder
+  characterData:
+    Id: "npc_taras-the-elder"
+    Name: "Taras the Elder"
+    Appearance: "A tall man with a grey beard."
+    Background: "The village elder who knows of the curse."
+    ImageUrl: ""
+",
+    "path": "Characters/npc_taras-the-elder.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: npc_igrath-the-dragon
+  characterData:
+    Id: "npc_igrath-the-dragon"
+    Name: "Igrath the Dragon"
+    Appearance: "A massive red dragon with burning eyes."
+    Background: "The source of the curse."
+    ImageUrl: ""
+",
+    "path": "Characters/npc_igrath-the-dragon.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: reward_dragon-scale
+  rewardData:
+    Id: "reward_dragon-scale"
+    Title: "Dragon Scale"
+    Description: "A scale from the defeated dragon."
+    Rarity: 1
+    ImageUrl: ""
+",
+    "path": "Rewards/reward_dragon-scale.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: reward_ancient-sword
+  rewardData:
+    Id: "reward_ancient-sword"
+    Title: "Ancient Sword"
+    Description: "A legendary blade."
+    Rarity: 2
+    ImageUrl: ""
+",
+    "path": "Rewards/reward_ancient-sword.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: obj-1
+  objectiveData:
+    Id: "obj-1"
+    Title: "Find the source"
+    Description: "Locate the mountain."
+",
+    "path": "Objectives/obj-1.asset",
+  },
+  {
+    "content": "%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: obj-2
+  objectiveData:
+    Id: "obj-2"
+    Title: "Defeat the dragon"
+    Description: "Slay Igrath."
+",
+    "path": "Objectives/obj-2.asset",
+  },
+  {
+    "content": "using UnityEngine;
+
+namespace QuestFlow
+{
+    public enum Rarity { Common, Rare, Epic }
+
+    [CreateAssetMenu(fileName = "NewQuest", menuName = "QuestFlow/Quest")]
+    public class QuestData : ScriptableObject
+    {
+        public string Id;
+        public string Variant;
+        public string Title;
+        [TextArea(3, 8)] public string Body;
+        public string[] NpcIds;
+        public string[] MonsterIds;
+        public string[] RewardIds;
+    }
+}
+",
+    "path": "Scripts/QuestData.cs",
+  },
+  {
+    "content": "using UnityEngine;
+
+namespace QuestFlow
+{
+    [CreateAssetMenu(fileName = "NewCharacter", menuName = "QuestFlow/Character")]
+    public class CharacterData : ScriptableObject
+    {
+        public string Id;
+        public string Name;
+        [TextArea(2, 4)] public string Appearance;
+        [TextArea(2, 4)] public string Background;
+        public string ImageUrl;
+    }
+}
+",
+    "path": "Scripts/CharacterData.cs",
+  },
+  {
+    "content": "using UnityEngine;
+
+namespace QuestFlow
+{
+    [CreateAssetMenu(fileName = "NewReward", menuName = "QuestFlow/Reward")]
+    public class RewardData : ScriptableObject
+    {
+        public string Id;
+        public string Title;
+        [TextArea(2, 4)] public string Description;
+        public Rarity Rarity;
+        public string ImageUrl;
+    }
+}
+",
+    "path": "Scripts/RewardData.cs",
+  },
+  {
+    "content": "using UnityEngine;
+
+namespace QuestFlow
+{
+    [System.Serializable]
+    public struct QuestEdge
+    {
+        public string EdgeId;
+        public string Source;
+        public string Target;
+    }
+
+    [CreateAssetMenu(fileName = "NewQuestline", menuName = "QuestFlow/Questline")]
+    public class QuestlineData : ScriptableObject
+    {
+        public string Id;
+        public string Title;
+        public string Genre;
+        [TextArea(2, 4)] public string Description;
+        public string StartNodeId;
+        public string[] QuestIds;
+        public QuestEdge[] Edges;
+    }
+}
+",
+    "path": "Scripts/QuestlineData.cs",
+  },
+  {
+    "content": "# QuestFlow Unity Export — Dragon's Curse
+
+## Setup
+1. Copy the \`Scripts/\` folder into your Unity project's \`Assets/\` folder.
+2. Copy the \`Quests/\`, \`Characters/\`, \`Rewards/\`, and \`Questline.asset\` files
+   into your Unity project (e.g. \`Assets/QuestFlow/\`).
+3. In Unity, select each \`.asset\` file and assign the matching Script reference
+   in the Inspector (QuestData, CharacterData, RewardData, QuestlineData).
+
+## Scripts
+| File | Description |
+|---|---|
+| QuestData.cs | ScriptableObject for a single quest node |
+| CharacterData.cs | ScriptableObject for a character |
+| RewardData.cs | ScriptableObject for a reward (includes Rarity enum) |
+| QuestlineData.cs | ScriptableObject for the questline root + edges |
+
+## Loading at runtime
+\`\`\`csharp
+var questline = Resources.Load<QuestlineData>("QuestFlow/Questline");
+var startQuest = Resources.Load<QuestData>($"QuestFlow/Quests/{questline.StartNodeId}");
+\`\`\`
+
+## Notes
+- Rarity values: 0 = Common, 1 = Rare, 2 = Epic
+- NpcIds, MonsterIds, and RewardIds reference the Id field of the corresponding assets.
+",
+    "path": "README.md",
+  },
+]
 `;
 
-exports[`Export format renderers Unreal DataTable (.json) filename extension matches format 1`] = `".json"`;
+exports[`Export format renderers Unity ScriptableObject (.asset) file paths and content match snapshot: file paths 1`] = `
+[
+  "Questline.asset",
+  "Quests/quest_1.asset",
+  "Quests/quest_2.asset",
+  "Quests/quest_3.asset",
+  "Characters/npc_taras-the-elder.asset",
+  "Characters/npc_igrath-the-dragon.asset",
+  "Rewards/reward_dragon-scale.asset",
+  "Rewards/reward_ancient-sword.asset",
+  "Objectives/obj-1.asset",
+  "Objectives/obj-2.asset",
+  "Scripts/QuestData.cs",
+  "Scripts/CharacterData.cs",
+  "Scripts/RewardData.cs",
+  "Scripts/QuestlineData.cs",
+  "README.md",
+]
+`;
 
-exports[`Export format renderers Unreal DataTable (.json) renders content matching snapshot 1`] = `
-"[
+exports[`Export format renderers Unreal DataTable (.json) file paths and content match snapshot: file contents 1`] = `
+[
   {
-    "Name": "dragons-curse",
-    "QuestId": "dragons-curse",
-    "Title": "Dragon's Curse",
-    "Genre": "fantasy",
-    "Description": "A dark curse spreads across the kingdom.",
-    "Nodes": [
-      {
-        "NodeId": "quest_1",
-        "Variant": "story",
-        "Title": "The Awakening",
-        "Body": "A red glow erupts from the mountain.",
-        "NpcIds": [
-          "npc_taras-the-elder"
-        ],
-        "MonsterIds": [],
-        "RewardIds": []
-      },
-      {
-        "NodeId": "quest_2",
-        "Variant": "combat",
-        "Title": "Confront the Dragon",
-        "Body": "The beast emerges from the peak.",
-        "NpcIds": [],
-        "MonsterIds": [
-          "npc_igrath-the-dragon"
-        ],
-        "RewardIds": [
-          "reward_dragon-scale"
-        ]
-      },
-      {
-        "NodeId": "quest_3",
-        "Variant": "treasure",
-        "Title": "The Reward",
-        "Body": "The curse is lifted and peace returns.",
-        "NpcIds": [],
-        "MonsterIds": [],
-        "RewardIds": [
-          "reward_ancient-sword"
-        ]
-      }
+    "content": "[
+  {
+    "Name": "quest_1",
+    "Variant": "story",
+    "Title": "The Awakening",
+    "Body": "A red glow erupts from the mountain.",
+    "NpcIds": [
+      "npc_taras-the-elder"
     ],
-    "Edges": [
-      {
-        "EdgeId": "e1-2",
-        "Source": "quest_1",
-        "Target": "quest_2"
-      },
-      {
-        "EdgeId": "e2-3",
-        "Source": "quest_2",
-        "Target": "quest_3"
-      }
+    "MonsterIds": [],
+    "RewardIds": []
+  },
+  {
+    "Name": "quest_2",
+    "Variant": "combat",
+    "Title": "Confront the Dragon",
+    "Body": "The beast emerges from the peak.",
+    "NpcIds": [],
+    "MonsterIds": [
+      "npc_igrath-the-dragon"
     ],
-    "Characters": [
-      {
-        "Id": "npc_taras-the-elder",
-        "Name": "Taras the Elder",
-        "Appearance": "A tall man with a grey beard.",
-        "Background": "The village elder who knows of the curse."
-      },
-      {
-        "Id": "npc_igrath-the-dragon",
-        "Name": "Igrath the Dragon",
-        "Appearance": "A massive red dragon with burning eyes.",
-        "Background": "The source of the curse."
-      }
-    ],
-    "Rewards": [
-      {
-        "Id": "reward_dragon-scale",
-        "Title": "Dragon Scale",
-        "Description": "A scale from the defeated dragon.",
-        "Rarity": "rare"
-      },
-      {
-        "Id": "reward_ancient-sword",
-        "Title": "Ancient Sword",
-        "Description": "A legendary blade.",
-        "Rarity": "epic"
-      }
-    ],
-    "Objectives": [
-      {
-        "Id": "obj-1",
-        "Title": "Find the source",
-        "Description": "Locate the mountain."
-      },
-      {
-        "Id": "obj-2",
-        "Title": "Defeat the dragon",
-        "Description": "Slay Igrath."
-      }
+    "RewardIds": [
+      "reward_dragon-scale"
+    ]
+  },
+  {
+    "Name": "quest_3",
+    "Variant": "treasure",
+    "Title": "The Reward",
+    "Body": "The curse is lifted and peace returns.",
+    "NpcIds": [],
+    "MonsterIds": [],
+    "RewardIds": [
+      "reward_ancient-sword"
     ]
   }
-]"
+]",
+    "path": "QuestTable.json",
+  },
+  {
+    "content": "[
+  {
+    "Name": "npc_taras-the-elder",
+    "CharName": "Taras the Elder",
+    "Appearance": "A tall man with a grey beard.",
+    "Background": "The village elder who knows of the curse.",
+    "ImageUrl": ""
+  },
+  {
+    "Name": "npc_igrath-the-dragon",
+    "CharName": "Igrath the Dragon",
+    "Appearance": "A massive red dragon with burning eyes.",
+    "Background": "The source of the curse.",
+    "ImageUrl": ""
+  }
+]",
+    "path": "CharacterTable.json",
+  },
+  {
+    "content": "[
+  {
+    "Name": "reward_dragon-scale",
+    "Title": "Dragon Scale",
+    "Description": "A scale from the defeated dragon.",
+    "Rarity": "Rare",
+    "ImageUrl": ""
+  },
+  {
+    "Name": "reward_ancient-sword",
+    "Title": "Ancient Sword",
+    "Description": "A legendary blade.",
+    "Rarity": "Epic",
+    "ImageUrl": ""
+  }
+]",
+    "path": "RewardTable.json",
+  },
+  {
+    "content": "[
+  {
+    "Name": "obj-1",
+    "Title": "Find the source",
+    "Description": "Locate the mountain."
+  },
+  {
+    "Name": "obj-2",
+    "Title": "Defeat the dragon",
+    "Description": "Slay Igrath."
+  }
+]",
+    "path": "ObjectiveTable.json",
+  },
+  {
+    "content": "{
+  "id": "dragons-curse",
+  "title": "Dragon's Curse",
+  "genre": "fantasy",
+  "description": "A dark curse spreads across the kingdom.",
+  "startNodeId": "quest_1",
+  "edges": [
+    {
+      "id": "e1-2",
+      "source": "quest_1",
+      "target": "quest_2"
+    },
+    {
+      "id": "e2-3",
+      "source": "quest_2",
+      "target": "quest_3"
+    }
+  ]
+}",
+    "path": "QuestlineMeta.json",
+  },
+  {
+    "content": "#pragma once
+
+#include "CoreMinimal.h"
+#include "Engine/DataTable.h"
+#include "QuestRow.generated.h"
+
+UENUM(BlueprintType)
+enum class EQuestRarity : uint8
+{
+    Common  UMETA(DisplayName = "Common"),
+    Rare    UMETA(DisplayName = "Rare"),
+    Epic    UMETA(DisplayName = "Epic"),
+};
+
+USTRUCT(BlueprintType)
+struct FQuestRow : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Variant;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Title;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Body;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<FString> NpcIds;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<FString> MonsterIds;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<FString> RewardIds;
+};
+
+USTRUCT(BlueprintType)
+struct FCharacterRow : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Name;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Appearance;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Background;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString ImageUrl;
+};
+
+USTRUCT(BlueprintType)
+struct FRewardRow : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Title;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Description;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) EQuestRarity Rarity;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString ImageUrl;
+};
+
+USTRUCT(BlueprintType)
+struct FObjectiveRow : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Title;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FString Description;
+};
+",
+    "path": "Source/QuestRow.h",
+  },
+  {
+    "content": "# QuestFlow Unreal Export — Dragon's Curse
+
+## Files
+| File | Description |
+|---|---|
+| QuestTable.json | DataTable rows — one row per quest node |
+| CharacterTable.json | DataTable rows — one row per character |
+| RewardTable.json | DataTable rows — one row per reward |
+| ObjectiveTable.json | DataTable rows — one row per objective |
+| QuestlineMeta.json | Questline root: meta, edges, startNodeId |
+| Source/QuestRow.h | USTRUCT definitions for all DataTables |
+
+## Setup
+1. Add \`QuestRow.h\` to your project's \`Source/<ProjectName>/\` folder.
+2. In Unreal Editor: Content Browser → Import → select a \`.json\` file.
+3. When prompted, choose the matching row struct:
+   - QuestTable.json → FQuestRow
+   - CharacterTable.json → FCharacterRow
+   - RewardTable.json → FRewardRow
+   - ObjectiveTable.json → FObjectiveRow
+
+## Loading at runtime (C++)
+\`\`\`cpp
+UDataTable* QuestTable = LoadObject<UDataTable>(nullptr, TEXT("/Game/QuestFlow/QuestTable"));
+FQuestRow* StartQuest = QuestTable->FindRow<FQuestRow>(FName(*StartNodeId), TEXT(""));
+\`\`\`
+",
+    "path": "README.md",
+  },
+]
+`;
+
+exports[`Export format renderers Unreal DataTable (.json) file paths and content match snapshot: file paths 1`] = `
+[
+  "QuestTable.json",
+  "CharacterTable.json",
+  "RewardTable.json",
+  "ObjectiveTable.json",
+  "QuestlineMeta.json",
+  "Source/QuestRow.h",
+  "README.md",
+]
 `;

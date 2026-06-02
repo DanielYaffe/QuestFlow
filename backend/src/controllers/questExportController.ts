@@ -29,7 +29,7 @@ export async function previewExport(req: QuestlineRequest, res: Response): Promi
   }
   try {
     const result = await exportQuestline(String(req.params.id), format);
-    res.json({ filename: result.filename, content: result.content });
+    res.json({ filename: result.filename, files: result.files });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
   }
@@ -45,8 +45,8 @@ export async function downloadExport(req: QuestlineRequest, res: Response): Prom
   try {
     const result = await exportQuestline(String(req.params.id), format);
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-    res.setHeader('Content-Type', result.mimeType);
-    res.send(result.content);
+    res.setHeader('Content-Type', 'application/zip');
+    res.send(result.zipBuffer);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
   }
@@ -94,23 +94,21 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
       return;
     }
 
-    const { filename, content } = await exportQuestline(String(req.params.id), parsedFormat);
+    const { files } = await exportQuestline(String(req.params.id), parsedFormat);
     // Strip both leading and trailing slashes so a user-supplied path like
     // "/Assets/Quests/" never produces a double-slash in the GitHub API URL.
     const baseDir = (bodyFilePath ?? g.defaultFilePath ?? '').replace(/^\/+|\/+$/g, '');
-    const filePath = baseDir ? `${baseDir}/${filename}` : filename;
+    const token = decrypt(g.encryptedToken!);
+    const message = commitMessage ?? `Update ${req.questline?.title ?? 'quest'}`;
 
-    const usedPath = await pushFile({
-      token: decrypt(g.encryptedToken!),
-      owner,
-      repo,
-      branch,
-      filePath,
-      content,
-      commitMessage: commitMessage ?? `Update ${req.questline?.title ?? 'quest'}`,
-    });
+    // The export is now a set of files (one per quest plus companion code), so
+    // push each one individually — pushFile commits a single file at a time.
+    for (const file of files) {
+      const filePath = baseDir ? `${baseDir}/${file.path}` : file.path;
+      await pushFile({ token, owner, repo, branch, filePath, content: file.content, commitMessage: message });
+    }
 
-    res.json({ message: `Pushed to ${owner}/${repo} → ${branch}:${usedPath}` });
+    res.json({ message: `Pushed ${files.length} file${files.length === 1 ? '' : 's'} to ${owner}/${repo} → ${branch}` });
   } catch (error: any) {
     res.status(500).json({ error: error?.message ?? 'Push failed' });
   }
