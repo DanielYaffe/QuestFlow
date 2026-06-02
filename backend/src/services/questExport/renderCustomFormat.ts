@@ -1,4 +1,4 @@
-import { CanonicalExport, CanonicalNode, ExportFile } from './types';
+import { CanonicalExport, CanonicalNode, CanonicalObjective, ExportFile } from './types';
 import { IBindingRule } from '../../models/customFormatModel';
 
 export interface CustomFormatSpec {
@@ -20,6 +20,7 @@ export interface QuestContext {
   rewards: string[];
   npcs: string[];
   prevQuestIds: string[];
+  objectives: CanonicalObjective[];
   questline: { id: string; title: string; genre: string; description: string };
   item?: unknown; // set inside a `repeat` block
 }
@@ -110,6 +111,7 @@ export function buildNodeContext(payload: CanonicalExport, node: CanonicalNode):
     rewards:      node.rewardIds,
     npcs:         node.npcIds,
     prevQuestIds,
+    objectives:   payload.objectives,
     questline: {
       id:          payload.meta.id,
       title:       payload.meta.title,
@@ -131,6 +133,10 @@ export function sampleContext(): QuestContext {
     rewards:  ['reward_gold', 'reward_sword'],
     npcs:     ['npc_elder', 'npc_blacksmith'],
     prevQuestIds: [],
+    objectives: [
+      { id: 'obj_1', title: 'Slay the dragon', description: 'Defeat Ignis at Ember Peak.' },
+      { id: 'obj_2', title: 'Protect the village', description: 'Ensure Oakhaven survives.' },
+    ],
     questline: { id: 'sample-questline', title: 'Sample Questline', genre: 'Fantasy', description: 'A sample.' },
   };
 }

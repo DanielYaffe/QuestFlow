@@ -14,6 +14,7 @@ import {
   BindingRule,
   QUEST_FIELDS,
   ARRAY_FIELDS,
+  OBJECTIVE_ITEM_FIELDS,
 } from '../../../api/customFormatApi';
 
 interface CustomFormatEditorProps {
@@ -39,12 +40,14 @@ function Rows({
   value,
   path,
   insideRepeat,
+  repeatOver,
   bindings,
   setRule,
 }: {
   value: unknown;
   path: string;
   insideRepeat: boolean;
+  repeatOver?: string;
   bindings: Bindings;
   setRule: (path: string, rule: BindingRule | null) => void;
 }) {
@@ -58,6 +61,7 @@ function Rows({
             value={value[k]}
             path={path ? `${path}.${k}` : k}
             insideRepeat={insideRepeat}
+            repeatOver={repeatOver}
             bindings={bindings}
             setRule={setRule}
           />
@@ -116,6 +120,7 @@ function Rows({
               value={elem}
               path={`${path}[]`}
               insideRepeat
+              repeatOver={rule?.over}
               bindings={bindings}
               setRule={setRule}
             />
@@ -127,8 +132,10 @@ function Rows({
 
   // Scalar leaf
   const rule = bindings[path];
+  const isObjectRepeat = repeatOver === 'objectives';
   const current =
-    rule?.type === 'field' ? `field:${rule.field}`
+    rule?.type === 'item-field' ? `item-field:${rule.field}`
+      : rule?.type === 'field' ? `field:${rule.field}`
       : rule?.type === 'item' ? 'item'
       : 'const';
 
@@ -143,11 +150,15 @@ function Rows({
           const v = e.target.value;
           if (v === 'const') setRule(path, null);
           else if (v === 'item') setRule(path, { type: 'item' });
+          else if (v.startsWith('item-field:')) setRule(path, { type: 'item-field', field: v.slice('item-field:'.length) });
           else setRule(path, { type: 'field', field: v.slice('field:'.length) });
         }}
       >
         <option value="const">Constant</option>
-        {insideRepeat && <option value="item">Current item</option>}
+        {insideRepeat && !isObjectRepeat && <option value="item">Current item</option>}
+        {insideRepeat && isObjectRepeat && OBJECTIVE_ITEM_FIELDS.map((f) => (
+          <option key={f.value} value={`item-field:${f.value}`}>{f.label}</option>
+        ))}
         {QUEST_FIELDS.map((f) => (
           <option key={f.value} value={`field:${f.value}`}>{f.label}</option>
         ))}

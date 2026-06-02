@@ -58,9 +58,17 @@ export const QUEST_FIELDS: { value: string; label: string }[] = [
 ];
 
 /** Array fields that can be bound whole or drive a repeat. */
-export const ARRAY_FIELDS: { value: string; label: string }[] = [
+export const ARRAY_FIELDS: { value: string; label: string; hasSubFields?: boolean }[] = [
   { value: 'monsters',     label: 'Monsters (monster ids)' },
   { value: 'rewards',      label: 'Rewards (reward ids)' },
   { value: 'npcs',         label: 'NPCs (character ids)' },
   { value: 'prevQuestIds', label: 'Previous quest ids' },
+  { value: 'objectives',   label: 'Objectives', hasSubFields: true },
+];
+
+/** Fields accessible on each objective item inside a repeat. */
+export const OBJECTIVE_ITEM_FIELDS: { value: string; label: string }[] = [
+  { value: 'id',          label: 'Objective id' },
+  { value: 'title',       label: 'Objective title' },
+  { value: 'description', label: 'Objective description' },
 ];
