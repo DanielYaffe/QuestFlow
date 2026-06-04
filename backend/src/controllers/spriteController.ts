@@ -2,9 +2,9 @@ import { Response } from 'express';
 import { Job } from 'bullmq';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import SpriteModel from '../models/spriteModel';
+import SpriteStyleModel from '../models/spriteStyleModel';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { spriteQueue, SpriteJobData, SpriteJobResult } from '../queues/spriteQueue';
-import { getStyle, getDefaultStyle } from '../config/styles';
 
 // ---------------------------------------------------------------------------
 // POST /sprites/generate — enqueue ComfyUI generation job
@@ -29,12 +29,23 @@ export async function generateSprite(req: AuthRequest, res: Response) {
     return;
   }
 
-  const resolvedStyle = (styleId ? getStyle(styleId) : undefined) ?? getDefaultStyle();
+  // Validate the requested styleId against the DB; fall back to the default style
+  let resolvedStyleId = styleId ?? '';
+  if (resolvedStyleId) {
+    const exists = await SpriteStyleModel.exists({ styleId: resolvedStyleId, isActive: true });
+    if (!exists) {
+      const fallback = await SpriteStyleModel.findOne({ isDefault: true, isActive: true }).lean();
+      resolvedStyleId = fallback?.styleId ?? 'none';
+    }
+  } else {
+    const fallback = await SpriteStyleModel.findOne({ isDefault: true, isActive: true }).lean();
+    resolvedStyleId = fallback?.styleId ?? 'none';
+  }
 
   const bullJob = await spriteQueue.add('generate', {
     userId,
     userPrompt: prompt.trim(),
-    styleId: resolvedStyle.id,
+    styleId: resolvedStyleId,
     negativePrompt: negativePrompt ?? undefined,
   } satisfies SpriteJobData);
 

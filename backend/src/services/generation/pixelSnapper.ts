@@ -42,14 +42,23 @@ export async function snapAndResize(
   const wasm = await getWasm();
 
   const thresholded = await thresholdAlpha(png);
+
+  // Tell the WASM how many source pixels equal one sprite pixel so it outputs
+  // at ~targetSize × targetSize with the subject centred. Without this, the WASM
+  // receives the full 1024px rmbg output with no downscale hint and returns the
+  // same large image — the subsequent crop then shows only the top-left corner.
+  const { width: srcW, height: srcH } = await sharp(thresholded).metadata();
+  if (!srcW || !srcH) throw new Error('Could not read input image dimensions');
+  const pixelSize = Math.max(1, Math.round(Math.min(srcW, srcH) / targetSize));
+
   const input = new Uint8Array(thresholded);
-  const snapped = wasm.process_image(input, kColors, undefined);
+  const snapped = wasm.process_image(input, kColors, pixelSize);
 
   const snappedBuf = Buffer.from(snapped);
   const { width, height } = await sharp(snappedBuf).metadata();
   if (!width || !height) throw new Error('Pixel snapper returned image with no dimensions');
 
-  // Crop the +1 walker-overshoot artifact only when the image is larger than targetSize
+  // Trim the +1 walker-overshoot artifact, then scale up if still short
   const cropSize = Math.min(width, height, targetSize);
   const cropped = await sharp(snappedBuf)
     .extract({ left: 0, top: 0, width: cropSize, height: cropSize })

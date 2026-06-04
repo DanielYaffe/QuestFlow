@@ -6,24 +6,38 @@ import { generateWithStyle } from '../services/generation/generationService';
 import { snapAndResize } from '../services/generation/pixelSnapper';
 import { uploadBufferToS3, getPresignedUrl } from '../utils/s3Helper';
 import SpriteModel from '../models/spriteModel';
-import { getStyle, getDefaultStyle } from '../config/styles';
+import SpriteStyleModel from '../models/spriteStyleModel';
+
+async function resolveStyle(styleId: string) {
+  const style = await SpriteStyleModel.findOne({ styleId, isActive: true }).lean();
+  if (style) return style;
+  const fallback = await SpriteStyleModel.findOne({ isDefault: true, isActive: true }).lean();
+  if (fallback) return fallback;
+  throw new Error('No active sprite styles found in database — run seedThemes first');
+}
 
 async function processSpriteJob(job: Job<SpriteJobData, SpriteJobResult>): Promise<SpriteJobResult> {
   const { userId, userPrompt, styleId, negativePrompt } = job.data;
 
+  const style = await resolveStyle(styleId);
+
   const composed = composeImagePrompt({
-    styleId,
+    style,
     userSubject: userPrompt,
     extraNegative: negativePrompt || undefined,
   });
 
-  const rawBuffer = await generateWithStyle(composed);
+  const rawBuffer = await generateWithStyle(
+    composed,
+    style.workflowTemplate,
+    style.workflowPatchMap,
+  );
 
-  // Resolve targetSize: style default → global default 128
-  // (character-level override will be added in Plan 4 when characterId is on the job)
-  const style = getStyle(styleId) ?? getDefaultStyle();
-  const targetSize = style.targetSize ?? 128;
-  const imageBuffer = await snapAndResize(rawBuffer, targetSize);
+  // Only pixel-snap styles that opt in via targetSize (e.g. cb_pixel → 64px).
+  // Other styles (anime, realistic, raw) store the full-res ComfyUI output.
+  const imageBuffer = style.targetSize
+    ? await snapAndResize(rawBuffer, style.targetSize)
+    : rawBuffer;
 
   const imageKey = await uploadBufferToS3(imageBuffer, 'image/png', 'sprites');
 
