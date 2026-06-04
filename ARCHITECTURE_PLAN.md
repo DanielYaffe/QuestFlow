@@ -11,6 +11,7 @@
 **Revised:** May 16, 2026 — Pixel Snapper moved out of ComfyUI (Python port was 2-5s per image) into the Node sprite worker as a vendored WASM module (`backend/vendor/pixel-snapper/`, built from Hugo-Dz/spritefusion-pixel-snapper via `wasm-pack`, ~0.5-1.5s per image). `cbstyle.json` workflow now ends at `easy imageRemBg`; SaveImage reads from RMBG. New `pixelSnapper.ts` worker module does snap → crop 129→128 edge artifact → optional nearest-neighbor resize to `targetSize`. `targetSize` resolution order: character `targetSizeOverride` → style `targetSize` → global default `128`. Plan 3.4 Style interface, Plan 4 Character.assets schema, and Phase 3 sub-task table updated.
 **Revised:** May 16, 2026 — Plan 2 (AWS Bedrock) cut entirely. Quest generation stays on Gemini for all themes. No Bedrock agents, no S3 Vectors KB, no AWS AI dependency. Theme-awareness (tone, naming, dialogue style) remains via GameTheme injected into Gemini prompts. Bedrock client/services deleted from scope. Plan 11 agent templates removed. References updated throughout.
 **Revised:** May 16, 2026 — DMD2 baked into workflow template as `lora_1` (it is acceleration infrastructure, not a style LoRA). Style `loras[]` contains only style-specific LoRAs; `generationService.ts` patches them starting at `lora_2`. Alpha-threshold pre-processing step added in `pixelSnapper.ts` before WASM call to zero out low-alpha halo pixels left by RMBG-1.4. Fallback `SaveImage` node (id 100) appended at runtime by `generationService.ts` to guarantee history output if `easy imageRemBg` Save sink produces empty outputs.
+**Revised:** June 4, 2026 — Phase 3 sprite pipeline completed. Three decisions reversed from the May plan based on eval harness findings: (1) **DMD2 is now per-style, not always-on** — eval showed it degrades Animagine and Juggernaut quality; only `cb_pixel` uses it. (2) **Per-style workflow templates in MongoDB** replace the single shared `sdxl_power_lora.json` — Animagine requires a fundamentally different graph (two-pass hires-fix, no Power Lora Loader) that cannot be expressed in a shared template. (3) **RMBG and pixel snap are per-style** — only `cb_pixel` gets them; other styles output full-res to `SaveImage` directly. New models: `SpriteStyle` (workflow + patchMap embedded in DB), `Checkpoint`, `Lora` (admin registries). `config/styles.ts` static catalog replaced by `seedThemes.ts` seeding `SpriteStyle` documents on startup. WASM pixel-snapper submodule built and confirmed working (`process_image` callable). SpriteGenerator UI, StepStyle wizard step, and QuestBuilder character/reward panels all updated. `SpriteJobContext` reworked with localStorage persistence for navigation-safe SSE reconnection.
 
 ---
 
@@ -19,18 +20,22 @@
 ### What Exists Today
 
 **Backend** (Express 5 + TypeScript + Mongoose/MongoDB):
-- `questGenerationController.ts` — Uses **Gemini 2.5 Flash Lite** to generate objectives, characters, and full quest graphs. Now theme-aware — injects tone, naming, rewards, locations, dialogue context from `GameTheme`. ✅ DONE
-- `spriteController.ts` — Enqueues ComfyUI sprite jobs via BullMQ. Accepts `{ prompt, styleId?, negativePrompt? }`. Returns jobId immediately (202). ✅ DONE
+- `questGenerationController.ts` — Uses **Gemini 2.5 Flash Lite** to generate objectives, characters, and full quest graphs. Theme-aware — injects tone, naming, rewards, locations, dialogue context from `GameTheme`. ✅ DONE
+- `spriteController.ts` — Enqueues ComfyUI sprite jobs via BullMQ. Validates `styleId` against `SpriteStyleModel`. Returns jobId immediately (202). ✅ DONE
 - `jobQueue.ts` — **DELETED.** Replaced by BullMQ + Redis. ✅ DONE
 - `worker.ts` — Separate worker process (`npm run worker`) boots all workers. ✅ DONE
 - Models: User, Questline (with themeId + exportFormat), Sprite, QuestStyle, ExportTemplate, NodeVariantConfig, Comment, Post, Monster, ThemeConfig, GameTheme. ✅ DONE
+- **New models:** `SpriteStyle` (embedded workflow template + patchMap + sampler + loras), `Checkpoint` (admin registry), `Lora` (admin registry). ✅ DONE
 - Auth: JWT + Google OAuth via Passport.
 - Storage: S3 (or MinIO) for sprites with presigned URLs.
 - Queues: `spriteQueue`, `monsterQueue`, `questQueue` via BullMQ + Redis. ✅ DONE
 - Universal SSE job streaming route (`GET /jobs/:queue/:jobId/stream`). ✅ DONE
 - Bedrock client + agent service — **REMOVED** (Plan 2 cut, Gemini-only).
-- ComfyUI generation service (`generationService.ts` + `sdxl_power_lora.json` template). ✅ DONE
-- Theme seeds: `generic_rpg` and `cassette_beasts` seeded on startup. ✅ DONE
+- ComfyUI generation service (`generationService.ts`) — accepts `ComposedImagePrompt` + workflow template + patchMap from DB; patches and submits. ✅ DONE
+- Image prompt composer (`imagePromptComposer.ts`) — builds positive/negative from `ResolvedStyle` + user subject + `BACKGROUND_PHRASE`. ✅ DONE
+- Pixel snapper (`pixelSnapper.ts`) — WASM-based, alpha-threshold pre-processing, dynamic pixelSize, sharp crop + nearest-neighbor resize. WASM build confirmed working. ✅ DONE
+- Styles API (`GET /styles`) — serves active `SpriteStyle` docs from DB (public fields only). ✅ DONE
+- Theme + style seeds: `generic_rpg`, `cassette_beasts`, 4 `SpriteStyle` docs (`cb_pixel`, `anime_mon`, `dark_fantasy`, `none`) seeded on startup. ✅ DONE
 
 **Frontend** (React 18 + Vite + Tailwind 4 + Radix UI + shadcn):
 - Pages: Login, Dashboard, QuestCreate (wizard), QuestBuilder (flow graph via @xyflow/react), SpriteGenerator, SpriteAnimator.
@@ -41,12 +46,11 @@
 
 ### Key Problems Still to Solve
 
-1. **Sprite generator UI** — backend is ComfyUI + Style Catalog ✅; UI still shows Gemini filters and needs the Style picker (Plan 3.9). ⬜
-2. **Character & Monster page not built** — Plan 4 interactive editor page with lore/appearance/stats/sprite sections. ⬜
-3. **SpriteAnimator is a placeholder** — needs to parse Aseprite-format PNG+JSON and play back real animations. ⬜
-4. **No admin panel** — no way to manage themes, styles, or jobs. ⬜
-5. **No export system** — export format stored on questline but no exporters built yet. ⬜
-6. **Plan 3.7.8 pending** — alpha-threshold pre-processing in `pixelSnapper.ts` and SaveImage fallback node in `generationService.ts`. ⬜
+1. **Character & Monster page not built** — Plan 4 interactive editor page with lore/appearance/stats/sprite sections. ⬜
+2. **SpriteAnimator is a placeholder** — needs to parse Aseprite-format PNG+JSON and play back real animations. ⬜
+3. **No admin panel** — no way to manage themes, styles, or jobs via UI (models and DB exist; no frontend). ⬜
+4. **No export system** — export format stored on questline but no exporters built yet. ⬜
+5. **Admin: Styles read-only view** — `GET /styles` serves data but no admin page to inspect checkpoint/LoRA details. ⬜ (Plan 3.10)
 
 ### Key Design Decisions
 
@@ -55,9 +59,9 @@
 3. **Single-repo worker, not a separate microservice.** The worker process (`npm run worker`) runs from the same codebase, sharing models/services/types. Scale by running more worker instances against the same Redis.
 4. **Theme selection drives the pipeline, not game selection.** A theme could be a game (Cassette Beasts) or a style (Dark Fantasy RPG). Each theme has its own agent, KB, and optional LoRA.
 5. **Sprite generation and monster stats are independent.** The Sprite Generator is a standalone image tool (ComfyUI + LoRA, style picker). Monster stats come from Bedrock agents. A monster may have a sprite generated separately — they are not the same pipeline.
-6. **Styles are a static, code-versioned catalog — not a dynamic LoRA database.** A Style bundles a checkpoint + optional LoRA + tuned prompt prefix + tuned negative + sampler params. Styles live in `backend/src/config/styles.ts` and are added via PR, not user upload. ThemeConfig references a `defaultStyleId` (a string key). "No Style" is just another style entry pointing at vanilla SDXL with no LoRA. No Civitai integration, no S3 sync, no upload UI — checkpoint and LoRA files live on the ComfyUI host (local disk or baked into RunPod image).
-7. **DMD2 distillation is always on.** Every style stacks the DMD2 SDXL 4-step LoRA on top of its style LoRA via ComfyUI's Power Lora Loader (rgthree). All workflows run at DMD2-tuned params (4 steps, CFG 1.2, `euler` / `simple`). There is no normal-vs-fast mode toggle — generation is fast by default. Adding/removing/swapping LoRAs is a config edit (the `loras` array on a Style), not a workflow-schema change, because the Power Lora Loader takes an arbitrary list.
-8. **Sprite cleanup (BG removal + Pixel Snap) is always-on inside ComfyUI.** The generation workflow ends with `easy imageRemBg` (BRIA RMBG 1.4) → `SpriteFusionPixelSnapper` → save. No toggle, no separate queue, no re-process route — every sprite that comes out of the pipeline is already transparent-background and grid-snapped. The image-prompt composer always appends `", solid flat blue background"` so the RMBG node has a high-contrast key color. See Plan 3.7.
+6. **Styles live in MongoDB, seeded from `seedThemes.ts`.** Each `SpriteStyle` document embeds its complete ComfyUI workflow template and a `workflowPatchMap` (node IDs to patch for checkpoint, prompts, dimensions, seed, LoRA, sampler). `seedThemes.ts` is the source of truth — on every restart it upserts all styles with `$set`. `Checkpoint` and `Lora` collections are admin-facing registries (not used in the generation path). No Civitai integration, no S3 sync — files live on the ComfyUI host. **Why not `config/styles.ts` (original plan):** style definitions embed full workflow JSON which is too large and too node-graph-specific to maintain as TypeScript literals in a config file; Animagine's hires-fix graph alone is 12 nodes with wiring that would be unreadable inline. DB also enables a future admin panel to tune per-style parameters without a code deploy.
+7. **DMD2 is per-style, not always-on.** Only `cb_pixel` includes DMD2 in its `loras[]` and runs at DMD2-tuned sampler params (4 steps, CFG 1.2, euler/simple). `anime_mon` uses standard Animagine params (28 steps, CFG 7, euler/normal); `dark_fantasy` and `none` use dpmpp_2m/karras at 20 steps, CFG 7. **Why not always-on (original plan):** eval harness showed DMD2 degrades quality on Animagine XL and Juggernaut XL — those checkpoints are not trained for 4-step distillation and produce muddy, artifact-heavy output under DMD2 params. DMD2 is only beneficial when the checkpoint is specifically distilled for it.
+8. **RMBG and pixel snap are per-style, not always-on.** Only `cb_pixel`'s workflow includes `easy imageRemBg` (BRIA RMBG-1.4), and only styles with `targetSize` set get pixel-snapped in the worker. `anime_mon`, `dark_fantasy`, and `none` output full-resolution images via `SaveImage` directly. **Why not always-on (original plan):** RMBG only works reliably when the background is a known solid color set by `BACKGROUND_PHRASE`; illustrated and realistic styles don't rely on that trick and RMBG would randomly crop the subject. Pixel snap is meaningless on non-pixel-art output. Applying both unconditionally would ruin the quality of non-pixel styles.
 9. **ComfyUI local for now, RunPod Serverless later.** One `.env` change (`COMFYUI_ENDPOINT`) switches between local and cloud. Checkpoint + LoRA files are managed manually on the ComfyUI host — no automated sync. RunPod path bakes them into the container image.
 10. **Vector store = AWS S3 Vectors.** Not OpenSearch Serverless or Pinecone.
 11. **CB mod is a three-package wrapper system** (see [CB-plan.md](CB-plan.md) CB-3): `questflow_core` ships once with the runtime; `questflow_questline_<id>` ships per questline; `questflow_bestiary_<projectId>` ships per project for shared/orphan monsters. Updating one questline never requires re-installing the rest. Project bundle export is a zip-of-folders for convenient first-time install.
@@ -134,52 +138,75 @@ The following are explicitly cut and should not be re-introduced:
 
 ---
 
-## Plan 3: Sprite Generator Rework ✅ PARTIALLY COMPLETE
+## Plan 3: Sprite Generator Rework ✅ COMPLETE (3.10 admin view pending)
 
 ### Goal
-Replace Gemini image generation with ComfyUI. Replace Gemini-specific filter UI with a **Style picker** (curated style cards backed by a static code-versioned catalog). Each Style bundles a checkpoint, an ordered LoRA list (style LoRA(s) + the always-on DMD2 4-step distillation LoRA), tuned prompt prefixes/negatives, and sampler params. One workflow template per base model handles every style via ComfyUI's `Power Lora Loader (rgthree)`. Add **post-processing** (background removal, upscale, downscale) as both inline workflow toggles and standalone re-process operations.
+Replace Gemini image generation with ComfyUI. Replace Gemini-specific filter UI with a **Style picker** (curated style cards backed by a MongoDB `SpriteStyle` collection). Each Style embeds a complete ComfyUI workflow template and a `workflowPatchMap` that declares which node IDs receive per-run values (checkpoint, prompts, seed, sampler, LoRA). Add **post-processing** (background removal via RMBG, pixel-snap via WASM) as per-style options baked into each style's workflow.
 
 ### Key Design Decisions
 
-1. **Style Catalog is a static TypeScript config, not a database.** `backend/src/config/styles.ts` exports an array of Style entries. Adding a style = code PR. No upload UI, no Civitai client, no MongoDB collection, no S3 sync. ThemeConfig holds a `defaultStyleId: string` referencing a key in this catalog.
+1. **Style Catalog lives in MongoDB (`SpriteStyle`), not a static file.** Each document embeds the full ComfyUI `workflowTemplate` and `workflowPatchMap`. Adding a style = update the seed script + restart the server. No static `config/styles.ts`, no separate JSON files. *(Original plan was a static TS catalog; changed because embedded workflows are simpler to hot-update and the per-style complexity made a flat array unwieldy.)*
 2. **A Style is a complete generation recipe, not just a LoRA reference.** Each Style declares: checkpoint filename, optional LoRA filename + trigger word + strength, prompt prefix, tuned negative prompt, default dimensions, and sampler params. Picking a style locks all of these. The user provides only the *subject* description.
 3. **The word "LoRA" never appears in the user UI.** Internally we still use LoRAs. Externally users see "Style". Advanced/admin views may show LoRA details, but the SpriteGenerator surface treats Styles as opaque.
 4. **Each style declares its own checkpoint.** Pixel-art styles use Pixel Art Diffusion XL; anime/creature styles use Animagine XL; realistic styles use Juggernaut XL; "No Style" uses vanilla SDXL. Vanilla SDXL is a *bad* baseline for pixel art — the checkpoint matters as much as the LoRA. Workflow JSON files are parameterized over checkpoint name.
-5. **DMD2 distillation is always on, not opt-in.** Every Style's `loras[]` includes the DMD2 4-step distillation LoRA as its final entry. All generations run at DMD2-tuned sampler params (4 steps, CFG 1.2, `euler` / `simple`). There is no "Fast preview" toggle — generation is fast by default. LoRA stacking is handled by ComfyUI's `Power Lora Loader (rgthree)`, which takes an arbitrary ordered list.
+5. **DMD2 distillation is per-style, not always-on.** Only `cb_pixel` uses DMD2 (baked as `lora_1` in its workflow template, with 4-step KSampler at CFG 1.2 / euler / simple). Other styles use standard samplers (28 steps, CFG 7, euler / normal). *(Original plan was always-on DMD2 for every style; eval harness showed it degrades non-pixel checkpoints like Animagine XL and Juggernaut XL.)*
 6. **Checkpoint and LoRA file management is manual, not automated.** Files live on the ComfyUI host. Local dev: drop into `models/checkpoints/` and `models/loras/` once. Production (RunPod): baked into the container image. No `loraSync.ts`, no S3 round trips, no per-job downloads.
 7. **Post-processing is GPU-resident inside ComfyUI.** Background removal (rembg), upscaling (4x-UltraSharp), and resizing are nodes appended to the workflow when toggled. No S3 round trips between stages.
 8. **Standalone re-process is a separate route.** `POST /sprites/:id/process` runs a post-process-only workflow on an existing sprite (download from S3 → ComfyUI → upload result).
 
 ### What Was Built
 
-> **Note:** Subsections 3.1–3.3 describe state-as-of-build. The `generateWithLora` / `generateBase` split and the `base.json` template are scheduled for removal in 3.5.1–3.5.2 (collapse into one `generationService.generateWithStyle` + one `sdxl_power_lora.json` template). `cbstyle.json` itself was rewritten in-place to the new shape (Power Lora Loader + DMD2 stacked, 4 steps, CFG 1.2, euler/simple, ends with `easy imageRemBg` — Pixel Snap moved to the worker, see Plan 3.7).
+#### 3.1 Generation Service ✅
+- `services/generation/generationService.ts` — `generateWithStyle(composed, workflowTemplate, patchMap)`:
+  - Deep-clones the style's `workflowTemplate` from DB
+  - Applies `patchMap`: checkpoint, positive/negative prompts, dimensions, seed nodes (randomised), optional LoRA node (patches style LoRAs into `lora_2`, `lora_3`…; DMD2 is `lora_1`, baked into template), optional sampler params node
+  - Appends fallback `SaveImage` node (id `100`) when `patchMap.fallbackSaveImageSource` is set (`cb_pixel` only, guards against `easy imageRemBg` producing empty history outputs)
+  - POSTs to `/prompt`, polls `/history/:promptId` every 1.5s, fetches image from `/view`. Timeout: 120s
+- `services/generation/loraService.ts` — **DELETED**
+- `services/generation/workflows/base.json` — **DELETED**
+- `services/generation/workflows/cbstyle.json` — **DELETED**; active workflow is embedded in the `SpriteStyle` DB document for `cb_pixel`
 
-#### 3.1 ComfyUI LoRA Service ✅ (to be refactored in 3.5)
-- `services/generation/loraService.ts` — `generateWithLora(opts)` + `generateBase(opts)`:
-  - Loads workflow JSON template from `workflows/` by LoRA name
-  - Patches nodes: LoRA name (node 2), positive prompt (node 3), negative prompt (node 4), dimensions (node 5), random seed (node 6)
-  - POSTs to `/prompt`, polls `/history/:promptId` every 1.5s, fetches image from `/view`
-  - Falls back to `cbstyle` workflow if no theme-specific workflow exists
-  - `generateBase()` — uses `base.json` workflow (no LoRA node) for "No Style" path
-  - Timeout: 120s
-- `services/generation/workflows/cbstyle.json` — rewritten to use Power Lora Loader + always-on DMD2 ✅
-- `services/generation/workflows/base.json` — base SDXL workflow (no LoRA) ✅ — to be deleted in 3.5
-
-#### 3.2 Swap Worker to ComfyUI ✅
-- `workers/spriteWorker.ts` — replaced Gemini with `generateWithLora()` / `generateBase()`
-- Branches on `loraName`: if set → `generateWithLora`, else → `generateBase`
-- `SpriteJobData` — drops `fullPrompt`/`filters`, has `positivePrompt`, `negativePrompt`, `loraName`, `triggerWord`, `styleId`
-- `spriteController.ts` — removed Gemini gate, accepts `{ prompt, styleId?, negativePrompt? }`, resolves LoRA from ThemeConfig
-- `spriteQueue.ts` — updated to match new job data shape
+#### 3.2 Sprite Worker ✅
+- `workers/spriteWorker.ts` — resolves `SpriteStyle` from DB by `styleId`, falls back to `isDefault` style
+- `spriteController.ts` — validates `styleId` against `SpriteStyleModel` before enqueue
+- Composes prompt via `imagePromptComposer`, submits workflow from DB via `generationService`
+- Pixel-snaps only when `style.targetSize` is set (currently only `cb_pixel` → 64px)
 
 #### 3.3 SpriteModel Updated ✅
 - Replaced `filters` object with `styleId` + `negativePrompt` + `positivePrompt`
 
-### Still Needed
+### Completed in Phase 3
 
-#### 3.4 Static Style Catalog (replaces dynamic LoRA catalog) ✅
+#### 3.4 Style Catalog — DB-backed via SpriteStyleModel ✅
 
-New file: `backend/src/config/styles.ts`. A pure TypeScript module — no DB, no routes, no upload pipeline.
+`models/spriteStyleModel.ts` stores each style with its embedded workflow and patch map. Four styles seeded by `seedThemes.ts` (`$set` on every restart — workflow changes deploy automatically):
+
+| `styleId` | Checkpoint | LoRAs in `loras[]` | Workflow shape | Pixel snap |
+|---|---|---|---|---|
+| `cb_pixel` | `pixelArtDiffusionXL_spriteShaper` | `cb-000006` (trigger `cbstyle`) | Power Lora Loader + DMD2 (`lora_1` baked) + KSampler 4-step + RMBG | ✅ 64px |
+| `anime_mon` | `animagineXL_v3` | none | CLIPSetLastLayer + two-pass KSampler (hires-fix) + VAEDecode + SaveImage | ❌ |
+| `dark_fantasy` | `juggernautXL_v9` | none | Simple single-pass KSampler + VAEDecode + SaveImage | ❌ |
+| `none` | `sd_xl_base_1.0` | none | Simple single-pass KSampler + VAEDecode + SaveImage | ❌ |
+
+`Checkpoint` and `Lora` models are admin-facing registries seeded alongside styles (not used in the generation path; exist for a future admin panel).
+
+Files required on the ComfyUI host:
+```
+models/checkpoints/
+  sd_xl_base_1.0.safetensors
+  pixelArtDiffusionXL_spriteShaper.safetensors
+  animagineXL_v3.safetensors
+  juggernautXL_v9.safetensors
+models/loras/
+  cb-000006.safetensors
+  dmd2_sdxl_4step_lora_fp16.safetensors  (cb_pixel workflow only)
+```
+
+**Why not `config/styles.ts` (original plan):** style definitions embed full ComfyUI workflow JSON. Animagine's two-pass hires-fix graph alone has 12 nodes with wiring that is unreadable as TypeScript literals. DB also allows a future admin panel to tune per-style parameters without a code deploy.
+
+**Why not a single `sdxl_power_lora.json` template (original plan):** each checkpoint family needs a fundamentally different node graph. Animagine requires `CLIPSetLastLayer` + `LatentUpscale` + two `KSampler` calls. Juggernaut and SDXL base use simple single-pass graphs with no Power Lora Loader. A single shared template cannot accommodate this without conditional node logic, which ComfyUI does not support in its API format.
+
+**Removed scope (was 3.4.3):** `services/lora/civitaiClient.ts`, `services/lora/loraSync.ts`, `POST /api/loras/upload`, `POST /api/loras/import-civitai`, S3 storage of `.safetensors` files. Adding a new style = update `seedThemes.ts` and add files to the ComfyUI host.
 
 ```typescript
 export interface StyleSamplerParams {
@@ -189,275 +216,47 @@ export interface StyleSamplerParams {
   scheduler: 'simple' | 'karras' | 'normal' | 'sgm_uniform';
 }
 
-export interface StyleLora {
-  filename: string;            // in models/loras/
-  strength: number;            // model-side strength (Power Lora Loader)
-  strengthClip: number;        // clip-side strength — typically <1.0
-  triggerWord?: string;        // prepended to positive prompt (style LoRAs); DMD2 has none
-}
+#### 3.5 Per-Style Workflow Templates (replaces single `sdxl_power_lora.json`) ✅
 
-export interface Style {
-  id: string;                  // 'cb_pixel' | 'anime_mon' | 'dark_fantasy' | 'none'
-  name: string;                // user-facing
-  description: string;         // shown in tooltip / card
-  previewImagePath: string;    // bundled asset, not S3
-  category: 'pixel' | 'illustrated' | 'realistic' | 'raw';
-  baseModel: 'SDXL';           // future: Flux
-  checkpoint: string;          // safetensors filename in ComfyUI's models/checkpoints/
-  loras: StyleLora[];          // applied in order via Power Lora Loader (rgthree).
-                               // Convention: style LoRA first, DMD2 last.
-                               // "No Style" sets loras: [{ DMD2 only }].
-  promptPrefix: string;        // prepended to user's subject text
-  negativePrompt: string;      // tuned per style, NOT a generic default
-  defaultDimensions: { width: number; height: number };  // ComfyUI generation size (typically 1024×1024)
-  targetSize?: number;         // final snap-and-resize output edge length, e.g. 64 | 128 | 256
-                               // omitted → falls back to global default (128)
-                               // see Plan 3.7.4 for resolution order (character override > style > global)
-  sampler: StyleSamplerParams; // DMD2-tuned by default (4 steps, CFG 1.2, euler/simple)
-  isDefault?: boolean;
-}
+Each style owns its complete ComfyUI workflow embedded in the `SpriteStyle` DB doc. A `workflowPatchMap` tells `generationService` which node IDs to patch per run without hardcoding node numbers. `cb_pixel` uses `loraNode: '2'` (Power Lora Loader) — style LoRAs patch into `lora_2`, `lora_3`…; DMD2 is `lora_1`, hardcoded in the template. Other styles have no `loraNode`. `anime_mon` has `seedNodes: ['5', '10']` (two KSamplers). `cb_pixel` sets `fallbackSaveImageSource: '9'` (RMBG node) so a fallback SaveImage node (id `100`) is appended at runtime.
 
-export const STYLES: Style[] = [ /* … see 3.4.1 … */ ];
-export function getStyle(id: string): Style | undefined { … }
-```
+#### 3.6 Image Prompt Composer ✅
 
-**Why `loras: StyleLora[]` instead of a single `lora` field:** every workflow uses ComfyUI's Power Lora Loader (rgthree) which natively accepts a list. DMD2 is always one of the entries. Adding a new LoRA (e.g. detail enhancer, character LoRA) to a style = append one config object; no workflow JSON change.
+`services/generation/imagePromptComposer.ts` — `composeImagePrompt({ style, userSubject, extraNegative?, dimensionsOverride? })`:
+- Collects trigger words from `style.loras` entries that have `triggerWord`
+- Positive: `{triggers} {promptPrefix} {userSubject}, solid flat blue background`
+- Negative: `style.negativePrompt` + optional `extraNegative`
+- Returns `ComposedImagePrompt` with checkpoint, loras[], sampler, dimensions, targetSize
 
-ThemeConfig change: replace `loraModelPath: string` + `loraTriggerWord: string` with `defaultStyleId: string` (a key into `STYLES`). Existing seed data migrates: CB theme → `defaultStyleId: 'cb_pixel'`, Generic RPG → `defaultStyleId: 'none'`.
+`BACKGROUND_PHRASE` (`', solid flat blue background'`) is always appended. This gives `easy imageRemBg` a clean, high-contrast key color — but only `cb_pixel`'s workflow actually has the RMBG node; other styles harmlessly include it in the prompt and it goes through `SaveImage` without issue.
 
-##### 3.4.1 Initial Style Catalog Contents
+#### 3.7 Sprite Cleanup (RMBG in ComfyUI + Pixel Snap in Worker) ✅
 
-Four initial entries cover the realistic spectrum of needs. Adding more is a code PR.
+Stage 1 — Background removal (`cb_pixel` only, inside ComfyUI): workflow ends with `easy imageRemBg` (BRIA RMBG-1.4). Fallback `SaveImage` (node id `100`) appended at runtime via `patchMap.fallbackSaveImageSource` to guard against `easy imageRemBg` producing empty history outputs.
 
-| `id` | Checkpoint | Style LoRA (+ DMD2 always) | Best for |
-|---|---|---|---|
-| `cb_pixel` | `pixelArtDiffusionXL.safetensors` | `cb-000006.safetensors` (trigger `cbstyle`) + DMD2 | Cassette Beasts creatures, retro RPG sprites |
-| `anime_mon` | `animagineXL_v3.safetensors` | DMD2 only initially | Stylized creatures, Pokémon-style monsters |
-| `dark_fantasy` | `juggernautXL_v9.safetensors` | DMD2 only initially | Realistic monsters, dark fantasy creatures |
-| `none` | `sd_xl_base_1.0.safetensors` | DMD2 only | Generic / "raw SDXL" fallback |
+Stage 2 — Pixel snap + resize (worker, triggered only when `style.targetSize` is set):
+- Alpha-threshold first: pixels with alpha < 128 → 0, ≥ 128 → 255 (eliminates RMBG-1.4 semi-transparent halo that wastes k-means centroid slots)
+- Compute `pixelSize = round(min(srcW, srcH) / targetSize)` so WASM outputs at ≈ targetSize × targetSize
+- WASM `process_image(bytes, kColors=16, pixelSize)` from `backend/vendor/pixel-snapper/pkg/` (confirmed working)
+- Crop to `min(snappedW, snappedH, targetSize)` to trim walker overshoot
+- Nearest-neighbor resize to `targetSize` if still short
 
-Every style ships with:
-- The DMD2 4-step distillation LoRA at strength 1.0 as the final entry in `loras[]`. No exceptions — DMD2 isn't optional, it's how every generation runs.
-- A tuned `promptPrefix` (e.g. `cb_pixel`: `"cbstyle, monster creature, pixel art, clean outline,"`).
-- A tuned `negativePrompt` (e.g. `cb_pixel`: `"photo, realistic, 3d render, blurry, low quality, text, watermark, signature, jpeg artifacts"` — note: **no anti-human-face, no anti-symmetry, no anti-bright-colors** terms that the current `DEFAULT_NEGATIVE` has).
-- Identical sampler params across all styles: `{ steps: 4, cfg: 1.2, sampler: 'euler', scheduler: 'simple' }`. These are DMD2's required range; deviating breaks generation quality. Style identity comes from the checkpoint + style LoRA + prompts, not from sampler tuning.
-
-##### 3.4.2 Files installed manually on ComfyUI host
-
-```
-models/checkpoints/
-  sd_xl_base_1.0.safetensors
-  pixelArtDiffusionXL.safetensors
-  animagineXL_v3.safetensors
-  juggernautXL_v9.safetensors
-
-models/loras/
-  cb-000006.safetensors          (existing CB LoRA)
-  dmd2_sdxl_4step_lora.safetensors
-```
-
-A short README in `backend/src/config/` will document where each file came from and how to install it on a fresh ComfyUI instance.
-
-##### 3.4.3 Removed scope (was 3.4 in May 8 plan)
-
-The following are explicitly cut: `models/loraModel.ts`, `routes/loraRoute.ts`, `services/lora/civitaiClient.ts`, `services/lora/loraSync.ts`, `POST /api/loras/upload`, `POST /api/loras/import-civitai`, S3 storage of `.safetensors` files. Any future "add a style" flow is a PR, not a runtime feature.
-
-#### 3.5 Workflow Parameterization & Updates ✅
-
-`cbstyle.json` has been rewritten to use the new shape (Power Lora Loader with style LoRA + DMD2, euler/simple, 4 steps, CFG 1.2). It now serves as the template for a generic `sdxl_power_lora.json` that any style can use. `base.json` is no longer needed because "No Style" is just a Style entry with `loras: [DMD2 only]`.
-
-##### 3.5.1 Workflow file consolidation
-
-One reusable workflow template covers every style, because the Power Lora Loader takes an arbitrary list of LoRAs:
-
-- `workflows/sdxl_power_lora.json` — `CheckpointLoaderSimple` → `Power Lora Loader (rgthree)` → CLIP encode (pos/neg) → KSampler → VAE → save. Patched at runtime with `checkpoint`, the full `loras[]` array (style LoRA + DMD2 at minimum), prompts, sampler params, seed.
-
-Style differentiation lives entirely in the Style config — checkpoint name, LoRA list, prompts. The workflow JSON itself never changes per style. "No Style" passes `loras: [DMD2 only]`. Adding a third LoRA to a style (e.g. a detail enhancer) is a config-only change.
-
-`loraService.ts` is renamed `generationService.ts` and updated to:
-1. Accept a `Style` object plus a composed prompt.
-2. Load `sdxl_power_lora.json`, patch the checkpoint, the Power Lora Loader's `lora_1`, `lora_2`, … entries from `style.loras[]`, the prompts, sampler params, and seed.
-3. Submit to ComfyUI and return the result.
-
-The existing `cbstyle.json` already uses this shape (Power Lora Loader, DMD2 stacked, euler/simple, 4 steps, CFG 1.2) and serves as the template — generalize it into `sdxl_power_lora.json` and delete the style-specific copy. `base.json` is deleted (no longer needed).
-
-##### 3.5.2 Cleanup tasks
-
-- Delete `DEFAULT_NEGATIVE` from `loraService.ts`. Negatives are per-style from now on.
-- Delete `base.json` (one workflow template replaces both).
-- Rename `loraService.ts` → `generationService.ts` and drop the `generateWithLora` / `generateBase` distinction; one entry point.
-
-#### 3.6 Image Prompt Composition ✅
-
-A new `services/generation/imagePromptComposer.ts`:
-```typescript
-export interface ComposedImagePrompt {
-  positive: string;                 // "<triggers>, <stylePrefix>, <userSubject>"
-  negative: string;                 // style.negativePrompt + optional user additions
-  checkpoint: string;
-  loras: StyleLora[];               // full ordered list — style LoRA(s) + DMD2
-  sampler: StyleSamplerParams;
-  dimensions: { width: number; height: number };
-}
-
-export function composeImagePrompt(opts: {
-  styleId: string;
-  userSubject: string;              // "a fire dragon with horns"
-  extraNegative?: string;           // user-supplied additions, not replacement
-  dimensionsOverride?: { width: number; height: number };
-}): ComposedImagePrompt;
-```
-
-Trigger word handling: the composer collects `triggerWord` from every entry in `style.loras` that has one (typically just the style LoRA — DMD2 has none) and prepends them to the positive prompt before `style.promptPrefix`.
-
-**Background phrase (always appended).** The composer always appends a fixed phrase — `", solid flat blue background"` — to the end of the positive prompt. This gives the background-removal node (Plan 3.7) a clean, high-contrast key color to detect. It is not configurable per style and never omitted; the BG removal node assumes its presence. Final positive shape:
-
-```
-{triggers}, {stylePrefix} {userSubject}, solid flat blue background
-```
-
-The constant lives in `imagePromptComposer.ts` as `BACKGROUND_PHRASE` so it can be tuned in one place.
-
-The composer is what `generationService.generateWithStyle()` (renamed from `loraService.generateWithLora` / `generateBase`) consumes. The worker no longer assembles strings — it asks the composer for a ready prompt object.
-
-User guidance baked into the UI tooltip: *"Describe what the creature is (e.g. 'a fire dragon with horns, lava-cracked skin'). Don't describe how it should look (e.g. 'pixel art, detailed') — the Style handles that."*
-
-#### 3.7 Always-On Sprite Cleanup (BG Removal in ComfyUI + Pixel Snap + Resize in Worker) ✅ (3.7.8 pending)
-
-Every sprite generation produces a clean, transparent-background, grid-snapped, target-sized PNG. The cleanup runs in two stages, split between ComfyUI and the Node worker. Both stages are mandatory, single-pipeline, hidden from the user.
-
-##### 3.7.1 Stage 1 — Background removal (inside ComfyUI)
-
-`sdxl_power_lora.json` (Plan 3.5) extends past VAE Decode with one appended node:
-
-1. **`easy imageRemBg`** (from [ComfyUI-Easy-Use](https://github.com/yolain/ComfyUI-Easy-Use)) — model `u2net` or BRIA RMBG-1.4. Strips the solid blue background introduced by the prompt-side `BACKGROUND_PHRASE`. Output: 1024×1024 RGBA image with transparent background.
-2. **`SaveImage`** — reads from RMBG output.
-
-> **Node class name not yet verified against installed nodes.** ComfyUI custom node class names can drift. On first integration, inspect the loaded node classes in ComfyUI's API and update `cbstyle.json` / `sdxl_power_lora.json` accordingly. The current `cbstyle.json` uses provisional name `easy imageRemBg`.
-
-##### 3.7.2 Stage 2 — Pixel snap + resize (inside the Node sprite worker)
-
-After ComfyUI returns the 1024×1024 transparent PNG, the worker pipes it through a **WASM-compiled Pixel Snapper + a `sharp` resize step**, then uploads the result to S3. This stage replaces the previously-planned in-ComfyUI Pixel Snapper node — the Python port was 2-5s per image (k-means + Sobel + walker passes), versus 0.5-1.5s in WASM.
-
-```
-ComfyUI returns 1024×1024 RGBA PNG
-            │
-            ▼
-  pixelSnapper(buffer, { k_colors: 16, pixel_size: null })
-    └─ via WASM, calls process_image(bytes, 16, null)
-            │
-            ▼
-  resulting buffer is ~128×128 (or 129×129 — snapper edge artifact)
-            │
-            ▼
-  sharp.extract({ left: 0, top: 0, width: 128, height: 128 })
-    └─ crops the +1 walker overshoot when present
-            │
-            ▼
-  if targetSize !== 128:
-    sharp.resize(targetSize, targetSize, { kernel: 'nearest' })
-    └─ nearest-neighbor preserves grid integrity
-            │
-            ▼
-  upload to S3 → rawSpriteCandidates[] entry
-```
-
-##### 3.7.3 Pixel Snapper WASM integration
-
-The snapper algorithm comes from [Hugo-Dz/spritefusion-pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — a Rust crate that already exposes a `#[wasm_bindgen]` `process_image(bytes, k_colors?, pixel_size?) -> Vec<u8>` entry point. Build is one command (`wasm-pack build --target nodejs --release`); upstream is the source of truth, no algorithm porting required.
-
-Vendoring approach:
-- **Source location** in the repo: `backend/vendor/pixel-snapper/` — a git submodule pinned to a tagged Rust commit. Bumping the commit on upstream releases is a deliberate per-release action.
-- **Build artifact**: `backend/vendor/pixel-snapper/pkg/` (output of `wasm-pack`) committed to the repo so production deploys don't need a Rust toolchain. ~5 files, <1MB.
-- **Build script**: `npm run build:pixel-snapper` runs `wasm-pack build --target nodejs --out-dir pkg --release` inside the submodule. Wired into CI so a missing or stale build fails the build.
-- **Node wrapper**: `backend/src/services/generation/pixelSnapper.ts` — ~30 lines of TS importing `pkg/spritefusion_pixel_snapper.js`, exposing:
-  ```typescript
-  export async function snapAndResize(
-    png: Buffer,
-    targetSize: number,           // final output edge length, e.g. 128, 64, 256
-    kColors = 16,
-  ): Promise<Buffer>;
-  ```
-  Internally: invoke WASM `process_image`, decode the result with `sharp`, crop to 128×128 to clip the edge artifact, resize to `targetSize` if ≠ 128 (nearest-neighbor), encode PNG.
-
-Why WASM not native binary:
-- One artifact (vendored `pkg/`) works on Windows dev + Linux prod + RunPod. No per-platform Rust builds.
-- Same Node process as BullMQ workers — no IPC, no shell-out, no temp files.
-- WASM perf is 1.5-2× slower than native Rust but still 3-5× faster than the Python port.
-
-Why not port to TypeScript:
-- Upstream is actively maintained. A TS port would mean re-syncing the algorithm every time Hugo updates the Rust crate.
-- WASM keeps upstream as the source of truth; bumping the submodule commit is the entire upgrade story.
-
-##### 3.7.4 Sizing — `targetSize` resolution order
-
-The worker resolves the target size in this order before calling `snapAndResize`:
-
-1. **Character-level override** — `character.assets.targetSizeOverride` (Plan 4 data model). User-settable for advanced cases (an oversize boss monster at 256, or a small icon at 32). Not exposed in default UI; set via an "Advanced" disclosure on the Character editor sprite section.
-2. **Style-level default** — `style.targetSize` (Plan 3.4 `Style` interface). e.g. `cb_pixel` sets `targetSize: 64` because CB sprites are 64×64.
-3. **Global default** — `128` if neither of the above is set.
-
-The user never *needs* to touch these — defaults work for every common case. The advanced override exists so a single boss sprite doesn't force a new Style entry.
-
-##### 3.7.5 Why always-on, not toggle
-
-- Sprite generations in this app are *always* for character/monster artwork — a transparent-background, snapped pixel-art sprite at a known size is the only useful output shape. Toggling off any step produces an artifact the rest of the pipeline (PixelLab animation, export) cannot consume.
-- Hiding the cleanup stage from the user means: no UI complexity, no failure-mode surfaces.
-- Total pipeline time: ~5s ComfyUI (gen + RMBG) + ~1s worker (WASM snap + sharp resize) ≈ 6s per candidate. Acceptable for iterative sprite work.
-
-##### 3.7.6 No user-visible knobs (with one exception)
-
-- `k_colors` is a fixed default (`16`) in the worker. Not surfaced in UI, not in the `Style` config, not exposed in any API.
-- `pixel_size` is always auto-detected (`null` to the WASM call).
-- `targetSize` is **the one exception**: surfaced behind an "Advanced" disclosure on the Character editor sprite section (Plan 4.6) so a user can override Style/global defaults. Defaults are sensible enough that 95% of users never open the disclosure.
-
-##### 3.7.7 What this replaces
-
-The old plan had:
-- A `removeBackground?: boolean` + `upscale?: 2 | 4` + `targetSize?` toggle set on the composed prompt.
-- Standalone re-process route `POST /sprites/:id/process`.
-- `spritePostprocessQueue` + `spritePostprocessWorker`.
-- `services/generation/workflowComposer.ts` for composing post-process nodes.
-- The in-ComfyUI Pixel Snapper Python node (slow).
-
-**All of this is cut.** BG removal stays in ComfyUI. Snap + resize move to a single Node-side step. Upscale is dropped entirely — sprites are downsampled to a target size, never upscaled.
-
-If a future use case needs standalone re-snapping (e.g. user uploads their own sprite and wants snapping applied), reintroduce a thin route then. Not in scope now.
-
-##### 3.7.8 Implementation corrections (from eval harness findings)
-
-These refinements were discovered during the LoRA evaluation harness work and must be applied to the production backend:
-
-**DMD2 baked into workflow template (done).**
-`lora_1` in `sdxl_power_lora.json` is hardcoded to `dmd2_sdxl_4step_lora_fp16.safetensors`. It is acceleration infrastructure, not a style LoRA. Style `loras[]` in `styles.ts` contains only style-specific LoRAs; `generationService.ts` patches them into `lora_2`, `lora_3`, etc.
-
-**Prompt composition simplified (done).**
-`imagePromptComposer.ts` now produces: `{triggerWords}, {userSubject}, solid flat blue background` — no style prefix injected by the composer. Style prefixes (e.g. `cbstyle, monster creature, pixel art`) belong in `style.promptPrefix` which is prepended at the workflow prompt level, not in the composer string. This prevents double-injection and makes LoRA-off baselines comparable without a stylistic head-start.
-
-**Alpha-threshold pre-processing in `pixelSnapper.ts` (⬜ to implement).**
-RMBG-1.4 leaves a halo of pixels with alpha 5–200 around the subject. The Rust pixel-snapper crate only filters `alpha == 0` from k-means, so halo pixels steal centroid slots and reappear as a fringe. Fix: in `pixelSnapper.ts`, hard-threshold alpha to 0/255 before passing the PNG to the WASM call (any pixel with alpha < 128 → alpha 0; any pixel with alpha ≥ 128 → alpha 255). No Rust fork — keeps upstream crate pristine.
-
-**SaveImage fallback node (⬜ to implement).**
-`easy imageRemBg` with `image_output: "Save"` sometimes produces empty outputs in the history response. `generationService.ts` should append a standard `SaveImage` node (id `100`) at runtime that reads from the RMBG node's output `[9, 0]`. `pollForResult` already iterates all node outputs so it will find the image from whichever node actually produces it.
+For `anime_mon`, `dark_fantasy`, and `none` — no RMBG, no snap; full-resolution output goes directly to `SaveImage`.
 
 #### 3.8 Styles API Endpoint ✅
-- `GET /api/styles` — returns the static `STYLES` array (filtered to active, omitting internal fields like raw filenames). Frontend caches indefinitely; it changes only on deploys.
-- Each entry returns: `id`, `name`, `description`, `previewImageUrl`, `category`, `defaultDimensions`.
-- No `POST`, `PATCH`, `DELETE` endpoints. The catalog is read-only at runtime.
+- `GET /styles` — returns active `SpriteStyle` docs from DB (public fields only: id, name, description, previewImagePath, category, defaultDimensions). Mounted in `server.ts`.
+- No `POST`, `PATCH`, `DELETE` — to change styles, update `seedThemes.ts` and restart.
 
-#### 3.9 Rework Sprite Generator UI ⬜
-- **Remove:** artStyle, perspective, aspectRatio, colorPalette, detailLevel, category filters (all Gemini-specific).
-- **Add:** Style picker — grid of style cards from `GET /api/styles` showing preview image + name + short description. One card selected at a time. Default selected = theme's `defaultStyleId`.
-- **Add:** Subject textarea with tooltip teaching the "describe what, not how" rule.
-- **Add:** Optional negative prompt field (collapsed by default) — additions to the style's negative, not a replacement. Labeled "Things to avoid (optional)".
-- **Keep:** Generate button, preview, gallery, download, lightbox, quick prompts.
-- **Add:** "What's a Style?" link → modal explaining styles in plain language. The word "LoRA" appears nowhere in this surface.
-
-**No background-removal toggle, no upscale toggle, no re-process button.** BG removal + Pixel Snap run inline on every generation (Plan 3.7). They are invisible to the user.
+#### 3.9 Sprite Generator UI Rework ✅
+- `SpriteGenerator.tsx` — style picker grid, subject textarea, "What's a Style?" modal, quick prompts, gallery, lightbox, download
+- `StepStyle.tsx` (QuestCreate wizard) — fetches styles from API, card grid with category badges
+- `spriteApi.ts` — `getStyles()`, `generateSprite(prompt, styleId, negativePrompt?)`, `watchSpriteJob()`
+- `SpriteJobContext.tsx` — navigation-persistent job tracking via localStorage; reconnects SSE on page load; auto-writes results back to character/reward records via `updateCharacterImage`/`updateRewardImage`
+- `CharacterDetailPanel.tsx`, `RewardDetailPanel.tsx` (QuestBuilder) — inline image generation using `useSpriteJobs`, unsaved-changes guard, lightbox
 
 #### 3.10 Admin: Styles Read-Only View ⬜
-- Admin page `pages/Admin/Styles/` — read-only list of `STYLES` showing all fields (checkpoint, LoRA list with strengths, trigger words, sampler) for debugging.
-- No edit/upload/delete. To change styles, edit `config/styles.ts` and redeploy.
+- Admin page `pages/Admin/Styles/` — list of `SpriteStyle` docs from DB showing all fields (checkpoint, LoRA list with strengths, trigger words, sampler params) for debugging
+- No edit/upload/delete — to change styles, update `seedThemes.ts` and restart
 - Useful for confirming "is `cb_pixel` actually using the right checkpoint in this environment?"
 
 ---
@@ -1672,9 +1471,9 @@ Final negative: `style.negativePrompt` (always) `+ ", " + userExtraNegative` (if
 #### Why this matters
 
 The current code path has three problems:
-1. `loraService.ts` exports a shared `DEFAULT_NEGATIVE` constant. It includes phrases like "human face", "human hands", "symmetrical body", "bright happy colors" — which actively fight Cassette Beasts-style creatures (often colorful, often symmetrical, often have faces). The negative is sabotaging the generation. Per-style negatives fix this.
-2. The user is implicitly expected to write style cues ("pixel art, vibrant, detailed") in their prompt. This is brittle and inconsistent — different users will write different cues and get different results from the same style. Moving style cues into the Style config makes generations reproducible.
-3. The trigger word is currently prepended manually in `patchLoraWorkflow` ([loraService.ts:48](backend/src/services/generation/loraService.ts#L48)). Centralizing in the composer makes it consistent and testable, and the worker stops knowing about prompt strings at all.
+1. The old `loraService.ts` (now deleted) exported a shared `DEFAULT_NEGATIVE` constant with phrases like "human face", "human hands", "symmetrical body", "bright happy colors" — which actively fought Cassette Beasts-style creatures (often colorful, often symmetrical, often have faces). Per-style negatives in `SpriteStyle.promptSuffix` fix this.
+2. The user is implicitly expected to write style cues ("pixel art, vibrant, detailed") in their prompt. This is brittle and inconsistent — different users will write different cues and get different results from the same style. Moving style cues into `SpriteStyle.promptPrefix` makes generations reproducible.
+3. The trigger word is now collected from `style.loras[].triggerWord` entries in `imagePromptComposer.ts`. Centralizing in the composer makes it consistent and testable, and the worker never touches prompt strings directly.
 
 #### User-facing rule
 
@@ -1854,26 +1653,23 @@ Without prompt architecture defined upfront, every generation endpoint reinvents
 | 2.1 | Create GameTheme model + seed both themes | ✅ | `models/gameThemeModel.ts`, `seedThemes.ts` |
 | 2.2 | Add themeId + exportFormat to questline | ✅ | `models/questlineModel.ts` |
 | 2.3 | Theme-aware quest generation (all 3 endpoints) | ✅ | `controllers/questGenerationController.ts` |
-| 2.4 | ComfyUI LoRA service + cbstyle workflow | ✅ | `services/generation/loraService.ts` |
+| 2.4 | ComfyUI generation service + cbstyle workflow (loraService.ts, now deleted; replaced by generationService.ts in Phase 3.5) | ✅ | `services/generation/generationService.ts` |
 | 2.5 | Build KB files + create Bedrock agents in AWS | ⬜ | Done in Phase 6 admin panel |
 
-### Phase 3: Sprite Generator Rework ⬜ IN PROGRESS
+### Phase 3: Sprite Generator Rework ✅ COMPLETE (except 3.10)
 
 | # | Task | Depends On | Files | Status |
 |---|------|------------|-------|--------|
-| 3.1 | (built) ComfyUI service + worker | — | `services/generation/loraService.ts`, `workers/spriteWorker.ts` | ✅ |
-| 3.2 | (built) SpriteJobData types | — | `queues/spriteQueue.ts`, `controllers/spriteController.ts` | ✅ |
-| 3.3 | (built) SpriteModel (styleId + negativePrompt) | — | `models/spriteModel.ts` | ✅ |
-| 3.4 | Static Style Catalog (config + types) | — | `backend/src/config/styles.ts` | ⬜ |
-| 3.4-mig | ThemeConfig migration → `defaultStyleId` | 3.4 | `models/themeConfigModel.ts`, migration script | ⬜ |
-| 3.5 | Generalize workflow into `sdxl_power_lora.json` (Power Lora Loader, DMD2 always); rename `loraService` → `generationService`; delete `base.json` + `DEFAULT_NEGATIVE` | 3.4 | `services/generation/workflows/sdxl_power_lora.json`, `services/generation/generationService.ts` | ⬜ |
-| 3.6 | Image prompt composer (positive/negative + `loras[]`) | 3.4 | `services/generation/imagePromptComposer.ts` | ⬜ |
-| 3.7a | Append always-on `easy imageRemBg` node to `sdxl_power_lora.json`; install ComfyUI-Easy-Use custom node pack on ComfyUI host (BG removal only — snap moved to worker, see 3.7b) | 3.5 | `services/generation/workflows/sdxl_power_lora.json`, `backend/src/config/README.md` (install doc) | ⬜ |
-| 3.7b | Vendor Hugo-Dz/spritefusion-pixel-snapper as a git submodule under `backend/vendor/pixel-snapper/`; add `npm run build:pixel-snapper` (runs `wasm-pack build --target nodejs --release`); commit the resulting `pkg/` to the repo | — | `backend/vendor/pixel-snapper/` (submodule), `backend/package.json` (script), CI config | ⬜ |
-| 3.7c | `pixelSnapper.ts` Node wrapper — `snapAndResize(buf, targetSize, kColors?)` calling WASM `process_image` then `sharp` crop-to-128 + nearest-neighbor resize to targetSize | 3.7b | `backend/src/services/generation/pixelSnapper.ts` | ⬜ |
-| 3.7d | Wire `pixelSnapper.snapAndResize` into the sprite worker post-generation; resolve `targetSize` per Plan 3.7.4 order; record `snapSize` on each candidate | 3.7c, Plan 4.2 | `backend/src/workers/spriteWorker.ts` | ⬜ |
-| 3.8 | Styles API endpoint (read-only) | 3.4 | `routes/stylesRoute.ts` | ⬜ |
-| 3.9 | Rework Sprite Generator UI (style picker, subject textarea — no post-process toggles) | 3.6, 3.8 | `pages/SpriteGenerator/SpriteGenerator.tsx` | ⬜ |
+| 3.1 | Generation service — `generateWithStyle(composed, workflowTemplate, patchMap)` | — | `services/generation/generationService.ts` | ✅ |
+| 3.2 | Sprite worker — DB style lookup, conditional pixel snap | — | `workers/spriteWorker.ts`, `controllers/spriteController.ts` | ✅ |
+| 3.3 | SpriteModel (styleId + negativePrompt + positivePrompt) | — | `models/spriteModel.ts` | ✅ |
+| 3.4 | SpriteStyle DB model + 4 seeded styles with embedded workflows + Checkpoint/Lora registries | — | `models/spriteStyleModel.ts`, `models/checkpointModel.ts`, `models/loraModel.ts`, `models/seedThemes.ts` | ✅ |
+| 3.4-mig | ThemeConfig uses `defaultStyleId`; seeds updated | 3.4 | `models/themeConfigModel.ts`, `models/seedThemes.ts` | ✅ |
+| 3.5 | Per-style workflow templates in DB + `workflowPatchMap`; `loraService.ts` deleted; `base.json` deleted | 3.4 | `models/spriteStyleModel.ts` (embedded), `services/generation/generationService.ts` | ✅ |
+| 3.6 | Image prompt composer (`ResolvedStyle` → `ComposedImagePrompt`) | 3.4 | `services/generation/imagePromptComposer.ts` | ✅ |
+| 3.7 | RMBG in `cb_pixel` workflow; pixel snapper WASM (alpha-threshold + dynamic pixelSize + crop + resize); conditional snap in worker | 3.5 | `services/generation/pixelSnapper.ts`, `backend/vendor/pixel-snapper/pkg/` | ✅ |
+| 3.8 | Styles API endpoint (`GET /styles` from DB) | 3.4 | `routes/stylesRoute.ts` | ✅ |
+| 3.9 | Sprite Generator UI (style picker, subject textarea, "What's a Style?" modal); StepStyle wizard; SpriteJobContext with localStorage persistence; QuestBuilder character/reward panels | 3.6, 3.8 | `pages/SpriteGenerator/SpriteGenerator.tsx`, `pages/QuestCreate/components/StepStyle.tsx`, `context/SpriteJobContext.tsx`, `pages/QuestBuilder/components/CharacterDetailPanel.tsx`, `pages/QuestBuilder/components/RewardDetailPanel.tsx` | ✅ |
 | 3.10 | Admin: Styles read-only view | 3.8 | `pages/Admin/Styles/` | ⬜ |
 
 ### Phase 4: Character & Monster Pipeline ⬜
@@ -2050,12 +1846,9 @@ backend/src/
 │   │   ├── composer.ts                ⬜ system + context + task → ComposedPrompt
 │   │   └── retrieval.ts               ⬜ KB retrieval policy per task type
 │   ├── generation/
-│   │   ├── generationService.ts       ⬜ renamed from loraService.ts (Phase 3.5) — generateWithStyle
-│   │   ├── imagePromptComposer.ts     ⬜ NEW (Phase 3.6 / 11.7) — positive/negative + BACKGROUND_PHRASE + loras[]
-│   │   ├── pixelSnapper.ts            ⬜ NEW (Phase 3.7c) — WASM snap + sharp crop/resize wrapper
-│   │   ├── workflows/
-│   │   │   ├── sdxl_power_lora.json   ⬜ NEW (Phase 3.5) — generalized from cbstyle.json; ends in RMBG (Pixel Snap moved to worker)
-│   │   │   └── cbstyle.json           ✅ Power Lora Loader + DMD2 + RMBG (Pixel Snap moved to worker)
+│   │   ├── generationService.ts       ✅ generateWithStyle(composed, workflowTemplate, patchMap)
+│   │   ├── imagePromptComposer.ts     ✅ positive/negative + BACKGROUND_PHRASE; triggers from style.loras[]
+│   │   ├── pixelSnapper.ts            ✅ WASM snap + sharp alpha-threshold + crop/resize
 │   │   ├── agents/
 │   │   │   └── characterAgent.ts      ⬜ NEW (Plan 4) — generateLore / generateAppearance / generateStats
 │   │   └── pixelLabService.ts         ⬜ NEW (Plan 4 — invoked only when user clicks "Generate Animations")
