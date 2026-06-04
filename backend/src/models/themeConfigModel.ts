@@ -14,12 +14,7 @@ export interface IThemeConfig extends Document {
   displayName: string;
   description: string;
   category: 'game' | 'style';
-  bedrockAgentId: string;
-  bedrockAliasId: string;
-  knowledgeBaseId: string;
-  s3KBPath: string;
-  loraModelPath: string;
-  loraTriggerWord: string;
+  defaultStyleId: string;
   defaultExportFormat: string;
   availableExportFormats: string[];
   spriteSpecs: ISpriteSpecs;
@@ -36,13 +31,7 @@ const ThemeConfigSchema = new Schema<IThemeConfig>(
     description: { type: String, default: '' },
     category:    { type: String, enum: ['game', 'style'], default: 'style' },
 
-    bedrockAgentId:  { type: String, default: '' },
-    bedrockAliasId:  { type: String, default: '' },
-    knowledgeBaseId: { type: String, default: '' },
-    s3KBPath:        { type: String, default: '' },
-
-    loraModelPath:   { type: String, default: '' },
-    loraTriggerWord: { type: String, default: '' },
+    defaultStyleId: { type: String, default: 'none' },
 
     defaultExportFormat:     { type: String, default: 'json' },
     availableExportFormats:  { type: [String], default: ['json'] },
