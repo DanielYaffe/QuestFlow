@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Loader2, ImageOff } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
-import { QuestStyle, getQuestStyles } from '../../../api/questStyleApi';
+import { getStyles, SpriteStyle } from '../../../api/spriteApi';
 
-const tierBadge: Record<QuestStyle['tier'], { label: string; color: string } | null> = {
-  free: null,
-  pro:  { label: 'Pro',  color: 'bg-purple-600 text-white' },
-  plus: { label: 'Plus', color: 'bg-amber-500 text-white' },
+const categoryBadge: Record<SpriteStyle['category'], { label: string; color: string }> = {
+  pixel:       { label: 'Pixel Art',  color: 'bg-emerald-600 text-white' },
+  illustrated: { label: 'Illustrated', color: 'bg-blue-600 text-white' },
+  realistic:   { label: 'Realistic',   color: 'bg-amber-500 text-white' },
+  raw:         { label: 'Raw SDXL',    color: 'bg-zinc-600 text-white' },
 };
 
 interface StepStyleProps {
@@ -17,11 +18,11 @@ interface StepStyleProps {
 }
 
 export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepStyleProps) {
-  const [styles, setStyles] = useState<QuestStyle[]>([]);
+  const [styles, setStyles] = useState<SpriteStyle[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getQuestStyles()
+    getStyles()
       .then(setStyles)
       .catch(() => setStyles([]))
       .finally(() => setLoading(false));
@@ -33,7 +34,7 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
 
       <div className="text-center flex flex-col gap-2">
         <h2 className="text-3xl font-bold text-white">Choose your visual style</h2>
-        <p className="text-zinc-400">This shapes the atmosphere and tone of your generated questline</p>
+        <p className="text-zinc-400">This sets the art direction for your sprites and characters</p>
       </div>
 
       {loading ? (
@@ -44,12 +45,12 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
         <div className="flex-1 min-h-0 overflow-y-auto pr-1">
           <div className="grid grid-cols-2 gap-4">
             {styles.map((style) => {
-              const isSelected = selectedStyleId === style._id;
-              const badge = tierBadge[style.tier];
+              const isSelected = selectedStyleId === style.id;
+              const badge = categoryBadge[style.category];
               return (
                 <button
-                  key={style._id}
-                  onClick={() => onSelect(style._id)}
+                  key={style.id}
+                  onClick={() => onSelect(style.id)}
                   className={`relative rounded-2xl border-2 overflow-hidden text-left transition-all group ${
                     isSelected
                       ? 'border-purple-500 ring-2 ring-purple-500/30'
@@ -58,11 +59,12 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
                 >
                   {/* Thumbnail */}
                   <div className="relative aspect-video bg-zinc-800 overflow-hidden">
-                    {style.imageUrl ? (
+                    {style.previewImagePath ? (
                       <img
-                        src={style.imageUrl}
+                        src={style.previewImagePath}
                         alt={style.name}
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -77,12 +79,10 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
                       </div>
                     )}
 
-                    {/* Tier badge */}
-                    {badge && (
-                      <div className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-xs font-semibold ${badge.color}`}>
-                        {badge.label}
-                      </div>
-                    )}
+                    {/* Category badge */}
+                    <div className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-xs font-semibold ${badge.color}`}>
+                      {badge.label}
+                    </div>
                   </div>
 
                   {/* Info */}

@@ -1,31 +1,41 @@
 /// <reference types="vite/client" />
 import api from './axiosInstance';
 
-export interface SpriteFilters {
-  artStyle: string;
-  perspective: string;
-  aspectRatio: string;
-  background: string;
-  colorPalette: string;
-  detailLevel: string;
-  category: string;
+export interface SpriteStyle {
+  id: string;
+  name: string;
+  description: string;
+  previewImagePath: string;
+  category: 'pixel' | 'illustrated' | 'realistic' | 'raw';
+  defaultDimensions: { width: number; height: number };
 }
 
 export interface SpriteRecord {
   _id: string;
-  imageUrl: string;  // presigned URL — for display only, expires
-  imageKey: string;  // S3 key — persist this to DB
+  imageUrl: string;
+  imageKey?: string;  // present in job results; omitted from gallery listing
   userPrompt: string;
-  fullPrompt: string;
-  filters: SpriteFilters;
+  positivePrompt: string;
+  negativePrompt: string;
+  styleId: string;
   createdAt: string;
+}
+
+export async function getStyles(): Promise<SpriteStyle[]> {
+  const { data } = await api.get<SpriteStyle[]>('/styles');
+  return data;
 }
 
 export async function generateSprite(
   prompt: string,
-  filters: Partial<SpriteFilters>,
+  styleId: string,
+  negativePrompt?: string,
 ): Promise<{ jobId: string }> {
-  const { data } = await api.post<{ jobId: string }>('/sprites/generate', { prompt, filters });
+  const { data } = await api.post<{ jobId: string }>('/sprites/generate', {
+    prompt,
+    styleId,
+    negativePrompt: negativePrompt || undefined,
+  });
   return data;
 }
 

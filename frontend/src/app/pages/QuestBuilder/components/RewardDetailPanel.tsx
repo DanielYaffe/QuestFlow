@@ -218,11 +218,7 @@ export function RewardDetailPanel({
         const style = styles.find((s) => s._id === questStyleId);
         if (style?.promptSuffix) prompt += `. ${style.promptSuffix}`;
       }
-      const { jobId } = await generateSprite(prompt, {
-        category: 'item',
-        detailLevel: 'detailed',
-        background: 'transparent',
-      });
+      const { jobId } = await generateSprite(prompt, 'none');
       // Register at app level — SSE survives navigation
       registerJob(jobId, {
         label: title,

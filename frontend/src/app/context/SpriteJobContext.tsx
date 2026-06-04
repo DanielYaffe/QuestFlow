@@ -87,9 +87,9 @@ export function SpriteJobProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(timeoutId);
         cleanups.current.delete(jobId);
         clearPersistedJob(jobId);
-        if (action?.type === 'character') {
+        if (action?.type === 'character' && result.imageKey) {
           await updateCharacterImage(action.questlineId, action.entityId, result.imageKey).catch(() => {});
-        } else if (action?.type === 'reward') {
+        } else if (action?.type === 'reward' && result.imageKey) {
           await updateRewardImage(action.questlineId, action.entityId, result.imageKey).catch(() => {});
         }
         meta?.onDone?.(result);
