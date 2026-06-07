@@ -13,14 +13,11 @@ interface StepOutputProps {
   selectedRewards: string[];
   characters: GeneratedCharacter[];
   styleId: string;
+  templateId: string;
+  templateName: string;
+  onGenerated?: () => void;
   onBack: () => void;
 }
-
-const RARITY_COLORS = {
-  common: 'text-zinc-400 border-zinc-600',
-  rare:   'text-blue-400 border-blue-600',
-  epic:   'text-purple-400 border-purple-600',
-};
 
 export function StepOutput({
   story,
@@ -31,6 +28,9 @@ export function StepOutput({
   selectedRewards,
   characters,
   styleId,
+  templateId,
+  templateName,
+  onGenerated,
   onBack,
 }: StepOutputProps) {
   const navigate = useNavigate();
@@ -51,7 +51,9 @@ export function StepOutput({
         filteredRewards,
         characters,
         styleId,
+        templateId || undefined,
       );
+      onGenerated?.();
       navigate(`/quest-builder/${id}`);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : 'Failed to generate questline');
@@ -75,6 +77,7 @@ export function StepOutput({
           <p className="text-zinc-500 text-xs uppercase tracking-wider mb-2">Story</p>
           <p className="text-zinc-300 text-sm line-clamp-3">{story}</p>
           <p className="text-zinc-500 text-xs mt-1">Genre: {genre} · Characters: {characters.length}</p>
+          <p className="text-zinc-500 text-xs mt-1">Template: {templateName || 'No template'}</p>
         </div>
 
         {/* Objectives */}
@@ -104,7 +107,7 @@ export function StepOutput({
             {filteredRewards.map((r) => (
               <span
                 key={r.id}
-                className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${RARITY_COLORS[r.rarity] ?? 'text-zinc-400 border-zinc-600'}`}
+                className="px-2.5 py-1 rounded-lg border border-amber-600/50 text-xs font-medium text-amber-300 bg-amber-500/10"
               >
                 {r.title}
               </span>

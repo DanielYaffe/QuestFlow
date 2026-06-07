@@ -7,6 +7,11 @@ interface QuestlineState {
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
   nextNodeId: number;
+  template?: {
+    id: string;
+    name: string;
+    snapshot: unknown;
+  } | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -16,6 +21,7 @@ export function useQuestlineData(questlineId: string): QuestlineState {
     nodes: [],
     edges: [],
     nextNodeId: 1,
+    template: null,
     isLoading: true,
     error: null,
   });

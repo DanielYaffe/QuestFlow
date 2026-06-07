@@ -16,12 +16,6 @@ import { Reward, updateReward, updateRewardImage } from '../../../api/projectSid
 import { generateSprite } from '../../../api/spriteApi';
 import { getQuestStyles } from '../../../api/questStyleApi';
 
-const rarityColor: Record<string, string> = {
-  common: 'text-zinc-400 bg-zinc-700/50 border-zinc-600',
-  rare:   'text-blue-300 bg-blue-500/10 border-blue-500/40',
-  epic:   'text-purple-300 bg-purple-500/10 border-purple-500/40',
-};
-
 interface EditableFieldProps {
   label: string;
   value: string;
@@ -212,7 +206,7 @@ export function RewardDetailPanel({
     setIsGenerating(true);
     setGenError('');
     try {
-      let prompt = `${title} — a ${reward.rarity} quest reward item, ${description}`;
+      let prompt = `${title} — a quest reward item, ${description}`;
       if (questStyleId) {
         const styles = await getQuestStyles();
         const style = styles.find((s) => s._id === questStyleId);
@@ -269,9 +263,6 @@ export function RewardDetailPanel({
       <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-800 flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <h3 className="text-white font-medium truncate">{reward.title}</h3>
-          <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 capitalize ${rarityColor[reward.rarity]}`}>
-            {reward.rarity}
-          </span>
           {isDirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Unsaved changes" />}
         </div>
         <button onClick={requestClose} className="text-zinc-500 hover:text-white transition-colors flex-shrink-0 ml-2">

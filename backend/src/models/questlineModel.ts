@@ -20,6 +20,33 @@ export interface IQuestNode {
   npcIds: string[];
   monsterIds: string[];
   rewardIds: string[];
+  exportFields: IQuestNodeExportFields;
+  templateValues: Record<string, unknown>;
+}
+
+export interface IQuestExportTarget {
+  id: number;
+  amount: number;
+}
+
+export interface IQuestExportCollectTarget {
+  itemId: number;
+  amount: number;
+}
+
+export interface IQuestExportRewardItem {
+  id: number;
+  amount: number;
+}
+
+export interface IQuestNodeExportFields {
+  questId?: number;
+  silent: boolean;
+  preQuest: number[];
+  daily: boolean;
+  toKill: IQuestExportTarget[];
+  toCollect: IQuestExportCollectTarget[];
+  rewardItems: IQuestExportRewardItem[];
 }
 
 export interface IQuestEdge {
@@ -80,6 +107,9 @@ export interface IQuestline extends Document {
   genre: string;
   storyPrompt: string;
   styleId: string;
+  templateId?: string;
+  templateName?: string;
+  templateSnapshot?: unknown;
   ownerId: string;
   nodes: IQuestNode[];
   edges: IQuestEdge[];
@@ -103,6 +133,16 @@ const QuestNodeSchema = new Schema<IQuestNode>({
   npcIds:     { type: [String], default: [] },
   monsterIds: { type: [String], default: [] },
   rewardIds:  { type: [String], default: [] },
+  templateValues: { type: Schema.Types.Mixed, default: {} },
+  exportFields: {
+    questId:     { type: Number },
+    silent:      { type: Boolean, default: true },
+    preQuest:    { type: [Number], default: [-1] },
+    daily:       { type: Boolean, default: false },
+    toKill:      { type: [{ id: Number, amount: Number, _id: false }], default: [] },
+    toCollect:   { type: [{ itemId: Number, amount: Number, _id: false }], default: [] },
+    rewardItems: { type: [{ id: Number, amount: Number, _id: false }], default: [] },
+  },
 });
 
 const QuestEdgeSchema = new Schema<IQuestEdge>({
@@ -206,6 +246,9 @@ const QuestlineSchema = new Schema<IQuestline>(
     genre:       { type: String, default: '' },
     storyPrompt: { type: String, default: '' },
     styleId:     { type: String, default: '' },
+    templateId:   { type: String, default: '' },
+    templateName: { type: String, default: '' },
+    templateSnapshot: { type: Schema.Types.Mixed },
     ownerId:     { type: String, required: true, index: true },
     nodes:       { type: [QuestNodeSchema], default: [] },
     edges:       { type: [QuestEdgeSchema], default: [] },

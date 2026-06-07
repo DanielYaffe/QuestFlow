@@ -66,9 +66,22 @@ type PendingNode = { sourceNodeId: string; position: 'top' | 'bottom' | 'left' |
 
 type QuestFlowNode = Node<QuestNodeData>;
 
+function defaultExportFields(nodeId: string) {
+  const numericId = Number(nodeId);
+  return {
+    questId: Number.isFinite(numericId) ? numericId : undefined,
+    silent: true,
+    preQuest: [-1],
+    daily: false,
+    toKill: [],
+    toCollect: [],
+    rewardItems: [],
+  };
+}
+
 export function QuestBuilder() {
   const { questlineId = '' } = useParams<{ questlineId: string }>();
-  const { nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, isLoading, error } = useQuestlineData(questlineId);
+  const { nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, template, isLoading, error } = useQuestlineData(questlineId);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<QuestFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -163,7 +176,7 @@ export function QuestBuilder() {
         id: newNodeId,
         type: 'questNode',
         position: positionMap[position],
-        data: { ...data, layoutDirection, onAddPath: (pos) => requestNewNode(newNodeId, pos) },
+        data: { ...data, exportFields: defaultExportFields(newNodeId), templateValues: {}, layoutDirection, onAddPath: (pos) => requestNewNode(newNodeId, pos) },
       };
 
       setNodes((nds) => [...nds, newNode]);
@@ -222,6 +235,8 @@ export function QuestBuilder() {
               npcIds:     (node.data.npcIds     as string[]) ?? [],
               monsterIds: (node.data.monsterIds as string[]) ?? [],
               rewardIds:  (node.data.rewardIds  as string[]) ?? [],
+              exportFields: node.data.exportFields,
+              templateValues: node.data.templateValues as Record<string, unknown> | undefined,
             },
           });
         }
@@ -394,6 +409,7 @@ export function QuestBuilder() {
         isOpen={editingNode !== null}
         node={editingNode?.snapshot ?? null}
         questlineId={questlineId}
+        template={template ?? null}
         onClose={() => setEditingNode(null)}
         onApply={(updated) => {
           if (editingNode) updateNode(editingNode.id, updated);

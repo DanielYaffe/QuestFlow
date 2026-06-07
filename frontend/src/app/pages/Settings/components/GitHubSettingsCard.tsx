@@ -48,10 +48,16 @@ export function GitHubSettingsCard() {
     try {
       const updated = await updateGitSettings(payload);
       setHasToken(updated.hasToken);
-      reset({ ...values, token: '' });
+      reset({
+        token: '',
+        repoOwner: updated.repoOwner,
+        repoName: updated.repoName,
+        defaultBranch: updated.defaultBranch || 'main',
+        defaultFilePath: updated.defaultFilePath,
+      });
       toast.success('GitHub settings saved');
-    } catch {
-      toast.error('Failed to save settings');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to save settings');
     }
   };
 
@@ -86,6 +92,7 @@ export function GitHubSettingsCard() {
             className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 text-sm"
           />
           <p className="text-zinc-500 text-xs mt-1">
+            {hasToken && <span className="text-green-400">A token is saved. Leave this blank to keep it. </span>}
             Needs <code className="text-zinc-400">repo</code> scope.{' '}
             Generate one at GitHub → Settings → Developer settings → Personal access tokens.
           </p>

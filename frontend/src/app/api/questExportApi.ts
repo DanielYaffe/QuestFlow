@@ -5,7 +5,10 @@ export type Format =
   | 'questflow-yaml'
   | 'unity-asset'
   | 'unreal-datatable'
-  | 'godot-tres';
+  | 'godot-tres'
+  | 'template-json'
+  | 'template-yaml'
+  | 'template-xml';
 
 export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'questflow-json',   label: 'QuestFlow JSON' },
@@ -13,14 +16,18 @@ export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'unity-asset',      label: 'Unity ScriptableObject (.asset)' },
   { id: 'unreal-datatable', label: 'Unreal DataTable (.json)' },
   { id: 'godot-tres',       label: 'Godot Resource (.tres)' },
+  { id: 'template-yaml',    label: 'Quest Template YAML' },
+  { id: 'template-json',    label: 'Quest Template JSON' },
+  { id: 'template-xml',     label: 'Quest Template XML' },
 ];
 
 export async function previewExport(
   questlineId: string,
   format: Format,
-): Promise<{ filename: string; content: string }> {
+  options: { templateId?: string; nodeIds?: string[] } = {},
+): Promise<{ filename: string; content: string; files?: { filename: string; content: string }[] }> {
   const { data } = await api.get(`/questlines/${questlineId}/export/preview`, {
-    params: { format },
+    params: { format, templateId: options.templateId, nodeIds: options.nodeIds?.join(',') },
   });
   return data;
 }
@@ -28,9 +35,10 @@ export async function previewExport(
 export async function downloadExport(
   questlineId: string,
   format: Format,
+  options: { templateId?: string; nodeIds?: string[] } = {},
 ): Promise<void> {
   const response = await api.get(`/questlines/${questlineId}/export`, {
-    params: { format },
+    params: { format, templateId: options.templateId, nodeIds: options.nodeIds?.join(',') },
     responseType: 'blob',
   });
 
@@ -69,12 +77,17 @@ function getExtension(format: Format): string {
     'unity-asset':      '.asset',
     'unreal-datatable': '.json',
     'godot-tres':       '.tres',
+    'template-json':    '.json',
+    'template-yaml':    '.yaml',
+    'template-xml':     '.xml',
   };
   return map[format];
 }
 
 export interface PushToGithubPayload {
   format: Format;
+  templateId?: string;
+  nodeIds?: string[];
   repoOwner?: string;
   repoName?: string;
   branch?: string;

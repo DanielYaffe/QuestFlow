@@ -94,6 +94,8 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
     npcIds:     (n.npcIds     ?? []).map(remap),
     monsterIds: (n.monsterIds ?? []).map(remap),
     rewardIds:  (n.rewardIds  ?? []).map(remap),
+    ...(Object.keys(n.templateValues ?? {}).length > 0 ? { templateValues: n.templateValues } : {}),
+    exportFields: n.exportFields,
   }));
 
   const edges: CanonicalEdge[] = questline.edges.map((e) => ({

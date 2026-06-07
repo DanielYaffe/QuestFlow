@@ -12,12 +12,35 @@ const formatSchema = z.enum([
   'unity-asset',
   'unreal-datatable',
   'godot-tres',
+  'template-json',
+  'template-yaml',
+  'template-xml',
 ]);
 
 function parseFormat(raw: unknown): Format | null {
   const value = Array.isArray(raw) ? raw[0] : raw;
   const result = formatSchema.safeParse(value);
   return result.success ? (result.data as Format) : null;
+}
+
+function parseString(raw: unknown): string | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function parseNodeIds(raw: unknown): string[] | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  return value.split(',').map((id) => id.trim()).filter(Boolean);
+}
+
+function slugifySegment(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'questline';
 }
 
 // GET /questlines/:id/export/preview?format=
@@ -28,8 +51,11 @@ export async function previewExport(req: QuestlineRequest, res: Response): Promi
     return;
   }
   try {
-    const result = await exportQuestline(String(req.params.id), format);
-    res.json({ filename: result.filename, content: result.content });
+    const result = await exportQuestline(String(req.params.id), format, {
+      templateId: parseString(req.query.templateId),
+      nodeIds: parseNodeIds(req.query.nodeIds),
+    });
+    res.json({ filename: result.filename, content: result.content, files: result.files });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
   }
@@ -43,7 +69,10 @@ export async function downloadExport(req: QuestlineRequest, res: Response): Prom
     return;
   }
   try {
-    const result = await exportQuestline(String(req.params.id), format);
+    const result = await exportQuestline(String(req.params.id), format, {
+      templateId: parseString(req.query.templateId),
+      nodeIds: parseNodeIds(req.query.nodeIds),
+    });
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.setHeader('Content-Type', result.mimeType);
     res.send(result.content);
@@ -62,6 +91,8 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
     branch: bodyBranch,
     filePath: bodyFilePath,
     commitMessage,
+    templateId,
+    nodeIds,
   } = req.body as {
     format: string;
     repoOwner?: string;
@@ -69,6 +100,8 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
     branch?: string;
     filePath?: string;
     commitMessage?: string;
+    templateId?: string;
+    nodeIds?: string[];
   };
 
   const parsedFormat = parseFormat(format);
@@ -94,23 +127,31 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
       return;
     }
 
-    const { filename, content } = await exportQuestline(String(req.params.id), parsedFormat);
+    const result = await exportQuestline(String(req.params.id), parsedFormat, {
+      templateId,
+      nodeIds,
+    });
     // Strip both leading and trailing slashes so a user-supplied path like
     // "/Assets/Quests/" never produces a double-slash in the GitHub API URL.
     const baseDir = (bodyFilePath ?? g.defaultFilePath ?? '').replace(/^\/+|\/+$/g, '');
-    const filePath = baseDir ? `${baseDir}/${filename}` : filename;
+    const questlineFolder = `${slugifySegment(req.questline?.title ?? 'questline')}-${String(req.params.id).slice(-6)}`;
+    const files = result.files?.length ? result.files : [{ filename: result.filename, content: result.content }];
+    const usedPaths: string[] = [];
 
-    const usedPath = await pushFile({
-      token: decrypt(g.encryptedToken!),
-      owner,
-      repo,
-      branch,
-      filePath,
-      content,
-      commitMessage: commitMessage ?? `Update ${req.questline?.title ?? 'quest'}`,
-    });
+    for (const file of files) {
+      const usedPath = await pushFile({
+        token: decrypt(g.encryptedToken!),
+        owner,
+        repo,
+        branch,
+        filePath: [baseDir, questlineFolder, file.filename].filter(Boolean).join('/'),
+        content: file.content,
+        commitMessage: commitMessage ?? `Update ${req.questline?.title ?? 'quest'}`,
+      });
+      usedPaths.push(usedPath);
+    }
 
-    res.json({ message: `Pushed to ${owner}/${repo} → ${branch}:${usedPath}` });
+    res.json({ message: `Pushed ${usedPaths.length} file(s) to ${owner}/${repo} → ${branch}:${questlineFolder}`, paths: usedPaths });
   } catch (error: any) {
     res.status(500).json({ error: error?.message ?? 'Push failed' });
   }

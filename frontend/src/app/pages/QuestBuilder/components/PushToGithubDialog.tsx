@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Github, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,6 +16,8 @@ interface PushToGithubDialogProps {
   onClose: () => void;
   questlineId: string;
   format: Format;
+  templateId?: string;
+  nodeIds?: string[];
 }
 
 interface FormValues {
@@ -26,15 +28,13 @@ interface FormValues {
   commitMessage: string;
 }
 
-export function PushToGithubDialog({ isOpen, onClose, questlineId, format }: PushToGithubDialogProps) {
+export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templateId, nodeIds }: PushToGithubDialogProps) {
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<FormValues>({
     defaultValues: { repoOwner: '', repoName: '', branch: 'main', filePath: '', commitMessage: 'Update quest' },
   });
 
-  const settingsLoadedRef = useRef(false);
   useEffect(() => {
-    if (!isOpen || settingsLoadedRef.current) return;
-    settingsLoadedRef.current = true;
+    if (!isOpen) return;
     getGitSettings()
       .then((s) => {
         reset((prev) => ({
@@ -52,6 +52,8 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format }: Pus
     try {
       const res = await pushToGithub(questlineId, {
         format,
+        templateId,
+        nodeIds,
         repoOwner:     values.repoOwner || undefined,
         repoName:      values.repoName  || undefined,
         branch:        values.branch    || undefined,
