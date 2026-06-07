@@ -5,6 +5,7 @@ import { AuthRequest } from '../middlewares/authMiddleware';
 import SpriteModel from '../models/spriteModel';
 import { uploadBufferToS3, getPresignedUrl } from '../utils/s3Helper';
 import { createJob, getJob, completeJob, failJob, JobResult } from '../utils/jobQueue';
+import { getProjectId } from '../utils/projectScope';
 
 // ---------------------------------------------------------------------------
 // Filter types (mirrored from frontend)
@@ -158,6 +159,7 @@ export async function generateSprite(req: AuthRequest, res: Response) {
   // Capture everything we need before yielding to the event loop
   const jobId = job.id;
   const capturedUserId = userId;
+  const capturedProjectId = getProjectId(req);
   const capturedPrompt = prompt;
   const capturedFilters = filters;
 
@@ -219,6 +221,7 @@ export async function generateSprite(req: AuthRequest, res: Response) {
       // 3. Save the key (permanent) to MongoDB
       const sprite = await SpriteModel.create({
         ownerId:    capturedUserId,
+        projectId:  capturedProjectId,
         userPrompt: capturedPrompt.trim(),
         fullPrompt,
         imageUrl:   imageKey,   // stored as key, presigned on read
@@ -317,7 +320,10 @@ export async function getSprites(req: AuthRequest, res: Response) {
   }
 
   try {
-    const sprites = await SpriteModel.find({ ownerId: userId })
+    const filter: Record<string, unknown> = { ownerId: userId };
+    const projectId = getProjectId(req);
+    if (projectId) filter.projectId = projectId;
+    const sprites = await SpriteModel.find(filter)
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();

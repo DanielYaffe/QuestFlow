@@ -5,6 +5,7 @@ import bodyParser from "body-parser";
 import { config } from "./config/config";
 import authRouter from "./routes/authRoute";
 import questlineRouter from "./routes/questlineRoute";
+import projectRouter from "./routes/projectRoute";
 import questGenerationRouter from "./routes/questGenerationRoute";
 import spriteRouter from "./routes/spriteRoute";
 import questStyleRouter from "./routes/questStyleRoute";
@@ -14,6 +15,7 @@ import exportTemplateRouter from "./routes/exportTemplateRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import { seedBuiltInExportTemplates } from "./models/exportTemplateModel";
+import { ensureDefaultProjects } from "./controllers/projectController";
 import cors from "cors";
 import "./config/passport";
 import { authenticate } from "./middlewares/authMiddleware";
@@ -36,6 +38,7 @@ app.use(cors())
 app.use('/auth', authRouter);
 app.use(authenticate);
 app.use('/questlines', questlineRouter);
+app.use('/projects', projectRouter);
 app.use('/quests', questGenerationRouter);
 app.use('/sprites', spriteRouter);
 app.use('/quest-styles', questStyleRouter);
@@ -60,6 +63,7 @@ const initApp = () => {
                         seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
                         seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));
                         seedBuiltInExportTemplates().catch((err) => console.error('[seed] exportTemplates failed:', err));
+                        ensureDefaultProjects().catch((err) => console.error('[seed] defaultProjects failed:', err));
                     }
                     resolve(app);
                 })

@@ -111,6 +111,7 @@ export interface IQuestline extends Document {
   templateName?: string;
   templateSnapshot?: unknown;
   ownerId: string;
+  projectId: string;
   nodes: IQuestNode[];
   edges: IQuestEdge[];
   variants: IQuestlineVariant[];
@@ -250,6 +251,7 @@ const QuestlineSchema = new Schema<IQuestline>(
     templateName: { type: String, default: '' },
     templateSnapshot: { type: Schema.Types.Mixed },
     ownerId:     { type: String, required: true, index: true },
+    projectId:   { type: String, default: '', index: true },
     nodes:       { type: [QuestNodeSchema], default: [] },
     edges:       { type: [QuestEdgeSchema], default: [] },
     variants:    { type: [QuestlineVariantSchema], default: [] },

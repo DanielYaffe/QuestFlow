@@ -3,6 +3,7 @@ import BaseController from './baseController';
 import QuestlineModel, { BASE_VARIANTS } from '../models/questlineModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
+import { getProjectId } from '../utils/projectScope';
 import { IQuestNodeExportFields } from '../models/questlineModel';
 
 // S3 keys never start with http — presigned URLs always do
@@ -48,9 +49,12 @@ class QuestlineController extends BaseController {
   // GET /questlines — only return metadata for questlines owned by the authenticated user
   async get(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
+    const projectId = getProjectId(req);
     try {
-      const questlines = await QuestlineModel.find({ ownerId: userId })
-        .select('title description ownerId createdAt updatedAt');
+      const filter: Record<string, unknown> = { ownerId: userId };
+      if (projectId) filter.projectId = projectId;
+      const questlines = await QuestlineModel.find(filter)
+        .select('title description ownerId projectId createdAt updatedAt');
       res.json(questlines);
     } catch (error) {
       this.handleError(res, error);
@@ -65,6 +69,7 @@ class QuestlineController extends BaseController {
       return;
     }
     req.body.ownerId = userId;
+    req.body.projectId = getProjectId(req) || req.body.projectId || '';
     return super.create(req, res);
   }
 

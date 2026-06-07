@@ -5,11 +5,15 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 });
 
-// Attach the JWT token to every request automatically
+// Attach the JWT token and the active project scope to every request automatically
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const projectId = localStorage.getItem('activeProjectId');
+  if (projectId) {
+    config.headers['X-Project-Id'] = projectId;
   }
   return config;
 });

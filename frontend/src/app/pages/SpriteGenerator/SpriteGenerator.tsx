@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { generateSprite, getSprites, SpriteFilters, SpriteRecord } from '../../api/spriteApi';
 import { useSpriteJobs } from '../../context/SpriteJobContext';
+import { useProject } from '../../context/ProjectContext';
 
 // ---------------------------------------------------------------------------
 // Filter option definitions
@@ -252,6 +253,7 @@ const DEFAULT_FILTERS: SpriteFilters = {
 };
 
 export function SpriteGenerator() {
+  const { activeProjectId } = useProject();
   const [prompt, setPrompt] = useState('');
   const [filters, setFilters] = useState<SpriteFilters>(DEFAULT_FILTERS);
   const [showFilters, setShowFilters] = useState(true);
@@ -277,6 +279,7 @@ export function SpriteGenerator() {
 
   // Load saved sprites on mount; open lightbox if ?spriteId is in the URL
   useEffect(() => {
+    setLoadingHistory(true);
     getSprites()
       .then((records) => {
         setSprites(records);
@@ -297,7 +300,7 @@ export function SpriteGenerator() {
       })
       .catch(() => { /* non-fatal */ })
       .finally(() => setLoadingHistory(false));
-  }, []);
+  }, [activeProjectId]);
 
   const setFilter = <K extends keyof SpriteFilters>(key: K, value: SpriteFilters[K]) => {
     setFilters((f) => ({ ...f, [key]: value }));

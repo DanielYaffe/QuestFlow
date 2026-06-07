@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ISprite extends Document {
   ownerId: string;
+  projectId: string;
   userPrompt: string;
   fullPrompt: string;
   imageUrl: string;
@@ -20,6 +21,7 @@ export interface ISprite extends Document {
 const SpriteSchema = new Schema<ISprite>(
   {
     ownerId:    { type: String, required: true, index: true },
+    projectId:  { type: String, default: '', index: true },
     userPrompt: { type: String, required: true },
     fullPrompt: { type: String, required: true },
     imageUrl:   { type: String, required: true },
