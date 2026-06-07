@@ -2,12 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, FolderKanban, Plus, Settings2 } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
+import { ProjectFormDialog } from '../shared/ProjectFormDialog';
 
 export function ProjectSwitcher() {
   const navigate = useNavigate();
   const { projects, activeProject, setActiveProject, createProject } = useProject();
   const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,16 +26,8 @@ export function ProjectSwitcher() {
     setOpen(false);
   };
 
-  const handleCreate = async () => {
-    const name = window.prompt('New project name')?.trim();
-    if (!name) return;
-    setCreating(true);
-    try {
-      await createProject(name);
-      setOpen(false);
-    } finally {
-      setCreating(false);
-    }
+  const handleCreate = async (name: string) => {
+    await createProject(name);
   };
 
   return (
@@ -70,9 +63,8 @@ export function ProjectSwitcher() {
           </div>
           <div className="border-t border-zinc-800">
             <button
-              onClick={handleCreate}
-              disabled={creating}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              onClick={() => { setOpen(false); setCreateOpen(true); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
             >
               <Plus className="w-4 h-4 text-purple-400" />
               <span>New project</span>
@@ -87,6 +79,13 @@ export function ProjectSwitcher() {
           </div>
         </div>
       )}
+
+      <ProjectFormDialog
+        isOpen={createOpen}
+        mode="create"
+        onClose={() => setCreateOpen(false)}
+        onSubmit={handleCreate}
+      />
     </div>
   );
 }

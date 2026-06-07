@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { FolderKanban, Plus, Check, Copy, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
+import { ProjectFormDialog } from '../../components/shared/ProjectFormDialog';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -26,31 +27,24 @@ export function Projects() {
     duplicateProject,
   } = useProject();
 
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
 
-  const handleCreate = async () => {
-    const name = newName.trim();
-    if (!name) return;
-    setCreating(true);
+  const handleCreate = async (name: string) => {
     try {
       await createProject(name);
-      setNewName('');
       toast.success('Project created');
     } catch {
       toast.error('Failed to create project');
-    } finally {
-      setCreating(false);
     }
   };
 
-  const handleRename = async (id: string, current: string) => {
-    const name = window.prompt('Rename project', current)?.trim();
-    if (!name || name === current) return;
-    setBusyId(id);
+  const handleRename = async (name: string) => {
+    if (!editing || name === editing.name) return;
+    setBusyId(editing.id);
     try {
-      await renameProject(id, name);
+      await renameProject(editing.id, name);
       toast.success('Project renamed');
     } catch {
       toast.error('Failed to rename project');
@@ -93,29 +87,19 @@ export function Projects() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-4xl mx-auto px-6 py-10 pb-16">
-        <div className="mb-8">
-          <h1 className="text-white text-2xl font-semibold">Projects</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Organise your questlines and sprites into separate projects
-          </p>
-        </div>
-
-        {/* Create */}
-        <div className="flex gap-3 mb-8">
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            placeholder="New project name"
-            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-600"
-          />
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-white text-2xl font-semibold">Projects</h1>
+            <p className="text-zinc-400 text-sm mt-1">
+              Organise your questlines and sprites into separate projects
+            </p>
+          </div>
           <button
-            onClick={handleCreate}
-            disabled={creating || !newName.trim()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-purple-600 text-white text-sm hover:bg-purple-500 transition-colors disabled:opacity-50"
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-purple-600 text-white text-sm hover:bg-purple-500 transition-colors shrink-0"
           >
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-            <span>Create</span>
+            <Plus className="w-4 h-4" />
+            <span>New Project</span>
           </button>
         </div>
 
@@ -163,7 +147,7 @@ export function Projects() {
                       </button>
                     )}
                     <button
-                      onClick={() => handleRename(p._id, p.name)}
+                      onClick={() => setEditing({ id: p._id, name: p.name })}
                       disabled={busy}
                       title="Rename"
                       className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
@@ -193,6 +177,20 @@ export function Projects() {
           </div>
         )}
       </div>
+
+      <ProjectFormDialog
+        isOpen={createOpen}
+        mode="create"
+        onClose={() => setCreateOpen(false)}
+        onSubmit={handleCreate}
+      />
+      <ProjectFormDialog
+        isOpen={editing !== null}
+        mode="edit"
+        initialName={editing?.name}
+        onClose={() => setEditing(null)}
+        onSubmit={handleRename}
+      />
     </div>
   );
 }
