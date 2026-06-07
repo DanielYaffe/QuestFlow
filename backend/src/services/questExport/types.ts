@@ -13,6 +13,16 @@ export interface CanonicalNode {
   npcIds: string[];
   monsterIds: string[];
   rewardIds: string[];
+  templateValues?: Record<string, unknown>;
+  exportFields?: {
+    questId?: number;
+    silent: boolean;
+    preQuest: number[];
+    daily: boolean;
+    toKill: { id: number; amount: number }[];
+    toCollect: { itemId: number; amount: number }[];
+    rewardItems: { id: number; amount: number }[];
+  };
 }
 
 export interface CanonicalEdge {
@@ -62,7 +72,10 @@ export type Format =
   | 'questflow-yaml'
   | 'unity-asset'
   | 'unreal-datatable'
-  | 'godot-tres';
+  | 'godot-tres'
+  | 'template-json'
+  | 'template-yaml'
+  | 'template-xml';
 
 export interface FormatModule {
   id: Format;
@@ -73,6 +86,13 @@ export interface FormatModule {
 }
 
 export interface ExportResult {
+  filename: string;
+  content: string;
+  mimeType: string;
+  files?: ExportFile[];
+}
+
+export interface ExportFile {
   filename: string;
   content: string;
   mimeType: string;

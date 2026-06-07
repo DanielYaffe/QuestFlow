@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull } from 'lucide-react';
 import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 import { motion, AnimatePresence } from 'motion/react';
-import { NodeVariant } from '../../../types/quest';
+import { NodeVariant, QuestExportFields } from '../../../types/quest';
 import { fetchCharacters, fetchRewards, Character, Reward } from '../../../api/projectSidebarApi';
+import { TemplateFieldSummary, TemplateSchema } from '../../../api/exportTemplateApi';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,17 +17,57 @@ export interface NodeSnapshot {
   npcIds: string[];
   monsterIds: string[];
   rewardIds: string[];
+  exportFields?: QuestExportFields;
+  templateValues?: Record<string, unknown>;
 }
 
 interface NodeEditSidebarProps {
   isOpen: boolean;
   node: NodeSnapshot | null;
   questlineId: string;
+  template?: {
+    id: string;
+    name: string;
+    snapshot: unknown;
+  } | null;
   onClose: () => void;
   onApply: (updated: NodeSnapshot) => void;
 }
 
 type Phase = 'edit' | 'diff';
+type QuestDialogPage = {
+  id: string;
+  npcId: number;
+  type?: 'next' | 'nextPrev' | 'yesNo' | 'ok';
+  next?: string;
+  prev?: string;
+  yes?: string;
+  no?: string;
+  accept?: boolean;
+  complete?: boolean;
+  end?: boolean;
+  prompt: string;
+};
+
+const DEFAULT_EXPORT_FIELDS: QuestExportFields = {
+  silent: true,
+  preQuest: [-1],
+  daily: false,
+  toKill: [],
+  toCollect: [],
+  rewardItems: [],
+};
+
+function normalizeExportFields(fields?: QuestExportFields): QuestExportFields {
+  return {
+    ...DEFAULT_EXPORT_FIELDS,
+    ...fields,
+    preQuest: fields?.preQuest?.length ? fields.preQuest : [-1],
+    toKill: fields?.toKill ?? [],
+    toCollect: fields?.toCollect ?? [],
+    rewardItems: fields?.rewardItems ?? [],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Word-level LCS diff
@@ -335,7 +376,80 @@ function arraysEqual(a: string[], b: string[]) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }: NodeEditSidebarProps) {
+function exportFieldsEqual(a?: QuestExportFields, b?: QuestExportFields) {
+  return JSON.stringify(normalizeExportFields(a)) === JSON.stringify(normalizeExportFields(b));
+}
+
+function templateValuesEqual(a?: Record<string, unknown>, b?: Record<string, unknown>) {
+  return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+}
+
+function isTemplateSnapshot(value: unknown): value is { fieldSchema?: TemplateFieldSummary[]; templateSchema?: TemplateSchema } {
+  return value !== null && typeof value === 'object';
+}
+
+function defaultValueForKind(kind: TemplateFieldSummary['kind']): unknown {
+  if (kind === 'number') return 0;
+  if (kind === 'boolean') return false;
+  if (kind === 'array') return [];
+  if (kind === 'object') return {};
+  return '';
+}
+
+function formatComplexValue(value: unknown, kind: TemplateFieldSummary['kind']) {
+  const fallback = defaultValueForKind(kind);
+  return JSON.stringify(value ?? fallback, null, 2);
+}
+
+function parseComplexValue(raw: string) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function fallbackQuestIdFromTitle(title: string): number {
+  const match = title.match(/\d+/);
+  return match ? Number(match[0]) : 0;
+}
+
+function normalizeDialogPages(value: unknown): QuestDialogPage[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((page, index) => {
+    const raw = page && typeof page === 'object' ? page as Record<string, unknown> : {};
+    return {
+      id: String(raw.id ?? `page_${index + 1}`),
+      npcId: Number(raw.npcId) || 0,
+      type: ['next', 'nextPrev', 'yesNo', 'ok'].includes(String(raw.type)) ? raw.type as QuestDialogPage['type'] : 'ok',
+      next: typeof raw.next === 'string' ? raw.next : undefined,
+      prev: typeof raw.prev === 'string' ? raw.prev : undefined,
+      yes: typeof raw.yes === 'string' ? raw.yes : undefined,
+      no: typeof raw.no === 'string' ? raw.no : undefined,
+      accept: Boolean(raw.accept),
+      complete: Boolean(raw.complete),
+      end: Boolean(raw.end),
+      prompt: String(raw.prompt ?? ''),
+    };
+  });
+}
+
+function normalizeTemplateFields(fields: TemplateFieldSummary[]): TemplateFieldSummary[] {
+  const arrayParents = new Set(
+    fields
+      .filter((field) => field.kind === 'array' && field.itemSchema?.length)
+      .map((field) => field.path),
+  );
+
+  return fields.filter((field) => {
+    if (field.kind === 'object') return false;
+    const arrayChildMatch = field.path.match(/^(.*)\[\]\./);
+    if (arrayChildMatch && arrayParents.has(arrayChildMatch[1])) return false;
+    return true;
+  });
+}
+
+export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, onApply }: NodeEditSidebarProps) {
   const { configs, getConfig } = useVariantConfigs();
   const [phase, setPhase] = useState<Phase>('edit');
   const [title,      setTitle]      = useState('');
@@ -344,6 +458,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
   const [npcIds,     setNpcIds]     = useState<string[]>([]);
   const [monsterIds, setMonsterIds] = useState<string[]>([]);
   const [rewardIds,  setRewardIds]  = useState<string[]>([]);
+  const [exportFields, setExportFields] = useState<QuestExportFields>(DEFAULT_EXPORT_FIELDS);
+  const [templateValues, setTemplateValues] = useState<Record<string, unknown>>({});
   const [width,      setWidth]      = useState(DEFAULT_WIDTH);
 
   const [characters,       setCharacters]       = useState<Character[]>([]);
@@ -364,6 +480,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
       setNpcIds(node.npcIds ?? []);
       setMonsterIds(node.monsterIds ?? []);
       setRewardIds(node.rewardIds ?? []);
+      setExportFields(normalizeExportFields(node.exportFields));
+      setTemplateValues(node.templateValues ?? {});
       setPhase('edit');
     }
   }, [node]);
@@ -415,18 +533,214 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
       variant      !== node.variant ||
       !arraysEqual([...npcIds].sort(),     [...(node.npcIds ?? [])].sort()) ||
       !arraysEqual([...monsterIds].sort(), [...(node.monsterIds ?? [])].sort()) ||
-      !arraysEqual([...rewardIds].sort(),  [...(node.rewardIds ?? [])].sort())
+      !arraysEqual([...rewardIds].sort(),  [...(node.rewardIds ?? [])].sort()) ||
+      !exportFieldsEqual(exportFields, node.exportFields) ||
+      !templateValuesEqual(templateValues, node.templateValues)
     );
 
   const handleClose = () => { setPhase('edit'); onClose(); };
   const handleApply = () => {
-    onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds });
+    onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds, exportFields, templateValues });
     setPhase('edit');
     onClose();
   };
 
   const getCharName   = (id: string) => characters.find((c) => c.id === id)?.name   ?? id;
   const getRewardName = (id: string) => rewards.find((r)    => r.id === id)?.title  ?? id;
+  const templateFieldSchema = isTemplateSnapshot(template?.snapshot)
+    ? normalizeTemplateFields(template.snapshot.templateSchema?.editableFields?.length
+      ? template.snapshot.templateSchema.editableFields
+      : template.snapshot.fieldSchema ?? [])
+    : [];
+  const updateTemplateValue = (path: string, value: unknown) => {
+    setTemplateValues((prev) => ({ ...prev, [path]: value }));
+  };
+  const updateArrayField = (path: string, rows: Record<string, unknown>[]) => updateTemplateValue(path, rows);
+  const getSchemaDefaultValue = (field: TemplateFieldSummary): unknown => {
+    if (field.gameplayRole === 'questName') return title;
+    if (field.gameplayRole === 'questId') return exportFields.questId ?? fallbackQuestIdFromTitle(title);
+    if (field.gameplayRole === 'preQuest') return exportFields.preQuest;
+    if (field.fillSource === 'templateDefault') return defaultValueForKind(field.kind);
+    return defaultValueForKind(field.kind);
+  };
+  const renderTemplateFieldInput = (field: TemplateFieldSummary, current: unknown) => {
+    const path = field.path;
+    if (field.control === 'dialogFlow') {
+      const pages = normalizeDialogPages(current);
+      const updatePage = (index: number, updates: Partial<QuestDialogPage>) => {
+        updateTemplateValue(path, pages.map((page, pageIndex) => pageIndex === index ? { ...page, ...updates } : page));
+      };
+      return (
+        <div className="space-y-3">
+          {pages.length === 0 && <p className="text-xs text-zinc-600 italic">No dialog pages yet</p>}
+          {pages.map((page, index) => (
+            <div key={`${page.id}-${index}`} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={page.id}
+                  onChange={(e) => updatePage(index, { id: e.target.value })}
+                  placeholder="Page ID"
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                />
+                <input
+                  type="number"
+                  value={page.npcId || ''}
+                  onChange={(e) => updatePage(index, { npcId: Number(e.target.value) || 0 })}
+                  placeholder="NPC ID"
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                />
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                <select
+                  value={page.type ?? 'ok'}
+                  onChange={(e) => updatePage(index, { type: e.target.value as QuestDialogPage['type'] })}
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                >
+                  <option value="ok">OK</option>
+                  <option value="next">Next</option>
+                  <option value="nextPrev">Next/Prev</option>
+                  <option value="yesNo">Yes/No</option>
+                </select>
+                <input value={page.next ?? ''} onChange={(e) => updatePage(index, { next: e.target.value || undefined })} placeholder="Next" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                <input value={page.prev ?? ''} onChange={(e) => updatePage(index, { prev: e.target.value || undefined })} placeholder="Prev" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                <input value={page.yes ?? ''} onChange={(e) => updatePage(index, { yes: e.target.value || undefined })} placeholder="Yes" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                <input value={page.no ?? ''} onChange={(e) => updatePage(index, { no: e.target.value || undefined })} placeholder="No" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+              </div>
+              <textarea
+                value={page.prompt}
+                onChange={(e) => updatePage(index, { prompt: e.target.value })}
+                rows={3}
+                placeholder="Dialog prompt"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500 resize-y"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-3">
+                  {(['accept', 'complete', 'end'] as const).map((flag) => (
+                    <label key={flag} className="flex items-center gap-1.5 text-xs text-zinc-400 capitalize">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(page[flag])}
+                        onChange={(e) => updatePage(index, { [flag]: e.target.checked })}
+                        className="accent-purple-600"
+                      />
+                      {flag}
+                    </label>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateTemplateValue(path, pages.filter((_, pageIndex) => pageIndex !== index))}
+                  className="text-xs text-red-300 hover:text-red-200"
+                >
+                  Remove page
+                </button>
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => updateTemplateValue(path, [
+              ...pages,
+              { id: `page_${pages.length + 1}`, npcId: 0, type: 'ok', prompt: '' },
+            ])}
+            className="text-xs text-purple-300 hover:text-purple-200"
+          >
+            Add dialog page
+          </button>
+        </div>
+      );
+    }
+    if (field.kind === 'boolean' || field.control === 'checkbox') {
+      return (
+        <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={Boolean(current)}
+            onChange={(e) => updateTemplateValue(path, e.target.checked)}
+            className="accent-purple-600"
+          />
+          Enabled
+        </label>
+      );
+    }
+    if (field.kind === 'number' || field.control === 'number') {
+      return (
+        <input
+          type="number"
+          value={typeof current === 'number' ? current : Number(current) || 0}
+          onChange={(e) => updateTemplateValue(path, Number(e.target.value) || 0)}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+        />
+      );
+    }
+    if (field.kind === 'array' && field.itemSchema?.length) {
+      const rows = Array.isArray(current) ? current as Record<string, unknown>[] : [];
+      return (
+        <div className="space-y-2">
+          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${field.itemSchema.length}, minmax(0, 1fr)) auto` }}>
+            {field.itemSchema.map((itemField) => (
+              <span key={itemField.path} className="text-[10px] uppercase tracking-wide text-zinc-500">
+                {itemField.label}
+              </span>
+            ))}
+            <span />
+          </div>
+          {rows.length === 0 && <p className="text-xs text-zinc-600 italic">No rows yet</p>}
+          {rows.map((row, rowIndex) => (
+            <div key={rowIndex} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${field.itemSchema!.length}, minmax(0, 1fr)) auto` }}>
+              {field.itemSchema!.map((itemField) => (
+                <input
+                  key={itemField.path}
+                  type={itemField.valueType === 'number' ? 'number' : 'text'}
+                  placeholder={itemField.label}
+                  value={String(row[itemField.path] ?? '')}
+                  onChange={(e) => {
+                    const value = itemField.valueType === 'number' ? Number(e.target.value) || 0 : e.target.value;
+                    updateArrayField(path, rows.map((item, index) => index === rowIndex ? { ...item, [itemField.path]: value } : item));
+                  }}
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                />
+              ))}
+              <button
+                type="button"
+                onClick={() => updateArrayField(path, rows.filter((_, index) => index !== rowIndex))}
+                className="px-3 py-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => updateArrayField(path, [
+              ...rows,
+              Object.fromEntries(field.itemSchema!.map((itemField) => [itemField.path, itemField.valueType === 'number' ? 0 : ''])),
+            ])}
+            className="text-xs text-purple-300 hover:text-purple-200"
+          >
+            Add row
+          </button>
+        </div>
+      );
+    }
+    if (field.kind === 'array' || field.kind === 'object' || field.control === 'json' || field.control === 'rows') {
+      return (
+        <textarea
+          value={formatComplexValue(current, field.kind)}
+          onChange={(e) => updateTemplateValue(path, parseComplexValue(e.target.value))}
+          rows={4}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-purple-500 resize-y"
+        />
+      );
+    }
+    return (
+      <input
+        value={String(current ?? '')}
+        onChange={(e) => updateTemplateValue(path, e.target.value)}
+        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+      />
+    );
+  };
 
   return (
     <AnimatePresence>
@@ -563,6 +877,158 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                   onToggle={toggleReward}
                   loading={!rewardsLoaded}
                 />
+
+                {templateFieldSchema.length > 0 && (
+                  <div className="border-t border-zinc-800 pt-5 space-y-4">
+                    <div>
+                      <h3 className="text-white text-sm font-semibold">Template Fields</h3>
+                      <p className="text-zinc-500 text-xs mt-1">
+                        Editing values for {template?.name}. These values override template placeholders in export.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                      {templateFieldSchema.map((field) => {
+                        const current = templateValues[field.path] ?? getSchemaDefaultValue(field);
+                        return (
+                          <div key={field.path}>
+                            <label className="text-zinc-400 text-xs uppercase tracking-wide mb-1 block">
+                              {field.label}
+                              <span className="ml-2 normal-case text-zinc-600">{field.templatePath ?? field.path}</span>
+                            </label>
+                            {field.description && <p className="text-zinc-600 text-xs mb-2">{field.description}</p>}
+                            {renderTemplateFieldInput(field, current)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {templateFieldSchema.length === 0 && (
+                <div className="border-t border-zinc-800 pt-5 space-y-4">
+                  <div>
+                    <h3 className="text-white text-sm font-semibold">Quest Export Fields</h3>
+                    <p className="text-zinc-500 text-xs mt-1">Each node exports as one quest file.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-zinc-400 text-xs uppercase tracking-wide mb-1 block">Quest ID</label>
+                      <input
+                        type="number"
+                        value={exportFields.questId ?? ''}
+                        onChange={(e) => setExportFields((prev) => ({ ...prev, questId: e.target.value ? Number(e.target.value) : undefined }))}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 text-xs uppercase tracking-wide mb-1 block">Prerequisites</label>
+                      <input
+                        value={exportFields.preQuest.join(', ')}
+                        onChange={(e) => setExportFields((prev) => ({
+                          ...prev,
+                          preQuest: e.target.value.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v)),
+                        }))}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 text-sm text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={exportFields.silent}
+                        onChange={(e) => setExportFields((prev) => ({ ...prev, silent: e.target.checked }))}
+                        className="accent-purple-600"
+                      />
+                      Silent
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={exportFields.daily}
+                        onChange={(e) => setExportFields((prev) => ({ ...prev, daily: e.target.checked }))}
+                        className="accent-purple-600"
+                      />
+                      Daily
+                    </label>
+                  </div>
+
+                  {[
+                    { key: 'toKill' as const, label: 'Combat Objectives', idLabel: 'Mob ID', amountLabel: 'Amount' },
+                    { key: 'toCollect' as const, label: 'Collection Objectives', idLabel: 'Item ID', amountLabel: 'Amount' },
+                    { key: 'rewardItems' as const, label: 'Item Rewards', idLabel: 'Item ID', amountLabel: 'Amount' },
+                  ].map((section) => {
+                    const rows = exportFields[section.key];
+                    return (
+                      <div key={section.key} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-zinc-400 text-xs uppercase tracking-wide">{section.label}</label>
+                          <button
+                            type="button"
+                            onClick={() => setExportFields((prev) => ({
+                              ...prev,
+                              [section.key]: [
+                                ...prev[section.key],
+                                section.key === 'toCollect' ? { itemId: 0, amount: 1 } : { id: 0, amount: 1 },
+                              ],
+                            }))}
+                            className="text-xs text-purple-300 hover:text-purple-200"
+                          >
+                            Add row
+                          </button>
+                        </div>
+                        {rows.length === 0 ? (
+                          <p className="text-xs text-zinc-600 italic">No rows yet</p>
+                        ) : rows.map((row, index) => {
+                          const currentId = 'itemId' in row ? row.itemId : row.id;
+                          return (
+                            <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                              <input
+                                type="number"
+                                placeholder={section.idLabel}
+                                value={currentId || ''}
+                                onChange={(e) => setExportFields((prev) => ({
+                                  ...prev,
+                                  [section.key]: prev[section.key].map((item, itemIndex) => {
+                                    if (itemIndex !== index) return item;
+                                    return 'itemId' in item
+                                      ? { ...item, itemId: Number(e.target.value) || 0 }
+                                      : { ...item, id: Number(e.target.value) || 0 };
+                                  }),
+                                }))}
+                                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                              />
+                              <input
+                                type="number"
+                                placeholder={section.amountLabel}
+                                value={row.amount || ''}
+                                onChange={(e) => setExportFields((prev) => ({
+                                  ...prev,
+                                  [section.key]: prev[section.key].map((item, itemIndex) => itemIndex === index ? { ...item, amount: Number(e.target.value) || 0 } : item),
+                                }))}
+                                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setExportFields((prev) => ({
+                                  ...prev,
+                                  [section.key]: prev[section.key].filter((_, itemIndex) => itemIndex !== index),
+                                }))}
+                                className="px-3 py-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+                )}
 
                 {/* Actions */}
                 <div className="pt-2 border-t border-zinc-800 flex gap-3">

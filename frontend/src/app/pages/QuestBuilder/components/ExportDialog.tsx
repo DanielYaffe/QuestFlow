@@ -22,6 +22,8 @@ import {
   downloadExport,
 } from '../../../api/questExportApi';
 import { PushToGithubDialog } from './PushToGithubDialog';
+import { fetchQuestlineById } from '../../../api/questBuilderApi';
+import { ExportTemplate, fetchExportTemplates } from '../../../api/exportTemplateApi';
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -37,17 +39,26 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPushOpen, setIsPushOpen] = useState(false);
+  const [templates, setTemplates] = useState<ExportTemplate[]>([]);
+  const [templateId, setTemplateId] = useState('');
+  const [isQuestlineLoaded, setIsQuestlineLoaded] = useState(false);
+  const [questNodes, setQuestNodes] = useState<{ id: string; title: string }[]>([]);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTemplateFormat = format.startsWith('template-');
 
   const loadPreview = useCallback(
-    (selectedFormat: Format) => {
+    (selectedFormat: Format, selectedTemplateId: string, nodeIds: string[]) => {
       if (!questlineId) return;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
         setIsLoading(true);
         setError(null);
         try {
-          const result = await previewExport(questlineId, selectedFormat);
+          const result = await previewExport(questlineId, selectedFormat, {
+            templateId: selectedTemplateId || undefined,
+            nodeIds: isTemplateFormat ? nodeIds : undefined,
+          });
           setFilename(result.filename);
           setContent(result.content);
         } catch {
@@ -57,13 +68,36 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
         }
       }, 200);
     },
-    [questlineId],
+    [questlineId, isTemplateFormat],
   );
+
+  useEffect(() => {
+    if (!isOpen || !questlineId) return;
+    setIsQuestlineLoaded(false);
+    setTemplateId('');
+    setQuestNodes([]);
+    setSelectedNodeIds([]);
+    fetchExportTemplates().then(setTemplates).catch(() => setTemplates([]));
+    fetchQuestlineById(questlineId)
+      .then((data) => {
+        const nodes = data.nodes.map((node) => ({ id: node.id, title: node.data.title }));
+        setQuestNodes(nodes);
+        setSelectedNodeIds(nodes.map((node) => node.id));
+        if (data.template?.id) setTemplateId(data.template.id);
+        setIsQuestlineLoaded(true);
+      })
+      .catch(() => {
+        setQuestNodes([]);
+        setSelectedNodeIds([]);
+        setIsQuestlineLoaded(true);
+      });
+  }, [isOpen, questlineId]);
 
   // Load preview on open and when format changes
   useEffect(() => {
-    if (isOpen) loadPreview(format);
-  }, [isOpen, format, loadPreview]);
+    if (isTemplateFormat && !isQuestlineLoaded) return;
+    if (isOpen) loadPreview(format, templateId, selectedNodeIds);
+  }, [isOpen, format, templateId, selectedNodeIds, isTemplateFormat, isQuestlineLoaded, loadPreview]);
 
   // Clean up debounce on unmount
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
@@ -80,7 +114,10 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
   const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      await downloadExport(questlineId, format);
+      await downloadExport(questlineId, format, {
+        templateId: templateId || undefined,
+        nodeIds: isTemplateFormat ? selectedNodeIds : undefined,
+      });
       toast.success(`Downloaded ${filename}`);
     } catch (err) {
       // AbortError means the user dismissed the "Save As" picker — not an error.
@@ -120,6 +157,53 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
             </Select>
           </div>
 
+          {isTemplateFormat && (
+            <>
+              <div className="space-y-1">
+                <label className="text-zinc-400 text-sm">Template</label>
+                <Select value={templateId || 'none'} onValueChange={(v) => setTemplateId(v === 'none' ? '' : v)}>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white focus:ring-purple-500">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-800 border-zinc-700">
+                    <SelectItem value="none" className="text-white focus:bg-zinc-700 focus:text-white">No template</SelectItem>
+                    {templates.map((template) => (
+                      <SelectItem key={template._id} value={template._id} className="text-white focus:bg-zinc-700 focus:text-white">
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-zinc-400 text-sm">Quest Nodes</label>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNodeIds(selectedNodeIds.length === questNodes.length ? [] : questNodes.map((node) => node.id))}
+                    className="text-xs text-purple-300 hover:text-purple-200"
+                  >
+                    {selectedNodeIds.length === questNodes.length ? 'Select none' : 'Whole questline'}
+                  </button>
+                </div>
+                <div className="max-h-28 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-2 space-y-1">
+                  {questNodes.map((node) => (
+                    <label key={node.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-900 text-sm text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={selectedNodeIds.includes(node.id)}
+                        onChange={() => setSelectedNodeIds((prev) => prev.includes(node.id) ? prev.filter((id) => id !== node.id) : [...prev, node.id])}
+                        className="accent-purple-600"
+                      />
+                      <span className="truncate">{node.title}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Preview */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
@@ -154,7 +238,7 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
           <div className="flex items-center justify-between pt-1">
             <button
               onClick={() => setIsPushOpen(true)}
-              disabled={isLoading || !!error}
+              disabled={isLoading || !!error || (isTemplateFormat && selectedNodeIds.length === 0)}
               className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 rounded-lg transition-colors text-sm"
             >
               <Github className="w-4 h-4" />
@@ -191,6 +275,8 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
         onClose={() => setIsPushOpen(false)}
         questlineId={questlineId}
         format={format}
+        templateId={templateId || undefined}
+        nodeIds={isTemplateFormat ? selectedNodeIds : undefined}
       />
     </>
   );

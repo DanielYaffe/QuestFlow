@@ -9,16 +9,23 @@ Target demo story:
 1. User optionally configures a quest export template under Settings.
 2. User creates a questline from a story prompt.
 3. User chooses one configured template during creation, or leaves the selector on "No template".
-4. If a template is chosen, AI uses it as context when extracting objectives and rewards.
+4. If a template is chosen, the backend uses the template's saved AI analysis schema when extracting objectives and rewards.
 5. If no template is chosen, AI keeps the current story-only behavior and creates objectives/rewards from the story.
 6. Generated questline is opened in Quest Builder.
 7. User edits at least one quest node in the UI; each node represents one quest.
-8. User opens Export.
-9. User selects which quest nodes to export, or chooses the whole questline.
-10. User selects an export format/template.
-11. User selects a destination root folder.
-12. User clicks Push to Git.
-13. Exported files appear under a questline-specific folder inside the selected repository folder.
+8. If the selected template contains dialog sections, user edits the quest node's start, in-progress, and completion dialog in the node form.
+9. User opens Export.
+10. User selects which quest nodes to export, or chooses the whole questline.
+11. User selects an export format/template.
+12. User selects a destination root folder.
+13. User clicks Push to Git.
+14. Exported files appear under a questline-specific folder inside the selected repository folder.
+
+Important template principle:
+
+- The raw uploaded template is only the input.
+- After the template reaches the backend, the backend parses it and asks AI to analyze it into a reusable quest-template schema.
+- Quest generation, the node edit form, preview, export, and Git push should use that saved schema instead of repeatedly guessing from the raw template.
 
 ## Current State Observed
 
@@ -64,20 +71,23 @@ Missing or incomplete pieces on the current branch:
 
 ## Phase 1: Define The Demo Contract
 
-Create one demo template format and use it throughout the first demo.
+Support arbitrary one-quest templates and use the professor's real template during the demo.
 
-Example demo template name:
+Example validation templates:
 
 ```text
-Free Tier 3
+Maple XML quest-node template
+Free Tier 3 JSON quest-node template
 ```
+
+These templates are examples only. They are not the application's schema, and field names from them must not be hardcoded as the only supported quest fields.
 
 Required template capabilities:
 
 - Defines the final export shape for one quest.
 - Applies to a specific quest node, not the whole questline.
 - Lets the user export one selected quest node, multiple selected quest nodes, or the whole questline as a set of quest-node exports.
-- Treats objectives and rewards as fields inside the exported quest file.
+- Treats objectives, requirements, rewards, metadata, and dialog as fields inside the exported quest file when those concepts exist in the selected template.
 - Does not treat NPCs as exportable game assets. NPCs stay as story/context data for the quest, and future NPC images can be handled by a separate image/game-asset export path.
 - Declares placeholder fields the app can fill.
 - Supports one output file per exported quest node.
@@ -85,7 +95,7 @@ Required template capabilities:
 - Can be used as AI context during objective/reward extraction.
 - Defines what happens when no template is selected: use normal story-only generation and export YAML by default.
 
-Demo template example:
+JSON validation example:
 
 ```json
 {
@@ -109,51 +119,161 @@ Demo template example:
 }
 ```
 
-Template parsing notes:
+XML validation example shape:
+
+```xml
+<imgdir name="Quest Name">
+  <imgdir name="info">
+    <int name="questId" value="0"/>
+    <int name="preQuest" value="-1"/>
+    <int name="daily" value="0"/>
+  </imgdir>
+  <imgdir name="toKill">
+    <imgdir name="0">
+      <int name="monsterId" value="100100"/>
+      <int name="amount" value="15"/>
+    </imgdir>
+  </imgdir>
+  <imgdir name="toCollect">
+    <imgdir name="0">
+      <int name="itemId" value="1302001"/>
+      <int name="quantity" value="1"/>
+    </imgdir>
+  </imgdir>
+  <imgdir name="rewards">
+    <imgdir name="items">
+      <imgdir name="0">
+        <int name="itemId" value="1302000"/>
+        <int name="quantity" value="1"/>
+      </imgdir>
+    </imgdir>
+    <int name="meso" value="5000"/>
+    <int name="exp" value="2147483647"/>
+  </imgdir>
+</imgdir>
+```
+
+Template parsing and analysis notes:
 
 - Templates should be accepted as JSON, YAML, or XML.
 - For the demo, each template defines one output file shape.
-- The app should infer field guidance from the template structure instead of requiring the user to write `aiHints`.
-- `aiHints` can be an internal generated summary only: it explains to the AI what fields like `to_kill`, `to_collect`, and `rewards.items` mean. It should not be a required user-facing template field.
+- The app should not require the user to write `aiHints`.
+- The backend should create an internal AI-analyzed schema after parsing the template.
+- The AI-analyzed schema should explain what each meaningful field represents, which fields are editable, which fields can be AI-filled, and how the field should appear in the node edit form.
+- The schema should describe generic gameplay roles, not specific field names. Examples include quest identifier, prerequisite, repeatability flag, requirement, combat requirement, collection requirement, currency reward, experience reward, item reward, and quest dialog.
+- The schema should detect quest dialog sections when the selected template contains them. Example paths are `start.pages`, `inProgress.pages`, and `complete.pages`, but other dialog paths must be supported if the AI analysis marks them as dialog fields.
+- XML and Maple-style `imgdir` templates must preserve node order, attributes, repeated names, comments where useful, and typed value nodes such as `int`, `string`, and `canvas`.
+- The schema must not copy example IDs, amounts, names, or item values from the uploaded template as generated answers.
+- Code must not special-case only `to_kill`, `to_collect`, `toKill`, `toCollect`, or `rewards.items`. Those names are examples; the saved schema controls which paths are editable, AI-filled, and exported.
+- If AI analysis fails, the backend can keep a deterministic parser fallback, but the template should be marked as needing analysis so the UI can show that the template is using fallback labels.
 - If the user chooses "No template", the default export format should be YAML.
 
 Resolved decisions:
 
-- Add a dedicated phase for mapping required template fields to quest-node data.
-- `to_kill` and `to_collect` should be both AI-filled and manually editable.
-- Reward item IDs should be manually typed for the first demo.
+- Add a dedicated phase for mapping analyzed template fields to quest-node data.
+- Any template field analyzed as a requirement can be AI-filled and manually edited.
+- ID-like fields should be manually typed for the first demo unless the generated data already has a clear value.
 
-## Phase 2: Map Required Quest Fields
+## Phase 2: Map Analyzed Template Fields
 
 Define how one Quest Builder node becomes one file matching the selected quest template.
 
-Required mapping for the example template:
+Generic mapping contract:
 
-| Template field | Source for first demo | Notes |
+| Analyzed role | Example paths only | Source for first demo | Notes |
 | --- | --- | --- |
-| `name` | Quest node title | Editable in the node form. |
-| `quest_id` | Quest-node export metadata | Generate a stable default per node, then allow manual override. |
-| `silent` | Quest-node export metadata | Default from the template, manually editable. |
-| `pre_quest` | Quest graph dependencies | Derive from incoming connected quest nodes when possible, then allow manual override. |
-| `daily` | Quest-node export metadata | Default from the template, manually editable. |
-| `to_kill` | AI suggestion plus manual rows | AI can suggest combat targets from objectives; user can add, remove, and edit IDs/amounts. |
-| `to_collect` | AI suggestion plus manual rows | AI can suggest collection requirements from objectives; user can add, remove, and edit item IDs/amounts. |
-| `rewards.items` | Manual rows for first demo | User types reward item IDs and amounts manually. |
+| Quest name/title | `name`, root `imgdir@name` | Quest node title | Editable in the node form. |
+| Quest ID | `quest_id`, `info.questId` | Quest-node template value | Generate a stable default per node, then allow manual override. |
+| Prerequisite quest | `pre_quest`, `info.preQuest` | Quest graph dependencies | Derive from incoming connected quest nodes when possible, then allow manual override. |
+| Quest flag/metadata | `silent`, `daily`, `info.daily` | Quest-node template value | Default from the uploaded template, manually editable. |
+| Requirement group | `to_kill`, `toKill`, `toCollect`, custom requirement paths | AI suggestion plus manual rows | The row fields come from the schema, not from hardcoded `id`/`amount` names. |
+| Reward group | `rewards.items`, `rewards.meso`, `rewards.exp`, custom reward paths | Manual or AI-assisted values | The editor must support item rewards, currency/exp rewards, and unknown reward structures. |
+| Dialog group | `start.pages`, `inProgress.pages`, `complete.pages`, custom dialog paths | AI draft plus manual editor | Dialog paths come from schema analysis. |
+| Unknown editable field | Any path marked editable by analysis | Manual value | Render with generic text/number/checkbox/JSON/rows controls. |
+
+The mapper must store values by template path, not by hardcoded game concept. For example:
+
+```ts
+templateValues["info.questId"] = 1001
+templateValues["toKill"] = [{ monsterId: 100100, amount: 15 }]
+templateValues["to_collect"] = [{ item_id: 4000002, amount: 80 }]
+templateValues["rewards.exp"] = 5000
+templateValues["start.pages"] = [...]
+```
+
+The same UI and exporter must work whether the selected template uses snake_case JSON keys, camelCase XML node names, Maple `imgdir` children, or a different field naming style.
+
+Dialog field shape:
+
+```yaml
+start:
+  pages:
+    - id: "start_intro"
+      npcId: 9010000
+      type: next
+      next: "start_details"
+      prompt: |
+        Intro text shown before accepting the quest.
+inProgress:
+  pages:
+    - id: "progress_hint"
+      npcId: 9010000
+      type: ok
+      prompt: |
+        Hint shown while the quest is active.
+complete:
+  pages:
+    - id: "complete_ready"
+      npcId: 9010000
+      type: yesNo
+      complete: true
+      prompt: |
+        Completion text shown before rewards are delivered.
+```
+
+Dialog storage:
+
+```ts
+templateValues["start.pages"] = QuestDialogPage[]
+templateValues["inProgress.pages"] = QuestDialogPage[]
+templateValues["complete.pages"] = QuestDialogPage[]
+```
+
+Dialog page type:
+
+```ts
+type QuestDialogPage = {
+  id: string;
+  npcId: number;
+  type?: "next" | "nextPrev" | "yesNo" | "ok";
+  next?: string;
+  prev?: string;
+  yes?: string;
+  no?: string;
+  accept?: boolean;
+  complete?: boolean;
+  end?: boolean;
+  prompt: string;
+};
+```
 
 Implementation tasks:
 
-1. Add per-node export metadata storage for required scalar fields.
-2. Add a deterministic default `quest_id` generator for nodes that do not have one yet.
-3. Add a graph helper that can suggest `pre_quest` from incoming edges.
-4. Add editable row controls for combat targets and collection requirements.
-5. Add manual reward item rows with item ID and amount fields.
+1. Add per-node template value storage keyed by analyzed template paths.
+2. Add deterministic defaults for fields whose analyzed role is quest ID.
+3. Add a graph helper that can suggest fields whose analyzed role is prerequisite quest.
+4. Add generic row controls for array/object fields using each field's analyzed item schema.
+5. Add generic scalar controls for text, number, boolean, and enum-like fields.
 6. Preserve raw generated objective/reward text separately from template-mapped export fields.
+7. Add dialog page storage for templates that contain dialog sections.
+8. Validate dialog references so `next`, `prev`, `yes`, and `no` point to existing page IDs inside the same dialog phase unless intentionally left blank.
 
 Acceptance criteria:
 
-- Every required field in the example template has a clear source.
-- AI suggestions can prefill objectives, but the user can manually correct them.
-- Reward item IDs are manual for the demo.
+- Every editable field in the analyzed template schema has a clear source or a generic manual control.
+- AI suggestions can prefill analyzed requirement/dialog fields, but the user can manually correct them.
+- ID-like fields are manual for the demo unless generated data provides a value.
+- Dialog pages can be drafted by AI and manually corrected per quest node.
 - Export uses the mapped node fields, not only the original generated text.
 
 ## Phase 3: Backend Template Model
@@ -168,14 +288,50 @@ name
 engine
 isBuiltIn
 structure
+templateAst?: object
 description?: string
 acceptedInputFormat?: "json" | "yaml" | "xml"
 targetScope: "quest-node"
 defaultOutputFormat?: "json" | "yaml" | "xml"
 fieldSchema?: object
-inferredAiGuidance?: {
-  objectiveFields?: string[]
+templateSchema?: {
+  version: number
+  summary: string
+  editableFields: Array<{
+    path: string
+    templatePath: string
+    label: string
+    description: string
+    valueType: "string" | "number" | "boolean" | "array" | "object"
+    control: "text" | "number" | "checkbox" | "json" | "rows" | "dialogFlow"
+    gameplayRole?: "questName" | "questId" | "questFlag" | "preQuest" | "requirement" | "combatRequirement" | "collectionRequirement" | "reward" | "itemReward" | "currencyReward" | "experienceReward" | "questDialog" | "other"
+    fillSource: "node" | "graph" | "ai" | "manual" | "templateDefault"
+    required: boolean
+    itemSchema?: Array<{
+      path: string
+      label: string
+      valueType: "string" | "number" | "boolean"
+      required: boolean
+    }>
+  }>
+  generationContract: {
+    requirementRoles: string[]
+    rewardRoles: string[]
+    dialogRoles: string[]
+    promptSummary: string
+  }
+  exportBindings: Array<{
+    path: string
+    source: "node.title" | "node.exportFields" | "node.templateValues" | "graph.incomingEdges" | "template.default"
+  }>
+}
+analysisStatus?: "pending" | "ready" | "fallback" | "failed"
+analysisError?: string
+analyzedAt?: Date
+schemaSummary?: {
+  requirementFields?: string[]
   rewardFields?: string[]
+  dialogFields?: string[]
   structureSummary?: string
 }
 output?: {
@@ -196,17 +352,46 @@ Implementation tasks:
 4. Add validation in `exportTemplateController.create`.
 5. Add `PUT /export-templates/:id` for editing templates.
 6. Add ownership checks for update and delete.
-7. Add a parser that can normalize JSON, YAML, and XML templates into a common template object.
-8. Infer a `fieldSchema` from the template so quest nodes can render a matching edit form.
-9. Add a small helper that normalizes template records for frontend use.
+7. Add a parser that can normalize JSON, YAML, and XML templates into a common template AST while preserving the original output shape.
+8. For XML/Maple-style templates, preserve tags, attributes, child order, repeated nodes, comments where useful, and typed value nodes.
+9. Infer a deterministic `fieldSchema` from the template AST as the parser fallback.
+10. Add an AI template-analysis service that receives the parsed structure summary and returns `templateSchema`.
+11. Store `analysisStatus`, `analysisError`, and `analyzedAt`.
+12. Add a re-analyze endpoint for a saved template.
+13. Add a small helper that normalizes template records for frontend use.
+
+Template AST requirements:
+
+- JSON/YAML templates can use normal object/array/scalar nodes.
+- XML templates need an AST, not a lossy object conversion.
+- Maple XML paths should be based on `imgdir` and typed node `name` attributes, for example `info.questId`, `toKill[].monsterId`, and `rewards.items[].itemId`.
+- Repeated XML fields such as two `<int name="exp" .../>` nodes must remain distinct in the AST and export output.
+- Rendering should update only analyzed/editable nodes, then serialize the original AST back to the requested output format.
+
+AI template-analysis behavior:
+
+1. The backend parses the uploaded JSON/YAML/XML into `structure`.
+2. The backend sends a compact structure summary to AI, not the whole quest story.
+3. AI returns a strict JSON schema describing:
+   - friendly field labels
+   - gameplay role for each field
+   - value type and editor control
+   - whether the field should be AI-filled, graph-filled, manually edited, or left as template default
+   - requirement/reward/dialog categories generation should produce for this template
+   - row item schemas for arbitrary array/object fields
+   - whether nested page arrays should use the dialog flow editor
+4. Backend validates the AI response before saving it.
+5. If AI returns invalid JSON or quota fails, save the template with parser fallback and `analysisStatus: "fallback"` instead of blocking the user.
+6. Built-in templates should also have a saved `templateSchema`, either generated once or checked into the seed data.
 
 Acceptance criteria:
 
 - Built-in templates load for every user.
 - User-created templates can be JSON, YAML, or XML.
 - User-created templates define one quest-node output file shape.
-- The system can infer editable fields from the template structure.
+- The system can analyze editable fields from the template structure and store a reusable schema.
 - Invalid template uploads return a useful error.
+- Template save does not depend on AI being available, but the UI clearly marks fallback analysis.
 
 ## Phase 4: Settings Page Template Manager
 
@@ -227,14 +412,13 @@ Template UI tasks:
 2. Allow upload/paste of template JSON, YAML, or XML.
 3. Let user give each template a name.
 4. Validate template before saving.
-5. Show detected template fields.
-6. Summarize detected gameplay requirements with friendly labels:
-   - Combat objectives
-   - Collection objectives
-   - Item rewards
-7. Keep raw template keys as secondary technical details, not as the main UI labels.
-8. Allow delete/edit for custom templates.
-9. Show read-only badge for built-in templates.
+5. Show AI-analyzed template fields.
+6. Summarize analyzed gameplay roles with friendly labels generated from the schema, such as requirements, rewards, metadata, and quest dialog.
+7. Show analysis status: ready, fallback, or failed.
+8. Let the user re-run analysis after editing a template.
+9. Keep raw template keys as secondary technical details, not as the main UI labels.
+10. Allow delete/edit for custom templates.
+11. Show read-only badge for built-in templates.
 
 Suggested UI fields:
 
@@ -244,6 +428,7 @@ Suggested UI fields:
 - Input format: JSON, YAML, or XML
 - Default output format
 - Parsed field summary with friendly labels
+- AI analysis status and generated schema summary
 - Optional advanced source-field details
 - Raw template editor or upload box
 - Validation status
@@ -253,6 +438,7 @@ Acceptance criteria:
 - User can create a template from Settings.
 - Template appears later in Create flow.
 - Invalid template input does not save.
+- Valid template input saves even if AI analysis falls back.
 - Built-in templates remain available.
 
 ## Phase 5: Template Dropdown Under Story Input
@@ -282,7 +468,7 @@ UI changes:
 1. Under the story textbox, add template dropdown.
 2. Load templates on QuestCreate mount.
 3. Default to "No template".
-4. Show template description and field summary beneath dropdown.
+4. Show template description, analysis status, and schema summary beneath dropdown.
 5. Keep genre chips below the template selector.
 6. When "No template" is selected, do not send template data to the AI.
 
@@ -321,8 +507,9 @@ Request shape:
   template?: {
     name: string;
     structure: object;
+    templateAst?: object;
     targetScope: "quest-node";
-    inferredAiGuidance?: object;
+    templateSchema?: object;
   };
 }
 ```
@@ -332,20 +519,22 @@ Backend behavior:
 1. If `templateId` is provided, load the template and verify:
    - built-in, or
    - owned by current user.
-2. Summarize the template structure for the prompt.
-3. Ask AI to infer objectives and rewards that fit the template's quest-node fields.
-4. If no template is supplied, keep the current story-only generation behavior.
+2. Summarize the saved template schema for the prompt.
+3. Ask AI to infer quest requirements, rewards, and optional dialog notes using the saved `templateSchema.generationContract`.
+4. If the schema includes `questDialog`, include a short dialog-generation note so later questline generation can draft node dialog pages.
+5. If no template is supplied, keep the current story-only generation behavior.
 
 Prompt requirements:
 
-- Do not copy placeholder names as final objective/reward names.
-- When a template is supplied, follow the template structure instead of forcing 3 to 7 objectives and 3 to 7 rewards.
+- Do not copy placeholder names, IDs, item values, monster values, amounts, or example text as generated answers.
+- When a template is supplied, follow the analyzed schema instead of forcing 3 to 7 objectives and 3 to 7 rewards.
 - When no template is supplied, still return 3 to 7 objectives and 3 to 7 rewards.
 - Still return valid JSON only.
 
 Acceptance criteria:
 
-- Template-aware generation produces objectives/rewards shaped toward the template.
+- Template-aware generation produces requirements, rewards, and dialog hints shaped toward the template's analyzed schema.
+- Template-aware questline generation can draft dialog page data when the schema contains dialog fields.
 - No-template flow still works.
 - Unauthorized template ID is rejected.
 
@@ -371,13 +560,14 @@ Why store a snapshot:
 Generation changes:
 
 1. `generateQuestline` accepts selected template metadata.
-2. Save template ID and snapshot onto the questline.
+2. Save template ID and snapshot, including the analyzed schema, onto the questline.
 3. Include template metadata in export payload.
 
 Acceptance criteria:
 
 - Newly generated questline records remember the selected template.
 - Export can use the snapshot even if the source template changes.
+- Quest Builder can render the node edit form from the saved schema snapshot.
 
 ## Phase 8: Quest Builder Edit Demo
 
@@ -387,9 +577,10 @@ Demo action:
 
 1. Open generated questline.
 2. Click one node.
-3. Edit the node through a modular form generated from the selected template schema.
-4. For the example template, the form should include fields such as `name`, `quest_id`, `silent`, `pre_quest`, `daily`, `to_kill`, `to_collect`, and `rewards.items`.
-5. Save graph.
+3. Edit the node through a modular form generated from the selected template's AI-analyzed schema.
+4. The form should render fields from the selected template schema, regardless of whether the template uses JSON snake_case fields, Maple XML `imgdir` fields, or another one-quest structure.
+5. If the template includes dialog fields, the form should show a dialog flow editor for those analyzed dialog paths.
+6. Save graph.
 
 Existing areas to verify:
 
@@ -402,9 +593,13 @@ backend/src/controllers/questlineController.ts
 Acceptance criteria:
 
 - Node edit forms can change based on the selected template.
-- The example template creates a useful form without hardcoding only that template.
+- The JSON and XML validation templates both create useful forms without hardcoding either template.
+- Field labels and helper text come from the analyzed schema, not only raw template keys.
+- Dialog sections are edited as structured pages, not as one raw JSON blob.
+- Dialog data is saved per node in `templateValues`.
 - Edited node persists after refresh.
 - Export uses edited values, not stale generation values.
+- Export preserves the selected template's original field names and structure.
 
 ## Phase 9: Export Dialog With Quest Node Selection
 
@@ -530,8 +725,8 @@ Backup plan:
 
 - Confirm desired export file extension.
 - Confirm exact template input formats: JSON, YAML, and XML.
-- Confirm exact editable fields for the Free Tier 3 example.
+- Confirm the real professor template and verify the analyzer creates editable fields from it.
 - Confirm Git provider is GitHub only.
 - Confirm whether NPC images are out of scope for this demo export.
-- Confirm first demo template example.
-- Confirm whether template should affect only objectives/rewards or also full questline generation.
+- Confirm professor demo validation templates.
+- Confirm whether template schema should affect only requirement/reward/dialog extraction or also full questline generation.

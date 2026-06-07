@@ -10,8 +10,10 @@ import spriteRouter from "./routes/spriteRoute";
 import questStyleRouter from "./routes/questStyleRoute";
 import nodeVariantConfigRouter from "./routes/nodeVariantConfigRoute";
 import userSettingsRouter from "./routes/userSettingsRoute";
+import exportTemplateRouter from "./routes/exportTemplateRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
+import { seedBuiltInExportTemplates } from "./models/exportTemplateModel";
 import cors from "cors";
 import "./config/passport";
 import { authenticate } from "./middlewares/authMiddleware";
@@ -39,6 +41,7 @@ app.use('/sprites', spriteRouter);
 app.use('/quest-styles', questStyleRouter);
 app.use('/variant-configs', nodeVariantConfigRouter);
 app.use('/users', userSettingsRouter);
+app.use('/export-templates', exportTemplateRouter);
 
 const db = mongoose.connection;
 db.on("error", (error) => console.error(error));
@@ -53,8 +56,11 @@ const initApp = () => {
             mongoose
                 .connect(config.DATABASE_URL)
                 .then(() => {
-                    seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
-                    seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));
+                    if (process.env.NODE_ENV !== 'test') {
+                        seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
+                        seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));
+                        seedBuiltInExportTemplates().catch((err) => console.error('[seed] exportTemplates failed:', err));
+                    }
                     resolve(app);
                 })
                 .catch((error) => {

@@ -16,6 +16,8 @@ interface PushToGithubDialogProps {
   onClose: () => void;
   questlineId: string;
   format: Format;
+  templateId?: string;
+  nodeIds?: string[];
 }
 
 interface FormValues {
@@ -26,7 +28,7 @@ interface FormValues {
   commitMessage: string;
 }
 
-export function PushToGithubDialog({ isOpen, onClose, questlineId, format }: PushToGithubDialogProps) {
+export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templateId, nodeIds }: PushToGithubDialogProps) {
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<FormValues>({
     defaultValues: { repoOwner: '', repoName: '', branch: 'main', filePath: '', commitMessage: 'Update quest' },
   });
@@ -52,6 +54,8 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format }: Pus
     try {
       const res = await pushToGithub(questlineId, {
         format,
+        templateId,
+        nodeIds,
         repoOwner:     values.repoOwner || undefined,
         repoName:      values.repoName  || undefined,
         branch:        values.branch    || undefined,

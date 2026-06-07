@@ -1,24 +1,31 @@
 import React, { useRef } from 'react';
 import { ArrowUp, Loader2 } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
+import { ExportTemplate } from '../../../api/exportTemplateApi';
 
 const GENRES = ['All', 'Fantasy', 'RPG', 'Horror', 'Sci-Fi', 'Action', 'Mystery', 'Historical', 'Open World', 'Puzzle', 'Dystopian'];
 
 interface StepStoryProps {
   storyInput: string;
   selectedGenre: string;
+  templates: ExportTemplate[];
+  selectedTemplateId: string;
   isLoading: boolean;
   onStoryChange: (value: string) => void;
   onGenreChange: (genre: string) => void;
+  onTemplateChange: (templateId: string) => void;
   onSubmit: () => void;
 }
 
 export function StepStory({
   storyInput,
   selectedGenre,
+  templates,
+  selectedTemplateId,
   isLoading,
   onStoryChange,
   onGenreChange,
+  onTemplateChange,
   onSubmit,
 }: StepStoryProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -78,6 +85,30 @@ export function StepStory({
             )}
           </button>
         </div>
+      </div>
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
+        <label className="text-zinc-400 text-xs uppercase tracking-wide">Quest Template</label>
+        <select
+          value={selectedTemplateId}
+          onChange={(event) => onTemplateChange(event.target.value)}
+          disabled={isLoading}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+        >
+          <option value="">No template</option>
+          {templates.map((template) => (
+            <option key={template._id} value={template._id}>
+              {template.name}
+            </option>
+          ))}
+        </select>
+        <p className="text-zinc-500 text-xs">
+          {selectedTemplateId
+            ? templates.find((template) => template._id === selectedTemplateId)?.templateSchema?.summary
+              || templates.find((template) => template._id === selectedTemplateId)?.schemaSummary?.structureSummary
+              || 'Template schema will guide requirement, reward, and dialog generation.'
+            : 'YAML export will be used by default when no template is selected.'}
+        </p>
       </div>
 
       {/* Genre chips */}

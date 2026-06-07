@@ -37,6 +37,8 @@ const QuestStyleSchema = new Schema<IQuestStyle>(
 const QuestStyleModel = mongoose.model<IQuestStyle>('QuestStyle', QuestStyleSchema);
 export default QuestStyleModel;
 
+let thumbnailGenerationDisabled = false;
+
 // ---------------------------------------------------------------------------
 // Built-in style definitions
 // ---------------------------------------------------------------------------
@@ -107,8 +109,6 @@ const BUILT_IN_STYLES: BuiltInStyle[] = [
 // ---------------------------------------------------------------------------
 
 export async function seedQuestStyles(): Promise<void> {
-  if (!config.GEMINI_API_KEY) return;
-
   for (const style of BUILT_IN_STYLES) {
     const existing = await QuestStyleModel.findOne({ engine: style.engine });
 
@@ -128,7 +128,7 @@ export async function seedQuestStyles(): Promise<void> {
       );
 
       // Generate image only if missing
-      if (!existing.imageKey) {
+      if (!existing.imageKey && config.GEMINI_API_KEY) {
         await generateAndSaveThumbnail(existing._id.toString(), style.thumbnailPrompt, style.engine);
       }
     } else {
@@ -144,7 +144,9 @@ export async function seedQuestStyles(): Promise<void> {
       });
 
       // Generate preview thumbnail
-      await generateAndSaveThumbnail(created._id.toString(), style.thumbnailPrompt, style.engine);
+      if (config.GEMINI_API_KEY) {
+        await generateAndSaveThumbnail(created._id.toString(), style.thumbnailPrompt, style.engine);
+      }
     }
   }
 
@@ -153,6 +155,7 @@ export async function seedQuestStyles(): Promise<void> {
 
 async function generateAndSaveThumbnail(id: string, prompt: string, engine: string): Promise<void> {
   try {
+    if (thumbnailGenerationDisabled) return;
     if (!config.AWS_S3_BUCKET) return;
 
     const genAI = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY, httpOptions: { timeout: 120_000 } });
@@ -175,6 +178,20 @@ async function generateAndSaveThumbnail(id: string, prompt: string, engine: stri
     await QuestStyleModel.findByIdAndUpdate(id, { imageKey });
     console.log(`[questStyles] Thumbnail generated for "${engine}"`);
   } catch (err) {
+    if (isResourceExhaustedError(err)) {
+      thumbnailGenerationDisabled = true;
+      console.warn(
+        `[questStyles] Thumbnail quota exhausted while generating "${engine}". Using default thumbnails for the rest of this run.`,
+      );
+      return;
+    }
     console.error(`[questStyles] Failed to generate thumbnail for "${engine}":`, err);
   }
+}
+
+function isResourceExhaustedError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+
+  const maybeError = err as { status?: number; message?: string };
+  return maybeError.status === 429 || maybeError.message?.includes('RESOURCE_EXHAUSTED') === true;
 }

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Objective, Reward, GeneratedCharacter, generateObjectives, generateCharacters } from '../../api/questCreateApi';
+import { ExportTemplate, fetchExportTemplates } from '../../api/exportTemplateApi';
 import { StepStory } from './components/StepStory';
 import { StepStyle } from './components/StepStyle';
 import { StepObjectives } from './components/StepObjectives';
@@ -12,6 +13,8 @@ interface WizardState {
   storyInput: string;
   selectedGenre: string;
   selectedStyleId: string;
+  templates: ExportTemplate[];
+  selectedTemplateId: string;
   objectives: Objective[];
   selectedObjectives: string[];
   rewards: Reward[];
@@ -29,6 +32,8 @@ export function QuestCreate() {
     storyInput: '',
     selectedGenre: 'All',
     selectedStyleId: '',
+    templates: [],
+    selectedTemplateId: '',
     objectives: [],
     selectedObjectives: [],
     rewards: [],
@@ -40,6 +45,12 @@ export function QuestCreate() {
     error: null,
   });
 
+  useEffect(() => {
+    fetchExportTemplates()
+      .then((templates) => setState((s) => ({ ...s, templates })))
+      .catch(() => setState((s) => ({ ...s, templates: [] })));
+  }, []);
+
   const handleStorySubmit = () => {
     if (!state.storyInput.trim() || state.isLoadingObjectives) return;
     setState((s) => ({ ...s, step: 2, error: null }));
@@ -48,7 +59,7 @@ export function QuestCreate() {
   const handleStyleSubmit = async () => {
     setState((s) => ({ ...s, isLoadingObjectives: true, error: null }));
     try {
-      const result = await generateObjectives(state.storyInput, state.selectedGenre);
+      const result = await generateObjectives(state.storyInput, state.selectedGenre, state.selectedTemplateId || undefined);
       setState((s) => ({
         ...s,
         isLoadingObjectives: false,
@@ -175,9 +186,12 @@ export function QuestCreate() {
           <StepStory
             storyInput={state.storyInput}
             selectedGenre={state.selectedGenre}
+            templates={state.templates}
+            selectedTemplateId={state.selectedTemplateId}
             isLoading={state.isLoadingObjectives}
             onStoryChange={(value) => setState((s) => ({ ...s, storyInput: value }))}
             onGenreChange={(genre) => setState((s) => ({ ...s, selectedGenre: genre }))}
+            onTemplateChange={(templateId) => setState((s) => ({ ...s, selectedTemplateId: templateId }))}
             onSubmit={handleStorySubmit}
           />
         )}
@@ -229,6 +243,8 @@ export function QuestCreate() {
             selectedRewards={state.selectedRewards}
             characters={state.characters.filter((c) => state.selectedCharacters.includes(c.id))}
             styleId={state.selectedStyleId}
+            templateId={state.selectedTemplateId}
+            templateName={state.templates.find((template) => template._id === state.selectedTemplateId)?.name ?? ''}
             onBack={() => setState((s) => ({ ...s, step: 4 }))}
           />
         )}

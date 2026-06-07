@@ -9,6 +9,36 @@ const tierBadge: Record<QuestStyle['tier'], { label: string; color: string } | n
   plus: { label: 'Plus', color: 'bg-amber-500 text-white' },
 };
 
+const fallbackStyles: QuestStyle[] = [
+  {
+    _id: 'classic-rpg',
+    name: 'Classic RPG',
+    engine: 'classic-rpg',
+    description: 'Traditional fantasy RPG with hand-painted environments and rich lore',
+    promptSuffix: 'Render in a classic high-fantasy RPG art style.',
+    tier: 'free',
+    imageUrl: '',
+  },
+  {
+    _id: 'dark-fantasy',
+    name: 'Dark Fantasy',
+    engine: 'dark-fantasy',
+    description: 'Gothic horror meets medieval fantasy, grim and atmospheric',
+    promptSuffix: 'Render in a dark fantasy art style.',
+    tier: 'free',
+    imageUrl: '',
+  },
+  {
+    _id: 'pixel-art',
+    name: 'Pixel Art',
+    engine: 'pixel-art',
+    description: 'Nostalgic 16-bit pixel art with vibrant colour palettes',
+    promptSuffix: 'Render in a 16-bit pixel art style.',
+    tier: 'free',
+    imageUrl: '',
+  },
+];
+
 interface StepStyleProps {
   selectedStyleId: string;
   onSelect: (styleId: string) => void;
@@ -22,8 +52,8 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
 
   useEffect(() => {
     getQuestStyles()
-      .then(setStyles)
-      .catch(() => setStyles([]))
+      .then((result) => setStyles(result.length ? result : fallbackStyles))
+      .catch(() => setStyles(fallbackStyles))
       .finally(() => setLoading(false));
   }, []);
 

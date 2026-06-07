@@ -1,9 +1,21 @@
 export type NodeVariant = string;
 
+export interface QuestExportFields {
+  questId?: number;
+  silent: boolean;
+  preQuest: number[];
+  daily: boolean;
+  toKill: { id: number; amount: number }[];
+  toCollect: { itemId: number; amount: number }[];
+  rewardItems: { id: number; amount: number }[];
+}
+
 export type QuestNodeData = Record<string, unknown> & {
   title: string;
   body: string;
   variant?: NodeVariant;
+  exportFields?: QuestExportFields;
+  templateValues?: Record<string, unknown>;
   layoutDirection?: 'TB' | 'LR';
   npcIds?: string[];
   monsterIds?: string[];

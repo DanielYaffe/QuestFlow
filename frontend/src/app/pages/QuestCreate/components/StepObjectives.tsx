@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Target, Gift, Gem, Star, Coins } from 'lucide-react';
+import { Check, Target, Gift } from 'lucide-react';
 import { Objective, Reward } from '../../../api/questCreateApi';
 import { WizardStepIndicator } from './WizardStepIndicator';
 
@@ -15,12 +15,6 @@ interface StepObjectivesProps {
   onBack: () => void;
   onSubmit: () => void;
 }
-
-const rarityConfig = {
-  common: { label: 'Common', color: 'text-zinc-400', icon: Coins },
-  rare:   { label: 'Rare',   color: 'text-blue-400',   icon: Star },
-  epic:   { label: 'Epic',   color: 'text-purple-400', icon: Gem  },
-};
 
 export function StepObjectives({
   objectives,
@@ -114,8 +108,6 @@ export function StepObjectives({
           </div>
           {rewards.map((rew) => {
             const isSelected = selectedRewards.includes(rew.id);
-            const rarity = rarityConfig[rew.rarity];
-            const RarityIcon = rarity.icon;
             return (
               <button
                 key={rew.id}
@@ -135,10 +127,6 @@ export function StepObjectives({
                   <span className={`text-sm font-medium flex-1 ${isSelected ? 'text-white' : 'text-zinc-300'}`}>
                     {rew.title}
                   </span>
-                  <div className={`flex items-center gap-1 text-xs ${rarity.color}`}>
-                    <RarityIcon className="w-3 h-3" />
-                    <span>{rarity.label}</span>
-                  </div>
                 </div>
               </button>
             );
