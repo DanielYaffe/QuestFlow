@@ -1,8 +1,8 @@
 import { Response } from 'express';
 import mongoose from 'mongoose';
-import { GoogleGenAI } from '@google/genai';
 import { config } from '../config/config';
 import { AuthRequest } from '../middlewares/authMiddleware';
+import { callGemini } from '../utils/gemini';
 import QuestlineModel from '../models/questlineModel';
 import QuestStyleModel from '../models/questStyleModel';
 import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVariantConfigModel';
@@ -169,19 +169,6 @@ function shouldSeedDialogField(path: string): boolean {
     || /(^|\.)(start|inprogress|in_progress|progress|complete)\.pages$/.test(normalized);
 }
 
-// ---------------------------------------------------------------------------
-// Helper — run Gemini and strip fences
-// ---------------------------------------------------------------------------
-
-async function callGemini(prompt: string): Promise<string> {
-  const genAI = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
-  const result = await genAI.models.generateContent({
-    model: 'gemini-2.5-flash-lite',
-    contents: prompt,
-  });
-  const text = (result.text ?? '').trim();
-  return text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-}
 
 // ---------------------------------------------------------------------------
 // POST /quests/generate — generate objectives + rewards

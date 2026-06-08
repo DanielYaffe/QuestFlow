@@ -31,6 +31,8 @@ import { useQuestlineData } from './hooks/useQuestlineData';
 import { fetchCharacters, fetchRewards } from '../../api/projectSidebarApi';
 import { saveQuestlineGraph } from '../../api/questBuilderApi';
 import { ExportDialog } from './components/ExportDialog';
+import { AIEditPanel } from './components/AIEditPanel';
+import { AIChange } from '../../api/questAiEditApi';
 
 const nodeTypes = {
   questNode: QuestNode,
@@ -157,6 +159,7 @@ export function QuestBuilder() {
   const [characterNames, setCharacterNames] = useState<Record<string, string>>({});
   const [rewardNames, setRewardNames]       = useState<Record<string, string>>({});
   const [isExportOpen, setIsExportOpen]     = useState(false);
+  const [isAiEditOpen, setIsAiEditOpen]     = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving]           = useState(false);
   const nodesRef    = useRef(nodes);
@@ -382,6 +385,88 @@ export function QuestBuilder() {
     setLayoutTrigger((t) => t + 1);
   }, [nodes, edges, setNodes, setEdges]);
 
+  const clearNodeHighlight = useCallback((nodeId: string) => {
+    setNodes((nds) =>
+      nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, aiHighlight: undefined } } : n)
+    );
+  }, [setNodes]);
+
+  const applyAiChange = useCallback((change: AIChange) => {
+    const HIGHLIGHT_MS = 4000;
+
+    switch (change.type) {
+      case 'updateNode': {
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === change.nodeId
+              ? { ...n, data: { ...n.data, title: change.after.title, body: change.after.body, variant: change.after.variant, aiHighlight: 'updated' } }
+              : n,
+          ),
+        );
+        setTimeout(() => clearNodeHighlight(change.nodeId), HIGHLIGHT_MS);
+        markUnsaved();
+        break;
+      }
+      case 'addNode': {
+        const newId = (nodeIdCounter + 1).toString();
+        setNodeIdCounter((prev) => prev + 1);
+        const sourceNode = change.connectFrom ? nodes.find((n) => n.id === change.connectFrom) : null;
+        const position = sourceNode
+          ? { x: sourceNode.position.x + 300, y: sourceNode.position.y }
+          : { x: 200, y: 200 };
+        const newNode: QuestFlowNode = {
+          id: newId,
+          type: 'questNode',
+          position,
+          data: {
+            ...change.node,
+            layoutDirection,
+            aiHighlight: 'added',
+            onAddPath: (pos: 'top' | 'bottom' | 'left' | 'right') => requestNewNode(newId, pos),
+          },
+        };
+        if (change.connectFrom) {
+          const edgeId = `e${change.connectFrom}-${newId}`;
+          const nextEdges = [...edgesRef.current, { id: edgeId, source: change.connectFrom, target: newId, type: 'smoothstep', animated: true }];
+          setNodes((nds) => syncNodePreQuestFromEdges([...nds, newNode], nextEdges));
+          setEdges(nextEdges);
+          setTimeout(() => {
+            setEdges((eds) => eds.map((e) => e.id === edgeId ? { ...e, animated: false } : e));
+          }, HIGHLIGHT_MS);
+        } else {
+          setNodes((nds) => [...nds, newNode]);
+        }
+        setTimeout(() => clearNodeHighlight(newId), HIGHLIGHT_MS);
+        markUnsaved();
+        break;
+      }
+      case 'deleteNode': {
+        // deleteNode already calls markUnsaved
+        deleteNode(change.nodeId);
+        return;
+      }
+      case 'addEdge': {
+        const edgeId = `e${change.source}-${change.target}`;
+        if (edgesRef.current.find((e) => e.id === edgeId)) return;
+        const nextEdges = [...edgesRef.current, { id: edgeId, source: change.source, target: change.target, type: 'smoothstep', animated: true }];
+        setEdges(nextEdges);
+        setNodes((nds) => syncNodePreQuestFromEdges(nds, nextEdges));
+        setTimeout(() => {
+          setEdges((eds) => eds.map((e) => e.id === edgeId ? { ...e, animated: false } : e));
+        }, HIGHLIGHT_MS);
+        markUnsaved();
+        break;
+      }
+      case 'deleteEdge': {
+        const nextEdges = edgesRef.current.filter((e) => !(e.source === change.source && e.target === change.target));
+        setEdges(nextEdges);
+        setNodes((nds) => syncNodePreQuestFromEdges(nds, nextEdges));
+        markUnsaved();
+        break;
+      }
+    }
+  }, [nodes, nodeIdCounter, setNodes, setEdges, setNodeIdCounter, layoutDirection, requestNewNode, deleteNode, markUnsaved, clearNodeHighlight]);
+
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center bg-zinc-950">
@@ -414,6 +499,8 @@ export function QuestBuilder() {
         isSidebarOpen={isLeftSidebarOpen}
         onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
         onExport={() => setIsExportOpen(true)}
+        isAiEditOpen={isAiEditOpen}
+        onOpenAiEdit={() => { setEditingNode(null); setIsAiEditOpen(true); }}
         isSaving={isSaving}
         hasUnsavedChanges={hasUnsavedChanges}
       />
@@ -501,6 +588,15 @@ export function QuestBuilder() {
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         questlineId={questlineId}
+      />
+
+      <AIEditPanel
+        isOpen={isAiEditOpen}
+        onClose={() => setIsAiEditOpen(false)}
+        questlineId={questlineId}
+        nodes={nodes}
+        edges={edges}
+        onApplyChange={applyAiChange}
       />
     </div>
   );

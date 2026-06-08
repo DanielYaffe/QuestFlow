@@ -2,6 +2,7 @@ import { Router, RequestHandler } from 'express';
 import questlineController from '../controllers/questlineController';
 import { requireQuestlineOwnership } from '../middlewares/requireQuestlineOwnership';
 import { previewExport, downloadExport, pushToGithub } from '../controllers/questExportController';
+import { aiEditQuestline } from '../controllers/questAiEditController';
 
 const questlineRouter = Router();
 
@@ -723,5 +724,9 @@ questlineRouter.get('/:id/quests', questlineController.getQuestSummaries.bind(qu
 questlineRouter.get('/:id/export/preview', requireQuestlineOwnership as RequestHandler, previewExport as RequestHandler);
 questlineRouter.get('/:id/export',         requireQuestlineOwnership as RequestHandler, downloadExport as RequestHandler);
 questlineRouter.post('/:id/push-to-github', requireQuestlineOwnership as RequestHandler, pushToGithub as RequestHandler);
+
+// ── AI Edit ─────────────────────────────────────────────────────────────────
+
+questlineRouter.post('/:id/ai-edit', requireQuestlineOwnership as RequestHandler, aiEditQuestline as RequestHandler);
 
 export default questlineRouter;

@@ -1,5 +1,5 @@
 import { Node } from '@xyflow/react';
-import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft, Loader2, Check } from 'lucide-react';
+import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft, Loader2, Check, Wand2 } from 'lucide-react';
 import { QuestNodeData } from '../../../types/quest';
 
 interface QuestBuilderHeaderProps {
@@ -10,11 +10,13 @@ interface QuestBuilderHeaderProps {
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
   onExport: () => void;
+  isAiEditOpen: boolean;
+  onOpenAiEdit: () => void;
   isSaving: boolean;
   hasUnsavedChanges: boolean;
 }
 
-export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
   return (
     <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between z-10">
       <div className="flex items-center gap-3">
@@ -86,6 +88,18 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
             Saved
           </span>
         ) : null}
+
+        <button
+          onClick={onOpenAiEdit}
+          className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm ${
+            isAiEditOpen
+              ? 'bg-purple-500/10 border border-purple-500/50 text-purple-400'
+              : 'bg-purple-600 hover:bg-purple-700 text-white'
+          }`}
+        >
+          <Wand2 className="w-4 h-4" />
+          AI Edit
+        </button>
 
         <button
           onClick={onExport}
