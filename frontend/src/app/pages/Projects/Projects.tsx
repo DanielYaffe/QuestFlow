@@ -30,6 +30,7 @@ export function Projects() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const handleCreate = async (name: string) => {
     try {
@@ -65,18 +66,21 @@ export function Projects() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
+  const handleDelete = (id: string, name: string) => {
     if (projects.length <= 1) {
       toast.error('You must keep at least one project');
       return;
     }
-    if (!window.confirm(`Delete "${name}" and all its questlines and sprites? This cannot be undone.`)) {
-      return;
-    }
-    setBusyId(id);
+    setDeleteTarget({ id, name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setBusyId(deleteTarget.id);
     try {
-      await deleteProject(id);
+      await deleteProject(deleteTarget.id);
       toast.success('Project deleted');
+      setDeleteTarget(null);
     } catch {
       toast.error('Failed to delete project');
     } finally {
@@ -191,6 +195,43 @@ export function Projects() {
         onClose={() => setEditing(null)}
         onSubmit={handleRename}
       />
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl">
+            <div className="flex items-start gap-3 border-b border-zinc-800 px-5 py-4">
+              <div className="mt-0.5 rounded-lg bg-red-500/10 p-2 text-red-400">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-white">Delete project?</h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Delete "{deleteTarget.name}" and all its questlines and sprites. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={busyId === deleteTarget.id}
+                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={busyId === deleteTarget.id}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+              >
+                {busyId === deleteTarget.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
