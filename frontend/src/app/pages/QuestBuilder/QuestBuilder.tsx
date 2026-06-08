@@ -9,14 +9,14 @@ import {
   Panel,
   Node,
   type Edge,
-  Connection,
+  type Connection,
   addEdge,
   applyEdgeChanges,
-  EdgeChange,
+  type EdgeChange,
   useNodesState,
   useEdgesState,
   useReactFlow,
-  NodeTypes,
+  type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Loader2, Crosshair } from 'lucide-react';
@@ -144,7 +144,7 @@ export function QuestBuilder() {
   const { nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, template, isLoading, error } = useQuestlineData(questlineId);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<QuestFlowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setEdges] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<QuestFlowNode | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [sidebarMode, setSidebarMode] = useState<'edit' | 'create'>('edit');
@@ -190,11 +190,9 @@ export function QuestBuilder() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => {
-        const nextEdges = addEdge({ ...connection }, eds);
-        setNodes((nds) => syncNodePreQuestFromEdges(nds, nextEdges));
-        return nextEdges;
-      });
+      const nextEdges = addEdge({ ...connection }, edgesRef.current);
+      setEdges(nextEdges);
+      setNodes((nds) => syncNodePreQuestFromEdges(nds, nextEdges));
       markUnsaved();
     },
     [setEdges, setNodes]
@@ -202,11 +200,9 @@ export function QuestBuilder() {
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      setEdges((eds) => {
-        const nextEdges = applyEdgeChanges(changes, eds);
-        setNodes((nds) => syncNodePreQuestFromEdges(nds, nextEdges));
-        return nextEdges;
-      });
+      const nextEdges = applyEdgeChanges(changes, edgesRef.current);
+      setEdges(nextEdges);
+      setNodes((nds) => syncNodePreQuestFromEdges(nds, nextEdges));
       markUnsaved();
     },
     [setEdges, setNodes],
@@ -255,28 +251,17 @@ export function QuestBuilder() {
         position: positionMap[position],
         data: { ...data, exportFields: defaultExportFields(newNodeId), templateValues: {}, layoutDirection, onAddPath: (pos) => requestNewNode(newNodeId, pos) },
       };
+      const newEdge: Edge = {
+        id: `e${sourceNodeId}-${newNodeId}`,
+        source: sourceNodeId,
+        target: newNodeId,
+        type: 'smoothstep',
+        animated: false,
+      };
+      const nextEdges = [...edgesRef.current, newEdge];
 
-      setNodes((nds) => [...nds, newNode]);
-      setEdges((eds) => [
-        ...eds,
-        {
-          id: `e${sourceNodeId}-${newNodeId}`,
-          source: sourceNodeId,
-          target: newNodeId,
-          type: 'smoothstep',
-          animated: false,
-        },
-      ]);
-      setNodes((nds) => syncNodePreQuestFromEdges(nds, [
-        ...edgesRef.current,
-        {
-          id: `e${sourceNodeId}-${newNodeId}`,
-          source: sourceNodeId,
-          target: newNodeId,
-          type: 'smoothstep',
-          animated: false,
-        },
-      ]));
+      setNodes((nds) => syncNodePreQuestFromEdges([...nds, newNode], nextEdges));
+      setEdges(nextEdges);
       setPendingNode(null);
       markUnsaved();
     },
@@ -285,12 +270,9 @@ export function QuestBuilder() {
 
   const deleteNode = useCallback(
     (nodeId: string) => {
-      setNodes((nds) => nds.filter((node) => node.id !== nodeId));
-      setEdges((eds) => {
-        const nextEdges = eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId);
-        setNodes((nds) => syncNodePreQuestFromEdges(nds.filter((node) => node.id !== nodeId), nextEdges));
-        return nextEdges;
-      });
+      const nextEdges = edgesRef.current.filter((edge) => edge.source !== nodeId && edge.target !== nodeId);
+      setNodes((nds) => syncNodePreQuestFromEdges(nds.filter((node) => node.id !== nodeId), nextEdges));
+      setEdges(nextEdges);
       if (selectedNode?.id === nodeId) {
         setSelectedNode(null);
         setIsSidebarOpen(false);
