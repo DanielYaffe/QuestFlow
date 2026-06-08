@@ -148,15 +148,24 @@ function valueForField(
   const role = field?.gameplayRole;
   if (role === 'questName') return { value: node.title, explicit: false, mapped: true };
   if (role === 'questId') return { value: node.exportFields?.questId ?? fallbackQuestId(node), explicit: false, mapped: true };
-  if (role === 'preQuest') {
+  if (role === 'preQuest' || role === 'completedQuestRequirement') {
+    const preQuest = node.exportFields?.preQuest?.length ? node.exportFields.preQuest : original;
     return {
-      value: node.exportFields?.preQuest?.length ? node.exportFields.preQuest : original,
+      value: field?.shape === 'conditionGroup' ? graphQuestValueForShape(original, preQuest) : preQuest,
       explicit: false,
       mapped: true,
     };
   }
   if (field?.fillSource === 'templateDefault') return { value: original, explicit: false, mapped: false };
   return { value: undefined, explicit: false, mapped: false };
+}
+
+function graphQuestValueForShape(original: unknown, preQuest: unknown): unknown {
+  if (original !== null && typeof original === 'object' && !Array.isArray(original)) {
+    const keys = Object.keys(original as Record<string, unknown>);
+    if (keys.length > 0) return { [keys[0]]: Array.isArray(preQuest) ? preQuest : [] };
+  }
+  return preQuest;
 }
 
 function isEmptyExportValue(value: unknown): boolean {

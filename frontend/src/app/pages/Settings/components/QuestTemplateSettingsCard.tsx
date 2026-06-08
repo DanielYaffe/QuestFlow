@@ -38,7 +38,7 @@ function detectedGroups(template: ExportTemplate): string[] {
     roles.has('combatRequirement') || roles.has('collectionRequirement') || roles.has('requirement') ? 'Requirements' : null,
     roles.has('reward') || roles.has('itemReward') || roles.has('currencyReward') || roles.has('experienceReward') ? 'Rewards' : null,
     roles.has('questDialog') ? 'Quest dialog' : null,
-    roles.has('questId') || roles.has('preQuest') || roles.has('questFlag') ? 'Metadata' : null,
+    roles.has('questId') || roles.has('preQuest') || roles.has('completedQuestRequirement') || roles.has('ongoingQuestRequirement') || roles.has('questFlag') ? 'Metadata' : null,
   ].filter(Boolean) as string[];
   return groups.length ? groups : ['Quest fields'];
 }

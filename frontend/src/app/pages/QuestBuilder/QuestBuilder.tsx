@@ -11,6 +11,8 @@ import {
   type Edge,
   Connection,
   addEdge,
+  applyEdgeChanges,
+  EdgeChange,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -79,6 +81,64 @@ function defaultExportFields(nodeId: string) {
   };
 }
 
+function questIdForNode(node: QuestFlowNode): number | undefined {
+  const configured = node.data.exportFields?.questId;
+  if (typeof configured === 'number' && Number.isFinite(configured)) return configured;
+  const parsed = Number(node.id);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function incomingPreQuestForNode(nodeId: string, graphNodes: QuestFlowNode[], graphEdges: Edge[]): number[] {
+  const questIdByNodeId = new Map(
+    graphNodes
+      .map((node) => [node.id, questIdForNode(node)] as const)
+      .filter(([, questId]) => questId !== undefined),
+  );
+  const incoming = graphEdges
+    .filter((edge) => edge.target === nodeId)
+    .map((edge) => questIdByNodeId.get(edge.source))
+    .filter((questId): questId is number => typeof questId === 'number' && Number.isFinite(questId));
+  return incoming.length ? incoming : [-1];
+}
+
+function syncNodePreQuestFromEdges(graphNodes: QuestFlowNode[], graphEdges: Edge[]): QuestFlowNode[] {
+  return graphNodes.map((node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      exportFields: {
+        ...defaultExportFields(node.id),
+        ...node.data.exportFields,
+        preQuest: incomingPreQuestForNode(node.id, graphNodes, graphEdges),
+      },
+    },
+  }));
+}
+
+function edgesForPreQuest(nodeId: string, preQuest: number[], graphNodes: QuestFlowNode[], graphEdges: Edge[]): Edge[] {
+  const wanted = new Set(preQuest.filter((questId) => questId !== -1 && Number.isFinite(questId)));
+  const sourceByQuestId = new Map(
+    graphNodes
+      .map((node) => [questIdForNode(node), node.id] as const)
+      .filter(([questId, sourceId]) => questId !== undefined && sourceId !== nodeId),
+  );
+  const keptEdges = graphEdges.filter((edge) => edge.target !== nodeId);
+  const existingIds = new Set(keptEdges.map((edge) => edge.id));
+  const incomingEdges = [...wanted].flatMap((questId) => {
+    const source = sourceByQuestId.get(questId);
+    if (!source) return [];
+    const id = `e${source}-${nodeId}`;
+    return [{
+      id: existingIds.has(id) ? `${id}-${questId}` : id,
+      source,
+      target: nodeId,
+      type: 'smoothstep',
+      animated: false,
+    } satisfies Edge];
+  });
+  return [...keptEdges, ...incomingEdges];
+}
+
 export function QuestBuilder() {
   const { questlineId = '' } = useParams<{ questlineId: string }>();
   const { nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, template, isLoading, error } = useQuestlineData(questlineId);
@@ -121,7 +181,8 @@ export function QuestBuilder() {
   useEffect(() => {
     if (fetchedNodes.length > 0) {
       const layouted = getLayoutedElements(fetchedNodes, fetchedEdges, 'LR');
-      setNodes(layouted.nodes.map((n) => ({ ...n, data: { ...n.data, layoutDirection: 'LR' as const } })));
+      const layoutedNodes = layouted.nodes.map((n) => ({ ...n, data: { ...n.data, layoutDirection: 'LR' as const } }));
+      setNodes(syncNodePreQuestFromEdges(layoutedNodes, layouted.edges));
       setEdges(layouted.edges);
       setNodeIdCounter(nextNodeId);
     }
@@ -129,10 +190,26 @@ export function QuestBuilder() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge({ ...connection }, eds));
+      setEdges((eds) => {
+        const nextEdges = addEdge({ ...connection }, eds);
+        setNodes((nds) => syncNodePreQuestFromEdges(nds, nextEdges));
+        return nextEdges;
+      });
       markUnsaved();
     },
-    [setEdges]
+    [setEdges, setNodes]
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      setEdges((eds) => {
+        const nextEdges = applyEdgeChanges(changes, eds);
+        setNodes((nds) => syncNodePreQuestFromEdges(nds, nextEdges));
+        return nextEdges;
+      });
+      markUnsaved();
+    },
+    [setEdges, setNodes],
   );
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
@@ -190,6 +267,16 @@ export function QuestBuilder() {
           animated: false,
         },
       ]);
+      setNodes((nds) => syncNodePreQuestFromEdges(nds, [
+        ...edgesRef.current,
+        {
+          id: `e${sourceNodeId}-${newNodeId}`,
+          source: sourceNodeId,
+          target: newNodeId,
+          type: 'smoothstep',
+          animated: false,
+        },
+      ]));
       setPendingNode(null);
       markUnsaved();
     },
@@ -199,7 +286,11 @@ export function QuestBuilder() {
   const deleteNode = useCallback(
     (nodeId: string) => {
       setNodes((nds) => nds.filter((node) => node.id !== nodeId));
-      setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+      setEdges((eds) => {
+        const nextEdges = eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId);
+        setNodes((nds) => syncNodePreQuestFromEdges(nds.filter((node) => node.id !== nodeId), nextEdges));
+        return nextEdges;
+      });
       if (selectedNode?.id === nodeId) {
         setSelectedNode(null);
         setIsSidebarOpen(false);
@@ -226,6 +317,11 @@ export function QuestBuilder() {
       setNodes((nds) => {
         const node = nds.find((n) => n.id === nodeId);
         if (node) {
+          const exportFields = {
+            ...defaultExportFields(node.id),
+            ...node.data.exportFields,
+            preQuest: incomingPreQuestForNode(node.id, nds, edgesRef.current),
+          };
           setEditingNode({
             id: nodeId,
             snapshot: {
@@ -235,7 +331,7 @@ export function QuestBuilder() {
               npcIds:     (node.data.npcIds     as string[]) ?? [],
               monsterIds: (node.data.monsterIds as string[]) ?? [],
               rewardIds:  (node.data.rewardIds  as string[]) ?? [],
-              exportFields: node.data.exportFields,
+              exportFields,
               templateValues: node.data.templateValues as Record<string, unknown> | undefined,
             },
           });
@@ -248,16 +344,18 @@ export function QuestBuilder() {
 
   const updateNode = useCallback(
     (nodeId: string, updated: NodeSnapshot) => {
+      const nextEdges = edgesForPreQuest(nodeId, updated.exportFields?.preQuest ?? [-1], nodesRef.current, edgesRef.current);
+      setEdges(nextEdges);
       setNodes((nds) =>
-        nds.map((node) =>
+        syncNodePreQuestFromEdges(nds.map((node) =>
           node.id === nodeId
             ? { ...node, data: { ...node.data, ...updated } }
             : node
-        )
+        ), nextEdges)
       );
       markUnsaved();
     },
-    [setNodes]
+    [setNodes, setEdges]
   );
 
   // Attach interaction callbacks and name maps to every node whenever they update
@@ -345,7 +443,7 @@ export function QuestBuilder() {
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
+          onEdgesChange={handleEdgesChange}
           onConnect={onConnect}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}

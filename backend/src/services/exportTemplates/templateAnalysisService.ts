@@ -3,7 +3,6 @@ import { config } from '../../config/config';
 import {
   GameplayRole,
   ParsedTemplate,
-  TemplateControl,
   TemplateFieldSummary,
   TemplateSchema,
 } from './templateParser';
@@ -13,6 +12,8 @@ const VALID_ROLES = new Set<GameplayRole>([
   'questId',
   'questFlag',
   'preQuest',
+  'ongoingQuestRequirement',
+  'completedQuestRequirement',
   'requirement',
   'combatRequirement',
   'collectionRequirement',
@@ -22,15 +23,6 @@ const VALID_ROLES = new Set<GameplayRole>([
   'experienceReward',
   'questDialog',
   'other',
-]);
-
-const VALID_CONTROLS = new Set<TemplateControl>([
-  'text',
-  'number',
-  'checkbox',
-  'json',
-  'rows',
-  'dialogFlow',
 ]);
 
 type AnalysisResult = {
@@ -91,6 +83,7 @@ function compactField(field: TemplateFieldSummary) {
     kind: field.kind,
     valueType: field.valueType,
     control: field.control,
+    shape: field.shape,
     gameplayRole: field.gameplayRole,
     fillSource: field.fillSource,
     itemSchema: field.itemSchema,
@@ -103,21 +96,19 @@ function buildAnalysisPrompt(templateName: string, parsed: ParsedTemplate): stri
 Template name: ${templateName}
 Input format: ${parsed.format}
 
-Detected editable fields:
+Parser-created schema fields. These paths, field kinds, controls, and item schemas are already the source of truth:
 ${JSON.stringify(parsed.fieldSchema.map(compactField), null, 2)}
 
 Return ONLY valid JSON. Do not include markdown.
 
-You may improve labels, descriptions, gameplayRole, control, fillSource, required, and itemSchema.
+You may improve only labels, descriptions, gameplayRole, fillSource, required, and generationContract.
 You must not invent new field paths. Use only paths from the detected editable fields.
+You must not change field paths, nesting, kind, valueType, control, shape, defaultValue, or itemSchema. The parser owns the form structure, including date controls and recursive list/object fields.
 Do not copy placeholder IDs, item values, monster values, amounts, or example text as answers.
 If a field is under requirements.complete, that does not automatically mean dialog. It is dialog only when it clearly represents dialogue pages/conversation/script text.
 
 Allowed gameplayRole values:
-questName, questId, questFlag, preQuest, requirement, combatRequirement, collectionRequirement, reward, itemReward, currencyReward, experienceReward, questDialog, other
-
-Allowed control values:
-text, number, checkbox, json, rows, dialogFlow
+questName, questId, questFlag, preQuest, ongoingQuestRequirement, completedQuestRequirement, requirement, combatRequirement, collectionRequirement, reward, itemReward, currencyReward, experienceReward, questDialog, other
 
 Return this shape:
 {
@@ -128,10 +119,8 @@ Return this shape:
       "label": "Friendly label",
       "description": "What this field controls",
       "gameplayRole": "requirement",
-      "control": "rows",
       "fillSource": "ai",
-      "required": false,
-      "itemSchema": []
+      "required": false
     }
   ],
   "generationContract": {
@@ -144,22 +133,41 @@ Return this shape:
 }
 
 function normalizeAiField(raw: any, fallback: TemplateFieldSummary): TemplateFieldSummary {
-  const gameplayRole = VALID_ROLES.has(raw?.gameplayRole) ? raw.gameplayRole as GameplayRole : fallback.gameplayRole;
-  const control = VALID_CONTROLS.has(raw?.control) ? raw.control as TemplateControl : fallback.control;
-  const fillSource = ['node', 'graph', 'ai', 'manual', 'templateDefault'].includes(raw?.fillSource)
+  const rawGameplayRole = VALID_ROLES.has(raw?.gameplayRole) ? raw.gameplayRole as GameplayRole : fallback.gameplayRole;
+  const gameplayRole = normalizeGameplayRoleForPath(fallback.path, rawGameplayRole, fallback.gameplayRole);
+  const rawFillSource = ['node', 'graph', 'ai', 'manual', 'templateDefault'].includes(raw?.fillSource)
     ? raw.fillSource
     : fallback.fillSource;
+  const fillSource = normalizeFillSourceForPath(fallback.path, gameplayRole, rawFillSource);
 
   return {
     ...fallback,
     label: typeof raw?.label === 'string' && raw.label.trim() ? raw.label.trim() : fallback.label,
     description: typeof raw?.description === 'string' && raw.description.trim() ? raw.description.trim() : fallback.description,
     gameplayRole,
-    control,
     fillSource,
     required: typeof raw?.required === 'boolean' ? raw.required : fallback.required,
-    itemSchema: Array.isArray(raw?.itemSchema) && raw.itemSchema.length ? raw.itemSchema : fallback.itemSchema,
   };
+}
+
+function normalizeGameplayRoleForPath(path: string, proposed: GameplayRole, fallback: GameplayRole): GameplayRole {
+  const normalized = path.toLowerCase();
+  const isExplicitPreQuestPath = /pre.*quest|prereq|require.*quest|ongoingquest|completedquest/.test(normalized);
+
+  if (proposed === 'preQuest' && !isExplicitPreQuestPath) return fallback === 'preQuest' ? 'requirement' : fallback;
+  if (proposed === 'ongoingQuestRequirement' && !/ongoing.*quest|ongoingquest/.test(normalized)) return fallback;
+  if (proposed === 'completedQuestRequirement' && !/completed.*quest|completedquest|pre.*quest|prereq|require.*quest/.test(normalized)) return fallback;
+  return proposed;
+}
+
+function normalizeFillSourceForPath(
+  _path: string,
+  role: GameplayRole,
+  proposed: TemplateFieldSummary['fillSource'],
+): TemplateFieldSummary['fillSource'] {
+  if (role === 'preQuest' || role === 'completedQuestRequirement') return 'graph';
+  if (role === 'ongoingQuestRequirement') return proposed === 'graph' ? 'ai' : proposed;
+  return proposed;
 }
 
 function validateAiSchema(raw: any, fallback: TemplateSchema): TemplateSchema {

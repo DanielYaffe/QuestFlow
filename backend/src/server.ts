@@ -56,6 +56,12 @@ const initApp = () => {
             mongoose
                 .connect(config.DATABASE_URL)
                 .then(() => {
+                    if (process.env.NODE_ENV === 'test' && !mongoose.connection.name.toLowerCase().includes('test')) {
+                        const dbName = mongoose.connection.name;
+                        return mongoose.connection.close().then(() => {
+                            throw new Error(`Refusing to run tests against non-test database "${dbName}"`);
+                        });
+                    }
                     if (process.env.NODE_ENV !== 'test') {
                         seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
                         seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));

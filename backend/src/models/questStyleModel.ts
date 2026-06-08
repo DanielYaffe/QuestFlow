@@ -37,6 +37,7 @@ const QuestStyleSchema = new Schema<IQuestStyle>(
 const QuestStyleModel = mongoose.model<IQuestStyle>('QuestStyle', QuestStyleSchema);
 export default QuestStyleModel;
 
+const ENABLE_STYLE_THUMBNAIL_GENERATION = false;
 let thumbnailGenerationDisabled = false;
 
 // ---------------------------------------------------------------------------
@@ -128,7 +129,8 @@ export async function seedQuestStyles(): Promise<void> {
       );
 
       // Generate image only if missing
-      if (!existing.imageKey && config.GEMINI_API_KEY) {
+      // TODO: enable generation
+      if (ENABLE_STYLE_THUMBNAIL_GENERATION && !existing.imageKey && config.GEMINI_API_KEY) {
         await generateAndSaveThumbnail(existing._id.toString(), style.thumbnailPrompt, style.engine);
       }
     } else {
@@ -144,7 +146,8 @@ export async function seedQuestStyles(): Promise<void> {
       });
 
       // Generate preview thumbnail
-      if (config.GEMINI_API_KEY) {
+      // TODO: enable generation
+      if (ENABLE_STYLE_THUMBNAIL_GENERATION && config.GEMINI_API_KEY) {
         await generateAndSaveThumbnail(created._id.toString(), style.thumbnailPrompt, style.engine);
       }
     }

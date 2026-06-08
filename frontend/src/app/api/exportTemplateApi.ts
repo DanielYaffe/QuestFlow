@@ -1,6 +1,16 @@
 import api from './axiosInstance';
 
 export type TemplateFormat = 'json' | 'yaml' | 'xml';
+export type TemplateFieldShape =
+  | 'scalar'
+  | 'date'
+  | 'object'
+  | 'array'
+  | 'objectRows'
+  | 'scalarList'
+  | 'conditionGroup'
+  | 'conditionList'
+  | 'mixedList';
 
 export interface TemplateFieldSummary {
   path: string;
@@ -8,10 +18,12 @@ export interface TemplateFieldSummary {
   label: string;
   kind: 'text' | 'number' | 'boolean' | 'array' | 'object';
   valueType?: 'string' | 'number' | 'boolean' | 'array' | 'object';
-  control?: 'text' | 'number' | 'checkbox' | 'json' | 'rows' | 'dialogFlow';
+  control?: 'text' | 'number' | 'checkbox' | 'json' | 'rows' | 'dialogFlow' | 'date';
+  shape?: TemplateFieldShape;
   gameplayRole?: string;
   fillSource?: string;
   description?: string;
+  defaultValue?: unknown;
   itemSchema?: Array<{
     path: string;
     label: string;

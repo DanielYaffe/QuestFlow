@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import BaseController from './baseController';
 import QuestlineModel, { BASE_VARIANTS } from '../models/questlineModel';
+import ExportTemplateModel from '../models/exportTemplateModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { IQuestNodeExportFields } from '../models/questlineModel';
@@ -168,6 +169,25 @@ class QuestlineController extends BaseController {
         source: e.source,
         target: e.target,
       }));
+      const latestTemplate = questline.templateId
+        ? await ExportTemplateModel.findOne({
+          _id: questline.templateId,
+          $or: [{ isBuiltIn: true }, { ownerId: userId }],
+        }).lean()
+        : null;
+      const templateSnapshot = latestTemplate ? {
+        id: latestTemplate._id.toString(),
+        name: latestTemplate.name,
+        rawTemplate: latestTemplate.rawTemplate,
+        structure: latestTemplate.structure,
+        templateAst: latestTemplate.templateAst,
+        defaultOutputFormat: latestTemplate.defaultOutputFormat,
+        fieldSchema: latestTemplate.fieldSchema,
+        templateSchema: latestTemplate.templateSchema,
+        schemaSummary: latestTemplate.schemaSummary,
+        analysisStatus: latestTemplate.analysisStatus,
+        inferredAiGuidance: latestTemplate.inferredAiGuidance,
+      } : questline.templateSnapshot;
 
       res.json({
         nodes: shapedNodes,
@@ -175,8 +195,8 @@ class QuestlineController extends BaseController {
         nextNodeId,
         template: questline.templateId ? {
           id: questline.templateId,
-          name: questline.templateName,
-          snapshot: questline.templateSnapshot,
+          name: latestTemplate?.name ?? questline.templateName,
+          snapshot: templateSnapshot,
         } : null,
       });
     } catch (error) {
