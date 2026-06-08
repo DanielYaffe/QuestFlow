@@ -2,12 +2,15 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Workflow, PlusCircle } from 'lucide-react';
 import { fetchQuestlines } from '../../api/questBuilderApi';
+import { useProject } from '../../context/ProjectContext';
 
 export function QuestBuilderLanding() {
   const navigate = useNavigate();
+  const { activeProjectId } = useProject();
   const [loading, setLoading] = React.useState(true);
 
   useEffect(() => {
+    setLoading(true);
     fetchQuestlines()
       .then((questlines) => {
         if (questlines.length > 0) {
@@ -18,7 +21,7 @@ export function QuestBuilderLanding() {
         }
       })
       .catch(() => setLoading(false));
-  }, [navigate]);
+  }, [navigate, activeProjectId]);
 
   if (loading) {
     return (

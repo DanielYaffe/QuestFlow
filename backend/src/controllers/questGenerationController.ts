@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { config } from '../config/config';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { callGemini } from '../utils/gemini';
+import { getProjectId } from '../utils/projectScope';
 import QuestlineModel from '../models/questlineModel';
 import QuestStyleModel from '../models/questStyleModel';
 import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVariantConfigModel';
@@ -572,6 +573,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
 
     const questline = await QuestlineModel.create({
       ownerId: userId,
+      projectId:   getProjectId(req),
       title:       generated.title || story.split('\n')[0].slice(0, 60) || 'New Quest',
       description: story,
       genre:       genre,
