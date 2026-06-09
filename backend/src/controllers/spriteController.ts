@@ -123,6 +123,7 @@ export async function getSprites(req: AuthRequest, res: Response) {
       sprites.map(async (s) => ({
         _id:            s._id.toString(),
         imageUrl:       await getPresignedUrl(s.imageUrl),
+        imageKey:       s.imageUrl, // raw S3 key — used when promoting a sprite to a Character
         userPrompt:     s.userPrompt,
         positivePrompt: s.positivePrompt,
         negativePrompt: s.negativePrompt,

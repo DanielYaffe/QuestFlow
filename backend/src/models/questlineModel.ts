@@ -35,15 +35,6 @@ export interface IQuestlineVariant {
   color: string;
 }
 
-export interface ICharacter {
-  _id: mongoose.Types.ObjectId;
-  name: string;
-  appearance: string;
-  background: string;
-  imageUrl: string;
-  questIds: string[];
-}
-
 export interface IObjective {
   _id: mongoose.Types.ObjectId;
   objectiveId: string;
@@ -59,17 +50,6 @@ export interface IReward {
   imageUrl?: string;
 }
 
-export interface IScene {
-  id: string;
-  title: string;
-}
-
-export interface IChapter {
-  _id: mongoose.Types.ObjectId;
-  title: string;
-  scenes: IScene[];
-}
-
 // ---------------------------------------------------------------------------
 // Root document interface
 // ---------------------------------------------------------------------------
@@ -83,11 +63,11 @@ export interface IQuestline extends Document {
   themeId: string;
   exportFormat: string;
   ownerId: string;
+  projectId: string;
+  characterIds: string[];
   nodes: IQuestNode[];
   edges: IQuestEdge[];
   variants: IQuestlineVariant[];
-  characters: ICharacter[];
-  chapters: IChapter[];
   objectives: IObjective[];
   rewards: IReward[];
 }
@@ -118,14 +98,6 @@ const QuestlineVariantSchema = new Schema<IQuestlineVariant>({
   color: { type: String, default: '#6366f1' },
 });
 
-const CharacterSchema = new Schema<ICharacter>({
-  name:       { type: String, required: true },
-  appearance: { type: String, default: '' },
-  background: { type: String, default: '' },
-  imageUrl:   { type: String, default: '' },
-  questIds:   { type: [String], default: [] },
-});
-
 const ObjectiveSchema = new Schema<IObjective>({
   objectiveId: { type: String, required: true },
   title:       { type: String, required: true },
@@ -137,19 +109,6 @@ const RewardSchema = new Schema<IReward>({
   description: { type: String, default: '' },
   rarity:      { type: String, enum: ['common', 'rare', 'epic'], default: 'common' },
   imageUrl:    { type: String, default: '' },
-});
-
-const SceneSchema = new Schema<IScene>(
-  {
-    id:    { type: String, required: true },
-    title: { type: String, required: true },
-  },
-  { _id: false },
-);
-
-const ChapterSchema = new Schema<IChapter>({
-  title:  { type: String, required: true },
-  scenes: { type: [SceneSchema], default: [] },
 });
 
 // ---------------------------------------------------------------------------
@@ -186,14 +145,6 @@ const ChapterSchema = new Schema<IChapter>({
  *           type: array
  *           items:
  *             type: object
- *         characters:
- *           type: array
- *           items:
- *             type: object
- *         chapters:
- *           type: array
- *           items:
- *             type: object
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -211,11 +162,11 @@ const QuestlineSchema = new Schema<IQuestline>(
     themeId:      { type: String, default: 'generic_rpg' },
     exportFormat: { type: String, default: 'json' },
     ownerId:      { type: String, required: true, index: true },
+    projectId:    { type: String, default: '', index: true },
+    characterIds: { type: [String], default: [] },
     nodes:       { type: [QuestNodeSchema], default: [] },
     edges:       { type: [QuestEdgeSchema], default: [] },
     variants:    { type: [QuestlineVariantSchema], default: [] },
-    characters:  { type: [CharacterSchema], default: [] },
-    chapters:    { type: [ChapterSchema], default: [] },
     objectives:  { type: [ObjectiveSchema], default: [] },
     rewards:     { type: [RewardSchema], default: [] },
   },

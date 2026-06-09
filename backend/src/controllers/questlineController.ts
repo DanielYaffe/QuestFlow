@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import BaseController from './baseController';
 import QuestlineModel, { BASE_VARIANTS } from '../models/questlineModel';
+import CharacterModel from '../models/characterModel';
+import { resolveProjectId } from '../models/projectModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
 
@@ -9,24 +11,40 @@ function isS3Key(value: string): boolean {
   return !!value && !value.startsWith('http');
 }
 
+// Resolve a display image for a Character: explicit portrait, else canonical
+// snapped sprite, else most recent raw candidate. Presign S3 keys.
+async function signCharacterPreview(c: {
+  portraitUrl?: string;
+  assets?: { snappedSpriteS3Key?: string; rawSpriteCandidates?: string[] };
+}): Promise<string> {
+  const candidates = c.assets?.rawSpriteCandidates ?? [];
+  const candidate = c.portraitUrl || c.assets?.snappedSpriteS3Key || candidates[candidates.length - 1] || '';
+  if (!candidate) return '';
+  return isS3Key(candidate) ? getPresignedUrl(candidate) : candidate;
+}
+
 class QuestlineController extends BaseController {
   constructor() {
     super(QuestlineModel);
   }
 
-  // GET /questlines — only return metadata for questlines owned by the authenticated user
+  // GET /questlines?projectId= — only return metadata for questlines owned by the
+  // authenticated user, optionally scoped to a project.
   async get(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     try {
-      const questlines = await QuestlineModel.find({ ownerId: userId })
-        .select('title description ownerId createdAt updatedAt');
+      const { projectId } = req.query as { projectId?: string };
+      const filter: Record<string, unknown> = { ownerId: userId };
+      if (projectId) filter.projectId = projectId;
+      const questlines = await QuestlineModel.find(filter)
+        .select('title description ownerId projectId createdAt updatedAt');
       res.json(questlines);
     } catch (error) {
       this.handleError(res, error);
     }
   }
 
-  // POST /questlines — set ownerId from JWT
+  // POST /questlines — set ownerId from JWT; default projectId to the user's Inbox
   async create(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     if (!userId) {
@@ -34,6 +52,7 @@ class QuestlineController extends BaseController {
       return;
     }
     req.body.ownerId = userId;
+    req.body.projectId = await resolveProjectId(userId, req.body.projectId);
     return super.create(req, res);
   }
 
@@ -80,7 +99,7 @@ class QuestlineController extends BaseController {
   async getGraph(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     try {
-      const questline = await QuestlineModel.findById(req.params.id).select('ownerId nodes edges characters rewards');
+      const questline = await QuestlineModel.findById(req.params.id).select('ownerId nodes edges rewards');
       if (!questline) {
         res.status(404).json({ error: 'Questline not found' });
         return;
@@ -95,15 +114,12 @@ class QuestlineController extends BaseController {
         .filter((n) => !isNaN(n));
       const nextNodeId = numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
 
-      // Build a remap for stale temp IDs (char-N / rew-N) to real MongoDB _ids.
-      // This handles questlines generated before the ID-remapping fix was deployed.
-      const staleCharMap  = new Map<string, string>(); // "char-1" → mongo _id (1-based index)
-      const staleRewardMap = new Map<string, string>(); // "rew-1"  → mongo _id
-      questline.characters.forEach((c, i) => staleCharMap.set(`char-${i + 1}`, c._id.toString()));
+      // Rewards are still embedded, so a node may carry a stale "rew-N" temp id
+      // from before the reward ID-remapping fix. Character ids are already real
+      // Character _ids (the backfill migration remaps any legacy "char-N").
+      const staleRewardMap = new Map<string, string>(); // "rew-1" → mongo _id
       questline.rewards.forEach((r, i) => staleRewardMap.set(`rew-${i + 1}`, r._id.toString()));
-
-      const remapId = (id: string, charMap: Map<string, string>, rewMap: Map<string, string>): string =>
-        charMap.get(id) ?? rewMap.get(id) ?? id;
+      const remapReward = (id: string): string => staleRewardMap.get(id) ?? id;
 
       const shapedNodes = questline.nodes.map((n) => ({
         id: n.nodeId,
@@ -112,9 +128,9 @@ class QuestlineController extends BaseController {
           title:      n.title,
           body:       n.body,
           variant:    n.variant,
-          npcIds:     (n.npcIds     ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
-          monsterIds: (n.monsterIds ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
-          rewardIds:  (n.rewardIds  ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
+          npcIds:     n.npcIds     ?? [],
+          monsterIds: n.monsterIds ?? [],
+          rewardIds:  (n.rewardIds ?? []).map(remapReward),
         },
       }));
 
@@ -243,56 +259,58 @@ class QuestlineController extends BaseController {
   }
 
   // ── Characters ────────────────────────────────────────────────────────────
+  // Characters live in the standalone Character collection (single source of
+  // truth). These questline-scoped endpoints read/write that collection via the
+  // questline's characterIds, shaped to the legacy wire contract the QuestBuilder
+  // sidebar consumes ({ _id, name, appearance, background, imageUrl, questIds }).
 
   // GET /questlines/:id/characters
   async getCharacters(req: AuthRequest, res: Response) {
     try {
-      const questline = await QuestlineModel.findById(req.params.id).select('ownerId characters').lean();
+      const questline = await QuestlineModel.findById(req.params.id)
+        .select('ownerId characterIds nodes')
+        .lean();
       if (!questline) {
         res.status(404).json({ error: 'Questline not found' });
         return;
       }
-      const characters = await Promise.all(
-        questline.characters.map(async (c) => {
-          if (isS3Key(c.imageUrl ?? '')) {
-            return { ...c, imageUrl: await getPresignedUrl(c.imageUrl!) };
-          }
-          return c;
-        }),
+
+      const characters = await CharacterModel.find({
+        _id: { $in: questline.characterIds ?? [] },
+      }).lean();
+
+      // Node ids each character appears in — powers the panel's "Appears In".
+      const nodeIdsByCharacter = new Map<string, string[]>();
+      for (const n of questline.nodes ?? []) {
+        for (const cid of [...(n.npcIds ?? []), ...(n.monsterIds ?? [])]) {
+          const arr = nodeIdsByCharacter.get(cid) ?? [];
+          arr.push(n.nodeId);
+          nodeIdsByCharacter.set(cid, arr);
+        }
+      }
+
+      const shaped = await Promise.all(
+        characters.map(async (c) => ({
+          _id:        c._id.toString(),
+          name:       c.name,
+          appearance: c.appearance ?? '',
+          background: c.lore ?? '',
+          imageUrl:   await signCharacterPreview(c),
+          questIds:   nodeIdsByCharacter.get(c._id.toString()) ?? [],
+        })),
       );
-      res.json(characters);
+      res.json(shaped);
     } catch (error) {
       this.handleError(res, error);
     }
   }
 
-  // POST /questlines/:id/characters
-  async createCharacter(req: AuthRequest, res: Response) {
-    const userId = req.user?._id;
-    try {
-      const questline = await QuestlineModel.findById(req.params.id);
-      if (!questline) {
-        res.status(404).json({ error: 'Questline not found' });
-        return;
-      }
-      if (questline.ownerId !== userId) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      questline.characters.push(req.body);
-      await questline.save();
-      const created = questline.characters[questline.characters.length - 1];
-      res.status(201).json(created);
-    } catch (error) {
-      this.handleError(res, error);
-    }
-  }
-
-  // PUT /questlines/:id/characters/:characterId
+  // PUT /questlines/:id/characters/:characterId — update the referenced Character
+  // doc, mapping the legacy embedded field names (background→lore, imageUrl→portraitUrl).
   async updateCharacter(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     try {
-      const questline = await QuestlineModel.findById(req.params.id);
+      const questline = await QuestlineModel.findById(req.params.id).select('ownerId').lean();
       if (!questline) {
         res.status(404).json({ error: 'Questline not found' });
         return;
@@ -301,44 +319,27 @@ class QuestlineController extends BaseController {
         res.status(403).json({ error: 'Forbidden' });
         return;
       }
-      const character = questline.characters.find(
-        (c) => c._id.toString() === req.params.characterId,
-      );
-      if (!character) {
-        res.status(404).json({ error: 'Character not found' });
-        return;
-      }
-      Object.assign(character, req.body);
-      await questline.save();
-      res.json(character);
-    } catch (error) {
-      this.handleError(res, error);
-    }
-  }
 
-  // DELETE /questlines/:id/characters/:characterId
-  async deleteCharacter(req: AuthRequest, res: Response) {
-    const userId = req.user?._id;
-    try {
-      const questline = await QuestlineModel.findById(req.params.id);
-      if (!questline) {
-        res.status(404).json({ error: 'Questline not found' });
-        return;
-      }
-      if (questline.ownerId !== userId) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      const before = questline.characters.length;
-      questline.characters = questline.characters.filter(
-        (c) => c._id.toString() !== req.params.characterId,
-      ) as typeof questline.characters;
-      if (questline.characters.length === before) {
+      const character = await CharacterModel.findById(req.params.characterId);
+      if (!character || character.ownerId !== userId) {
         res.status(404).json({ error: 'Character not found' });
         return;
       }
-      await questline.save();
-      res.json({ message: 'Character deleted' });
+
+      const body = req.body as { appearance?: string; background?: string; imageUrl?: string };
+      if (body.appearance !== undefined) character.appearance = body.appearance;
+      if (body.background !== undefined) character.lore = body.background;
+      if (body.imageUrl !== undefined) character.portraitUrl = body.imageUrl;
+      await character.save();
+
+      res.json({
+        _id:        character._id.toString(),
+        name:       character.name,
+        appearance: character.appearance,
+        background: character.lore,
+        imageUrl:   await signCharacterPreview(character),
+        questIds:   [],
+      });
     } catch (error) {
       this.handleError(res, error);
     }
@@ -391,7 +392,22 @@ class QuestlineController extends BaseController {
     } catch (error) { this.handleError(res, error); }
   }
 
-  // DELETE /questlines/:id/rewards/:rewardId
+  // GET /questlines/:id/rewards/:rewardId/usage — node references for this reward,
+  // so the UI can warn before deletion strips them.
+  async getRewardUsage(req: AuthRequest, res: Response) {
+    try {
+      const questline = await QuestlineModel.findById(req.params.id).select('ownerId nodes').lean();
+      if (!questline) { res.status(404).json({ error: 'Questline not found' }); return; }
+      const rewardId = String(req.params.rewardId);
+      const nodeCount = (questline.nodes ?? []).filter(
+        (n) => (n.rewardIds ?? []).includes(rewardId),
+      ).length;
+      res.json({ nodeCount });
+    } catch (error) { this.handleError(res, error); }
+  }
+
+  // DELETE /questlines/:id/rewards/:rewardId — also strips the reward id from every
+  // node's rewardIds so no dangling references are left behind.
   async deleteReward(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     try {
@@ -403,103 +419,12 @@ class QuestlineController extends BaseController {
         (r) => r._id.toString() !== req.params.rewardId,
       ) as typeof questline.rewards;
       if (questline.rewards.length === before) { res.status(404).json({ error: 'Reward not found' }); return; }
+      questline.nodes.forEach((n) => {
+        n.rewardIds = n.rewardIds.filter((rid) => rid !== req.params.rewardId);
+      });
       await questline.save();
       res.json({ message: 'Reward deleted' });
     } catch (error) { this.handleError(res, error); }
-  }
-
-  // ── Chapters ──────────────────────────────────────────────────────────────
-
-  // GET /questlines/:id/chapters
-  async getChapters(req: AuthRequest, res: Response) {
-    try {
-      const questline = await QuestlineModel.findById(req.params.id).select('ownerId chapters');
-      if (!questline) {
-        res.status(404).json({ error: 'Questline not found' });
-        return;
-      }
-      res.json(questline.chapters);
-    } catch (error) {
-      this.handleError(res, error);
-    }
-  }
-
-  // POST /questlines/:id/chapters
-  async createChapter(req: AuthRequest, res: Response) {
-    const userId = req.user?._id;
-    try {
-      const questline = await QuestlineModel.findById(req.params.id);
-      if (!questline) {
-        res.status(404).json({ error: 'Questline not found' });
-        return;
-      }
-      if (questline.ownerId !== userId) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      questline.chapters.push(req.body);
-      await questline.save();
-      const created = questline.chapters[questline.chapters.length - 1];
-      res.status(201).json(created);
-    } catch (error) {
-      this.handleError(res, error);
-    }
-  }
-
-  // PUT /questlines/:id/chapters/:chapterId
-  async updateChapter(req: AuthRequest, res: Response) {
-    const userId = req.user?._id;
-    try {
-      const questline = await QuestlineModel.findById(req.params.id);
-      if (!questline) {
-        res.status(404).json({ error: 'Questline not found' });
-        return;
-      }
-      if (questline.ownerId !== userId) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      const chapter = questline.chapters.find(
-        (c) => c._id.toString() === req.params.chapterId,
-      );
-      if (!chapter) {
-        res.status(404).json({ error: 'Chapter not found' });
-        return;
-      }
-      Object.assign(chapter, req.body);
-      await questline.save();
-      res.json(chapter);
-    } catch (error) {
-      this.handleError(res, error);
-    }
-  }
-
-  // DELETE /questlines/:id/chapters/:chapterId
-  async deleteChapter(req: AuthRequest, res: Response) {
-    const userId = req.user?._id;
-    try {
-      const questline = await QuestlineModel.findById(req.params.id);
-      if (!questline) {
-        res.status(404).json({ error: 'Questline not found' });
-        return;
-      }
-      if (questline.ownerId !== userId) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      const before = questline.chapters.length;
-      questline.chapters = questline.chapters.filter(
-        (c) => c._id.toString() !== req.params.chapterId,
-      ) as typeof questline.chapters;
-      if (questline.chapters.length === before) {
-        res.status(404).json({ error: 'Chapter not found' });
-        return;
-      }
-      await questline.save();
-      res.json({ message: 'Chapter deleted' });
-    } catch (error) {
-      this.handleError(res, error);
-    }
   }
 
   // ── Quest summaries ───────────────────────────────────────────────────────

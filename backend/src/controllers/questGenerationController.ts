@@ -1,12 +1,15 @@
 import { Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import mongoose from 'mongoose';
 import { config } from '../config/config';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import QuestlineModel from '../models/questlineModel';
 import QuestStyleModel from '../models/questStyleModel';
+import CharacterModel from '../models/characterModel';
 import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVariantConfigModel';
 import GameThemeModel, { IGameTheme } from '../models/gameThemeModel';
 import ThemeConfigModel from '../models/themeConfigModel';
+import { resolveProjectId } from '../models/projectModel';
+import { callGemini } from '../services/generation/agents/geminiClient';
 
 const BASE_VARIANT_KEYS = new Set(BASE_VARIANT_SEEDS.map((s) => s.key));
 
@@ -90,20 +93,6 @@ Theme context:
 }
 
 // ---------------------------------------------------------------------------
-// Helper — run Gemini and strip fences
-// ---------------------------------------------------------------------------
-
-async function callGemini(prompt: string): Promise<string> {
-  const genAI = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
-  const result = await genAI.models.generateContent({
-    model: 'gemini-2.5-flash-lite',
-    contents: prompt,
-  });
-  const text = (result.text ?? '').trim();
-  return text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-}
-
-// ---------------------------------------------------------------------------
 // POST /quests/generate — generate objectives + rewards
 // ---------------------------------------------------------------------------
 
@@ -179,7 +168,7 @@ export async function generateObjectives(req: AuthRequest, res: Response) {
 interface GeneratedCharacter {
   id: string;
   name: string;
-  role: 'npc' | 'villain' | 'ally' | 'monster' | 'neutral';
+  role: 'npc' | 'monster';
   appearance: string;
   background: string;
 }
@@ -192,12 +181,12 @@ A player has provided the following story premise:
 ${story}
 """
 
-Your task is to identify all meaningful characters that exist or are implied in this story — NPCs, allies, villains, monsters, and neutral figures.
+Your task is to identify all meaningful characters that exist or are implied in this story.
 
 Rules:
 - Extract 1 to 6 characters. Include only characters who would plausibly appear in the quest.
 - Do NOT invent characters that are not suggested by the story.
-- Each character must have a distinct role: "npc" (quest giver, merchant, bystander), "ally" (joins the player), "villain" (antagonist, boss), "monster" (enemy creature), or "neutral" (ambiguous, can be either).
+- Each character must have role "npc" (any friendly or neutral figure: quest giver, merchant, ally, bystander) or "monster" (any hostile figure: villain, boss, enemy creature, antagonist).
 - Appearance: 1 concise sentence describing their look (clothing, physical traits, atmosphere).
 - Background: 1 concise sentence about who they are and their motivation in this story.
 - Return ONLY valid JSON, no markdown, no explanation.
@@ -206,8 +195,8 @@ Return this exact JSON structure:
 {
   "characters": [
     { "id": "char-1", "name": "Name", "role": "npc",     "appearance": "...", "background": "..." },
-    { "id": "char-2", "name": "Name", "role": "villain",  "appearance": "...", "background": "..." },
-    { "id": "char-3", "name": "Name", "role": "ally",     "appearance": "...", "background": "..." }
+    { "id": "char-2", "name": "Name", "role": "monster",  "appearance": "...", "background": "..." },
+    { "id": "char-3", "name": "Name", "role": "npc",     "appearance": "...", "background": "..." }
   ]
 }`;
 }
@@ -287,7 +276,7 @@ Each node has a variant that describes the TYPE of scene:
 
 ━━━ CHARACTER & REWARD ASSIGNMENT ━━━
 - Every dialogue/story node SHOULD involve 1–2 relevant characters. Put their IDs in "npcIds".
-- Every combat node SHOULD involve the villain or monster characters. Put their IDs in "monsterIds".
+- Every combat node SHOULD involve the monster characters. Put their IDs in "monsterIds".
 - The final resolution node MUST have the reward IDs in "rewardIds". Mid-quest treasure nodes may also have reward IDs.
 - Use ONLY IDs from the lists above. Leave arrays empty ([]) if none apply.
 
@@ -342,7 +331,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     return;
   }
 
-  const { story, genre, objectives, rewards, characters, styleId, themeId, exportFormat } = req.body as {
+  const { story, genre, objectives, rewards, characters, styleId, themeId, exportFormat, projectId } = req.body as {
     story?: string;
     genre?: string;
     objectives?: Objective[];
@@ -351,6 +340,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     styleId?: string;
     themeId?: string;
     exportFormat?: string;
+    projectId?: string;
   };
 
   if (!story || !genre || !objectives?.length) {
@@ -363,10 +353,17 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     return;
   }
 
+  // Track inserted Character docs so we can roll them back if the questline
+  // itself fails to persist (standalone Mongo has no transactions).
+  let insertedCharacterIds: mongoose.Types.ObjectId[] = [];
+  let questlineSaved = false;
+
   try {
     // 1. Resolve style promptSuffix and theme metadata in parallel
     const [style, theme] = await Promise.all([
-      styleId ? QuestStyleModel.findById(styleId).lean() : Promise.resolve(null),
+      styleId && mongoose.isValidObjectId(styleId)
+        ? QuestStyleModel.findById(styleId).lean()
+        : Promise.resolve(null),
       loadTheme(themeId),
     ]);
 
@@ -377,6 +374,9 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     const resolvedExportFormat = exportFormat
       ?? (await ThemeConfigModel.findOne({ themeId: themeId ?? 'generic_rpg' }).lean())?.defaultExportFormat
       ?? 'json';
+
+    // Resolve the owning project (defaults to the user's Inbox)
+    const resolvedProjectId = await resolveProjectId(userId, projectId);
 
     // 2. Ask Gemini to generate the graph
     const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix, themeContext));
@@ -390,12 +390,30 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     const variantKeys = [...new Set(generated.nodes.map((n) => n.variant ?? 'story'))];
     await ensureVariantConfigsExist(variantKeys);
 
-    // 4. Build temp-id → index maps so we can remap AI-generated IDs to MongoDB _ids after insert
+    // 4. Create standalone Character documents so they appear in the project roster,
+    //    then build temp-id → CharacterModel._id map for node remapping.
     const charIdMap  = new Map<string, string>(); // "char-1" → mongo _id
     const rewardIdMap = new Map<string, string>(); // "rew-1"  → mongo _id
 
+    const characterDocs = await CharacterModel.insertMany(
+      (characters ?? []).map((c) => ({
+        ownerId:    userId,
+        projectId:  resolvedProjectId,
+        kind:       c.role, // role is already 'npc' | 'monster'
+        name:       c.name,
+        appearance: c.appearance,
+        lore:       c.background,
+      })),
+    );
+    insertedCharacterIds = characterDocs.map((d) => d._id);
+    (characters ?? []).forEach((c, i) => {
+      const mongoId = characterDocs[i]?._id?.toString();
+      if (mongoId) charIdMap.set(c.id, mongoId);
+    });
+
     const questline = await QuestlineModel.create({
       ownerId:      userId,
+      projectId:    resolvedProjectId,
       title:        generated.title || story.split('\n')[0].slice(0, 60) || 'New Quest',
       description:  story,
       genre:        genre,
@@ -403,6 +421,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       styleId:      styleId ?? '',
       themeId:      themeId ?? 'generic_rpg',
       exportFormat: resolvedExportFormat,
+      characterIds: characterDocs.map((d) => d._id.toString()),
       // Nodes saved with placeholder IDs first — remapped below after we have _ids
       nodes: generated.nodes.map((n) => ({
         nodeId:     n.id,
@@ -429,20 +448,9 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
         description: '',
         rarity:      r.rarity,
       })),
-      characters: (characters ?? []).map((c) => ({
-        name:       c.name,
-        appearance: c.appearance,
-        background: c.background,
-        imageUrl:   '',
-        questIds:   [],
-      })),
     });
 
-    // 5. Build temp-id → MongoDB _id maps from the newly created embedded documents
-    (characters ?? []).forEach((c, i) => {
-      const mongoId = questline.characters[i]?._id?.toString();
-      if (mongoId) charIdMap.set(c.id, mongoId);
-    });
+    // 5. Build reward temp-id → MongoDB _id map from the embedded reward docs
     (rewards ?? []).forEach((r, i) => {
       const mongoId = questline.rewards[i]?._id?.toString();
       if (mongoId) rewardIdMap.set(r.id, mongoId);
@@ -462,9 +470,15 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     }));
     questline.nodes = remappedNodes as typeof questline.nodes;
     await questline.save();
+    questlineSaved = true;
 
     res.status(201).json({ questlineId: questline._id.toString() });
   } catch (error) {
+    // Roll back orphaned Character docs if the questline never persisted.
+    if (!questlineSaved && insertedCharacterIds.length > 0) {
+      await CharacterModel.deleteMany({ _id: { $in: insertedCharacterIds } }).catch(() => {});
+    }
+    console.error('[generateQuestline]', error);
     if (error instanceof SyntaxError) {
       res.status(502).json({ error: 'AI returned malformed JSON — try again' });
     } else {

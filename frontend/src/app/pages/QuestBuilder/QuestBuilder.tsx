@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
@@ -26,11 +26,35 @@ import { NodeEditSidebar, NodeSnapshot } from './components/NodeEditSidebar';
 import { getLayoutedElements } from '../../utils/layoutUtils';
 import { QuestNodeData, NodeVariant } from '../../types/quest';
 import { useQuestlineData } from './hooks/useQuestlineData';
-import { fetchCharacters, fetchRewards } from '../../api/projectSidebarApi';
+import { fetchRewards } from '../../api/projectSidebarApi';
+import { listCharacters } from '../../api/characterApi';
+import { fetchQuestlineMeta, saveQuestlineGraph } from '../../api/questBuilderApi';
+import { toast } from 'sonner';
 
 const nodeTypes = {
   questNode: QuestNode,
 } satisfies NodeTypes;
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+// Stable serialization of only the persisted graph fields, so transient UI churn
+// (selection, drag positions, injected callbacks/name maps, layout direction)
+// doesn't register as an unsaved change.
+function graphSignature(nodes: Node<QuestNodeData>[], edges: Edge[]): string {
+  return JSON.stringify({
+    n: nodes.map((nd) => ({
+      id:         nd.id,
+      type:       nd.type,
+      title:      nd.data.title,
+      body:       nd.data.body,
+      variant:    nd.data.variant ?? 'story',
+      npcIds:     nd.data.npcIds     ?? [],
+      monsterIds: nd.data.monsterIds ?? [],
+      rewardIds:  nd.data.rewardIds  ?? [],
+    })),
+    e: edges.map((ed) => ({ id: ed.id, source: ed.source, target: ed.target })),
+  });
+}
 
 function FitViewButton() {
   const { fitView } = useReactFlow();
@@ -60,6 +84,23 @@ function AutoLayoutTrigger({ trigger }: { trigger: number }) {
   return null;
 }
 
+// Pans/centres the viewport onto a node when asked from outside the flow (e.g. the
+// Quests tab in the side panel). The nonce makes repeat clicks on the same node fire.
+function FocusNodeController({ target }: { target: { nodeId: string; nonce: number } | null }) {
+  const { getNode, setCenter, getZoom } = useReactFlow();
+  useEffect(() => {
+    if (!target) return;
+    const node = getNode(target.nodeId);
+    if (!node) return;
+    const width  = node.measured?.width  ?? 300;
+    const height = node.measured?.height ?? 140;
+    const x = node.position.x + width / 2;
+    const y = node.position.y + height / 2;
+    setCenter(x, y, { zoom: Math.max(getZoom(), 1), duration: 500 });
+  }, [target, getNode, setCenter, getZoom]);
+  return null;
+}
+
 type PendingNode = { sourceNodeId: string; position: 'top' | 'bottom' | 'left' | 'right' };
 
 type QuestFlowNode = Node<QuestNodeData>;
@@ -78,16 +119,46 @@ export function QuestBuilder() {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [layoutDirection, setLayoutDirection] = useState<'TB' | 'LR'>('LR');
   const [layoutTrigger, setLayoutTrigger] = useState(0);
+  const [focusTarget, setFocusTarget] = useState<{ nodeId: string; nonce: number } | null>(null);
+  const [savedSig, setSavedSig] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
   const [editingNode, setEditingNode] = useState<{ id: string; snapshot: NodeSnapshot } | null>(null);
   const [characterNames, setCharacterNames] = useState<Record<string, string>>({});
   const [rewardNames, setRewardNames]       = useState<Record<string, string>>({});
+  const [projectId, setProjectId] = useState('');
+  const [autoAttachId, setAutoAttachId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const attachHandledRef = useRef(false);
 
-  // Fetch character + reward name maps for node card display
+  // Latest nodes/edges, so the debounced save reads current state without being
+  // re-created on every change (which would keep resetting the debounce timer).
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+
+  const currentSig = useMemo(() => graphSignature(nodes, edges), [nodes, edges]);
+  const isDirty = savedSig !== null && currentSig !== savedSig;
+
+  // Resolve the owning project so we can source project-scoped characters
   useEffect(() => {
     if (!questlineId) return;
-    fetchCharacters(questlineId)
-      .then((chars) => setCharacterNames(Object.fromEntries(chars.map((c) => [c.id, c.name]))))
+    fetchQuestlineMeta(questlineId)
+      .then((meta) => setProjectId(meta.projectId))
       .catch(() => {});
+  }, [questlineId]);
+
+  // Character name map (for node cards) comes from the project character collection
+  useEffect(() => {
+    if (!projectId) return;
+    listCharacters({ projectId })
+      .then((chars) => setCharacterNames(Object.fromEntries(chars.map((c) => [c._id, c.name]))))
+      .catch(() => {});
+  }, [projectId]);
+
+  // Reward name map stays sourced from the questline
+  useEffect(() => {
+    if (!questlineId) return;
     fetchRewards(questlineId)
       .then((rwds) => setRewardNames(Object.fromEntries(rwds.map((r) => [r.id, r.title]))))
       .catch(() => {});
@@ -100,8 +171,40 @@ export function QuestBuilder() {
       setNodes(layouted.nodes.map((n) => ({ ...n, data: { ...n.data, layoutDirection: 'LR' as const } })));
       setEdges(layouted.edges);
       setNodeIdCounter(nextNodeId);
+      // Baseline for dirty-tracking: the freshly loaded graph is "saved".
+      setSavedSig(graphSignature(layouted.nodes, layouted.edges));
+      setSaveState('idle');
     }
   }, [fetchedNodes, fetchedEdges, nextNodeId, setNodes, setEdges]);
+
+  // Establish a baseline for an empty questline too, so the first edit is tracked.
+  useEffect(() => {
+    if (!isLoading && fetchedNodes.length === 0 && savedSig === null) {
+      setSavedSig(graphSignature([], []));
+    }
+  }, [isLoading, fetchedNodes, savedSig]);
+
+  // Persist the graph (used by the Save button and the debounced autosave).
+  const persist = useCallback(async () => {
+    setSaveState('saving');
+    try {
+      const ns = nodesRef.current;
+      const es = edgesRef.current;
+      await saveQuestlineGraph(questlineId, ns, es);
+      setSavedSig(graphSignature(ns, es));
+      setSaveState('saved');
+    } catch {
+      setSaveState('error');
+      toast.error('Failed to save graph');
+    }
+  }, [questlineId]);
+
+  // Debounced autosave whenever the graph diverges from the last saved snapshot.
+  useEffect(() => {
+    if (savedSig === null || currentSig === savedSig) return;
+    const id = setTimeout(() => { void persist(); }, 1500);
+    return () => clearTimeout(id);
+  }, [currentSig, savedSig, persist]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -117,6 +220,51 @@ export function QuestBuilder() {
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
   }, []);
+
+  // Focus a node from outside the canvas (Quests tab): highlight it + centre on it.
+  const focusNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === nodeId })));
+      setSelectedNode(nodes.find((n) => n.id === nodeId) ?? null);
+      setFocusTarget({ nodeId, nonce: Date.now() });
+    },
+    [setNodes, nodes],
+  );
+
+  // Keep the in-memory graph consistent when a character/reward is deleted from
+  // the side panel (the backend strips the references; this mirrors it on-screen).
+  const removeCharacterFromGraph = useCallback((charId: string) => {
+    setNodes((nds) => nds.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        npcIds:     ((n.data.npcIds     as string[]) ?? []).filter((id) => id !== charId),
+        monsterIds: ((n.data.monsterIds as string[]) ?? []).filter((id) => id !== charId),
+      },
+    })));
+    setCharacterNames((prev) => {
+      if (!(charId in prev)) return prev;
+      const next = { ...prev };
+      delete next[charId];
+      return next;
+    });
+  }, [setNodes]);
+
+  const removeRewardFromGraph = useCallback((rewardId: string) => {
+    setNodes((nds) => nds.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        rewardIds: ((n.data.rewardIds as string[]) ?? []).filter((id) => id !== rewardId),
+      },
+    })));
+    setRewardNames((prev) => {
+      if (!(rewardId in prev)) return prev;
+      const next = { ...prev };
+      delete next[rewardId];
+      return next;
+    });
+  }, [setNodes]);
 
   // Step 1: + button pressed — open sidebar in create mode
   const requestNewNode = useCallback(
@@ -229,6 +377,19 @@ export function QuestBuilder() {
     [setNodes]
   );
 
+  // Returning from the "+ Create new" character flow (?attachNode=&attachChar=):
+  // reopen the node editor for that node and auto-attach the new character.
+  useEffect(() => {
+    if (attachHandledRef.current || nodes.length === 0) return;
+    const attachNode = searchParams.get('attachNode');
+    const attachChar = searchParams.get('attachChar');
+    if (!attachNode || !attachChar) return;
+    attachHandledRef.current = true;
+    setAutoAttachId(attachChar);
+    openEditSidebar(attachNode);
+    setSearchParams({}, { replace: true });
+  }, [nodes, searchParams, openEditSidebar, setSearchParams]);
+
   // Attach interaction callbacks and name maps to every node whenever they update
   useEffect(() => {
     setNodes((nds) =>
@@ -286,11 +447,20 @@ export function QuestBuilder() {
         layoutDirection={layoutDirection}
         isSidebarOpen={isLeftSidebarOpen}
         onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
+        onSave={persist}
+        saveState={saveState}
+        isDirty={isDirty}
       />
 
       {/* Canvas */}
       <div className="flex-1 relative">
-        <ProjectSidebar questlineId={questlineId} isOpen={isLeftSidebarOpen} />
+        <ProjectSidebar
+          questlineId={questlineId}
+          isOpen={isLeftSidebarOpen}
+          onQuestClick={focusNode}
+          onCharacterDeleted={removeCharacterFromGraph}
+          onRewardDeleted={removeRewardFromGraph}
+        />
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -317,6 +487,7 @@ export function QuestBuilder() {
           />
           <FitViewButton />
           <AutoLayoutTrigger trigger={layoutTrigger} />
+          <FocusNodeController target={focusTarget} />
         </ReactFlow>
 
         <div className="absolute top-4 left-4 bg-zinc-900/90 backdrop-blur-sm border border-zinc-800 rounded-lg px-4 py-3 z-10">
@@ -359,10 +530,14 @@ export function QuestBuilder() {
         isOpen={editingNode !== null}
         node={editingNode?.snapshot ?? null}
         questlineId={questlineId}
-        onClose={() => setEditingNode(null)}
+        projectId={projectId}
+        nodeId={editingNode?.id ?? ''}
+        autoAttachId={autoAttachId}
+        onClose={() => { setEditingNode(null); setAutoAttachId(null); }}
         onApply={(updated) => {
           if (editingNode) updateNode(editingNode.id, updated);
           setEditingNode(null);
+          setAutoAttachId(null);
         }}
       />
     </div>

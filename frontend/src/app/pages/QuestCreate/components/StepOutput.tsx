@@ -124,6 +124,9 @@ export function StepOutput({
     setGenerating(true);
     setGenerateError(null);
     try {
+      // Carry through the project context when the wizard was opened from a
+      // project dashboard (#/create?projectId=...).
+      const projectId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('projectId') ?? undefined;
       const id = await generateQuestline(
         story,
         genre,
@@ -131,6 +134,7 @@ export function StepOutput({
         rewards.filter((r) => selectedRewards.includes(r.id)),
         characters,
         styleId,
+        projectId,
       );
       navigate(`/quest-builder/${id}`);
     } catch (err) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, User, Sword, Heart, Skull, HelpCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { Check, User, Skull, RefreshCw, Loader2 } from 'lucide-react';
 import { GeneratedCharacter, CharacterRole } from '../../../api/questCreateApi';
 import { WizardStepIndicator } from './WizardStepIndicator';
 
@@ -15,11 +15,8 @@ interface StepCharactersProps {
 }
 
 const roleConfig: Record<CharacterRole, { label: string; icon: React.ElementType; color: string; border: string }> = {
-  npc:     { label: 'NPC',     icon: User,       color: 'text-zinc-400',   border: 'border-zinc-600'   },
-  ally:    { label: 'Ally',    icon: Heart,      color: 'text-blue-400',   border: 'border-blue-600'   },
-  villain: { label: 'Villain', icon: Sword,      color: 'text-red-400',    border: 'border-red-600'    },
-  monster: { label: 'Monster', icon: Skull,      color: 'text-orange-400', border: 'border-orange-600' },
-  neutral: { label: 'Neutral', icon: HelpCircle, color: 'text-amber-400',  border: 'border-amber-600'  },
+  npc:     { label: 'NPC',     icon: User,  color: 'text-zinc-400',   border: 'border-zinc-600'   },
+  monster: { label: 'Monster', icon: Skull, color: 'text-orange-400', border: 'border-orange-600' },
 };
 
 export function StepCharacters({

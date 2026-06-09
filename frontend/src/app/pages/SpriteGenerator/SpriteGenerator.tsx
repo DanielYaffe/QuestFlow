@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Sparkles, Wand2, ChevronDown, ChevronUp,
-  Download, Copy, Check, AlertCircle, Loader2, X, ZoomIn, HelpCircle,
+  Download, Copy, Check, AlertCircle, Loader2, X, ZoomIn, HelpCircle, UserPlus,
 } from 'lucide-react';
 import { generateSprite, getSprites, getStyles, SpriteRecord, SpriteStyle } from '../../api/spriteApi';
 import { useSpriteJobs } from '../../context/SpriteJobContext';
+import { PromoteToCharacterModal } from './components/PromoteToCharacterModal';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -132,9 +133,10 @@ interface LightboxProps {
   onClose: () => void;
   onDownload: (url: string, name: string) => void;
   onCopy: (text: string) => void;
+  onPromote: () => void;
 }
 
-function Lightbox({ sprite, styleName, onClose, onDownload, onCopy }: LightboxProps) {
+function Lightbox({ sprite, styleName, onClose, onDownload, onCopy, onPromote }: LightboxProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -210,8 +212,15 @@ function Lightbox({ sprite, styleName, onClose, onDownload, onCopy }: LightboxPr
               {copied ? 'Copied!' : 'Copy prompt'}
             </button>
             <button
+              onClick={onPromote}
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-600/20 border border-purple-600/40 hover:bg-purple-600/30 text-purple-300 text-xs rounded-lg transition-colors ml-auto"
+            >
+              <UserPlus className="w-3 h-3" />
+              Promote to Character
+            </button>
+            <button
               onClick={() => onDownload(sprite.imageUrl, sprite.userPrompt)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors ml-auto"
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors"
             >
               <Download className="w-3 h-3" />
               Download
@@ -244,6 +253,7 @@ export function SpriteGenerator() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [current, setCurrent] = useState<SpriteRecord | null>(null);
   const [lightboxSprite, setLightboxSprite] = useState<SpriteRecord | null>(null);
+  const [promoteSprite, setPromoteSprite] = useState<SpriteRecord | null>(null);
 
   const [previewCopied, setPreviewCopied] = useState(false);
 
@@ -345,6 +355,14 @@ export function SpriteGenerator() {
           onClose={() => setLightboxSprite(null)}
           onDownload={handleDownload}
           onCopy={handleCopy}
+          onPromote={() => setPromoteSprite(lightboxSprite)}
+        />
+      )}
+
+      {promoteSprite && (
+        <PromoteToCharacterModal
+          sprite={promoteSprite}
+          onClose={() => setPromoteSprite(null)}
         />
       )}
 

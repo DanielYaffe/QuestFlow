@@ -19,6 +19,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+    const dbName = mongoose.connection.db?.databaseName ?? '';
+    if (!dbName.endsWith('_test')) {
+        await mongoose.connection.close();
+        throw new Error(`SAFETY: refusing to drop non-test database "${dbName}"`);
+    }
     await mongoose.connection.dropDatabase();
     await mongoose.connection.close();
 });

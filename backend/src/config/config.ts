@@ -13,7 +13,6 @@ const envSchema = z.object({
     AWS_ACCESS_KEY_ID: z.string().default(''),
     AWS_SECRET_ACCESS_KEY: z.string().default(''),
     AWS_REGION: z.string().default('us-east-1'),
-    AWS_BEDROCK_REGION: z.string().default('us-east-1'),
     AWS_S3_BUCKET: z.string().default(''),
     MINIO_ENDPOINT: z.string().default(''),
     GOOGLE_CLIENT_ID: z.string().default(''),

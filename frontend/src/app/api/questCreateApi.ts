@@ -12,7 +12,7 @@ export interface Reward {
   rarity: 'common' | 'rare' | 'epic';
 }
 
-export type CharacterRole = 'npc' | 'villain' | 'ally' | 'monster' | 'neutral';
+export type CharacterRole = 'npc' | 'monster';
 
 export interface GeneratedCharacter {
   id: string;
@@ -50,7 +50,8 @@ export async function generateQuestline(
   rewards: Reward[],
   characters: GeneratedCharacter[],
   styleId: string,
+  projectId?: string,
 ): Promise<string> {
-  const { data } = await api.post('/quests/generate-questline', { story, genre, objectives, rewards, characters, styleId });
+  const { data } = await api.post('/quests/generate-questline', { story, genre, objectives, rewards, characters, styleId, projectId });
   return data.questlineId;
 }

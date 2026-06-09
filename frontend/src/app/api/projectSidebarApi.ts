@@ -14,12 +14,6 @@ export type Character = {
   questIds: string[];
 };
 
-export type Chapter = {
-  id: string;
-  title: string;
-  scenes: { id: string; title: string }[];
-};
-
 export type QuestSummary = {
   id: string;
   title: string;
@@ -42,11 +36,6 @@ export async function fetchCharacters(questlineId: string): Promise<Character[]>
   const { data } = await api.get(`/questlines/${questlineId}/characters`);
   // Map MongoDB _id to id for frontend compatibility
   return data.map((c: Character & { _id?: string }) => ({ ...c, id: c._id ?? c.id }));
-}
-
-export async function fetchChapters(questlineId: string): Promise<Chapter[]> {
-  const { data } = await api.get(`/questlines/${questlineId}/chapters`);
-  return data.map((ch: Chapter & { _id?: string }) => ({ ...ch, id: ch._id ?? ch.id }));
 }
 
 export async function fetchQuestSummaries(questlineId: string): Promise<QuestSummary[]> {
@@ -89,4 +78,17 @@ export async function updateRewardImage(
   imageUrl: string,
 ): Promise<void> {
   await api.put(`/questlines/${questlineId}/rewards/${rewardId}`, { imageUrl });
+}
+
+export async function deleteReward(questlineId: string, rewardId: string): Promise<void> {
+  await api.delete(`/questlines/${questlineId}/rewards/${rewardId}`);
+}
+
+// How many quest nodes in this questline reference the reward.
+export async function getRewardUsage(
+  questlineId: string,
+  rewardId: string,
+): Promise<{ nodeCount: number }> {
+  const { data } = await api.get(`/questlines/${questlineId}/rewards/${rewardId}/usage`);
+  return data;
 }

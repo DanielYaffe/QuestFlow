@@ -9,12 +9,13 @@ export interface QuestlineSummary {
   _id: string;
   title: string;
   description: string;
+  projectId?: string;
   updatedAt: string;
   nodeCount?: number;
 }
 
-export async function fetchQuestlines(): Promise<QuestlineSummary[]> {
-  const { data } = await api.get('/questlines');
+export async function fetchQuestlines(projectId?: string): Promise<QuestlineSummary[]> {
+  const { data } = await api.get('/questlines', { params: projectId ? { projectId } : undefined });
   return data;
 }
 
@@ -23,11 +24,18 @@ export interface QuestlineMeta {
   title: string;
   genre: string;
   styleId: string;
+  projectId: string;
 }
 
 export async function fetchQuestlineMeta(questlineId: string): Promise<QuestlineMeta> {
   const { data } = await api.get(`/questlines/${questlineId}`);
-  return { _id: data._id, title: data.title, genre: data.genre ?? '', styleId: data.styleId ?? '' };
+  return {
+    _id: data._id,
+    title: data.title,
+    genre: data.genre ?? '',
+    styleId: data.styleId ?? '',
+    projectId: data.projectId ?? '',
+  };
 }
 
 export interface QuestlineData {

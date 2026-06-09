@@ -8,6 +8,9 @@ import { MainLayout } from './layouts/MainLayout';
 import { Login } from './pages/Login/Login';
 import { AuthCallback } from './pages/AuthCallback/AuthCallback';
 import { Dashboard } from './pages/Dashboard/Dashboard';
+import { Projects } from './pages/Projects/Projects';
+import { ProjectDashboard } from './pages/Projects/ProjectDashboard';
+import { Characters } from './pages/Project/Characters';
 import { QuestBuilder } from './pages/QuestBuilder/QuestBuilder';
 import { QuestBuilderLanding } from './pages/QuestBuilder/QuestBuilderLanding';
 import { QuestCreate } from './pages/QuestCreate/QuestCreate';
@@ -26,6 +29,9 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/projects" element={<Projects />} />
+              <Route path="/projects/:projectId" element={<ProjectDashboard />} />
+              <Route path="/projects/:projectId/characters" element={<Characters />} />
               <Route path="/quest-builder" element={<QuestBuilderLanding />} />
               <Route path="/quest-builder/:questlineId" element={<QuestBuilder />} />
               <Route path="/create" element={<QuestCreate />} />

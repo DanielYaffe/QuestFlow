@@ -3,7 +3,9 @@ import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, Che
 import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 import { motion, AnimatePresence } from 'motion/react';
 import { NodeVariant } from '../../../types/quest';
-import { fetchCharacters, fetchRewards, Character, Reward } from '../../../api/projectSidebarApi';
+import { fetchRewards, Reward } from '../../../api/projectSidebarApi';
+import { listCharacters, CharacterRecord } from '../../../api/characterApi';
+import { CharacterPicker } from './CharacterPicker';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,6 +24,9 @@ interface NodeEditSidebarProps {
   isOpen: boolean;
   node: NodeSnapshot | null;
   questlineId: string;
+  projectId: string;
+  nodeId: string;
+  autoAttachId?: string | null;
   onClose: () => void;
   onApply: (updated: NodeSnapshot) => void;
 }
@@ -335,7 +340,7 @@ function arraysEqual(a: string[], b: string[]) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }: NodeEditSidebarProps) {
+export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, autoAttachId, onClose, onApply }: NodeEditSidebarProps) {
   const { configs, getConfig } = useVariantConfigs();
   const [phase, setPhase] = useState<Phase>('edit');
   const [title,      setTitle]      = useState('');
@@ -346,14 +351,18 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
   const [rewardIds,  setRewardIds]  = useState<string[]>([]);
   const [width,      setWidth]      = useState(DEFAULT_WIDTH);
 
-  const [characters,       setCharacters]       = useState<Character[]>([]);
+  const [characters,       setCharacters]       = useState<CharacterRecord[]>([]);
   const [rewards,          setRewards]          = useState<Reward[]>([]);
   const [charsLoaded,      setCharsLoaded]      = useState(false);
   const [rewardsLoaded,    setRewardsLoaded]    = useState(false);
 
+  const npcChars     = characters.filter((c) => c.kind === 'npc');
+  const monsterChars = characters.filter((c) => c.kind === 'monster');
+
   const dragging = useRef(false);
   const startX   = useRef(0);
   const startW   = useRef(DEFAULT_WIDTH);
+  const attachedRef = useRef<string | null>(null);
 
   // Populate fields when node changes
   useEffect(() => {
@@ -368,18 +377,40 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
     }
   }, [node]);
 
-  // Fetch characters + rewards when sidebar opens
+  // Fetch project characters + questline rewards when sidebar opens
   useEffect(() => {
-    if (!isOpen || !questlineId) return;
+    if (!isOpen) return;
     setCharsLoaded(false);
+    if (projectId) {
+      listCharacters({ projectId })
+        .then((c) => { setCharacters(c); setCharsLoaded(true); })
+        .catch(() => { setCharacters([]); setCharsLoaded(true); });
+    } else {
+      setCharacters([]); setCharsLoaded(true);
+    }
     setRewardsLoaded(false);
-    fetchCharacters(questlineId)
-      .then((c) => { setCharacters(c); setCharsLoaded(true); })
-      .catch(() => { setCharacters([]); setCharsLoaded(true); });
-    fetchRewards(questlineId)
-      .then((r) => { setRewards(r); setRewardsLoaded(true); })
-      .catch(() => { setRewards([]); setRewardsLoaded(true); });
-  }, [isOpen, questlineId]);
+    if (questlineId) {
+      fetchRewards(questlineId)
+        .then((r) => { setRewards(r); setRewardsLoaded(true); })
+        .catch(() => { setRewards([]); setRewardsLoaded(true); });
+    } else {
+      setRewards([]); setRewardsLoaded(true);
+    }
+  }, [isOpen, projectId, questlineId]);
+
+  // Auto-attach a character created via the "+ Create new" returnTo round-trip
+  useEffect(() => {
+    if (!autoAttachId || !charsLoaded) return;
+    if (attachedRef.current === autoAttachId) return;
+    const c = characters.find((x) => x._id === autoAttachId);
+    if (!c) return;
+    attachedRef.current = autoAttachId;
+    if (c.kind === 'monster') {
+      setMonsterIds((prev) => (prev.includes(c._id) ? prev : [...prev, c._id]));
+    } else {
+      setNpcIds((prev) => (prev.includes(c._id) ? prev : [...prev, c._id]));
+    }
+  }, [autoAttachId, charsLoaded, characters]);
 
   // Drag-to-resize
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -425,7 +456,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
     onClose();
   };
 
-  const getCharName   = (id: string) => characters.find((c) => c.id === id)?.name   ?? id;
+  const getCharName   = (id: string) => characters.find((c) => c._id === id)?.name  ?? id;
   const getRewardName = (id: string) => rewards.find((r)    => r.id === id)?.title  ?? id;
 
   return (
@@ -526,29 +557,33 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
 
                 {/* NPC Picker — non-combat variants */}
                 {!isCombatVariant && (
-                  <TagPicker<Character>
+                  <CharacterPicker
                     label="NPCs Involved"
                     icon={Users}
-                    items={characters}
+                    kind="npc"
+                    characters={npcChars}
                     selectedIds={npcIds}
-                    getId={(c) => c.id}
-                    getName={(c) => c.name}
                     onToggle={toggleNpc}
                     loading={!charsLoaded}
+                    projectId={projectId}
+                    questId={questlineId}
+                    nodeId={nodeId}
                   />
                 )}
 
                 {/* Monster Picker — combat variants */}
                 {isCombatVariant && (
-                  <TagPicker<Character>
+                  <CharacterPicker
                     label="Monsters to Defeat"
                     icon={Skull}
-                    items={characters}
+                    kind="monster"
+                    characters={monsterChars}
                     selectedIds={monsterIds}
-                    getId={(c) => c.id}
-                    getName={(c) => c.name}
                     onToggle={toggleMonster}
                     loading={!charsLoaded}
+                    projectId={projectId}
+                    questId={questlineId}
+                    nodeId={nodeId}
                   />
                 )}
 

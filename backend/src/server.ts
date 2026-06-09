@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import bodyParser from "body-parser";
 import { config } from "./config/config";
 import authRouter from "./routes/authRoute";
+import projectRouter from "./routes/projectRoute";
+import characterRouter from "./routes/characterRoute";
 import questlineRouter from "./routes/questlineRoute";
 import questGenerationRouter from "./routes/questGenerationRoute";
 import exportTemplateRouter from "./routes/exportTemplateRoute";
@@ -36,6 +38,8 @@ app.use(cors())
 
 app.use('/auth', authRouter);
 app.use(authenticate);
+app.use('/projects', projectRouter);
+app.use('/characters', characterRouter);
 app.use('/questlines', questlineRouter);
 app.use('/quests', questGenerationRouter);
 app.use('/export-templates', exportTemplateRouter);

@@ -1,21 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, BookOpen, ScrollText, Gift, ChevronDown, ChevronRight, Plus, Trash2, Copy } from 'lucide-react';
+import { Users, ScrollText, Gift, Trash2, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   fetchCharacters,
-  fetchChapters,
   fetchQuestSummaries,
   fetchRewards,
+  deleteReward,
+  getRewardUsage,
   Character,
-  Chapter,
   QuestSummary,
   Reward,
 } from '../../../api/projectSidebarApi';
+import { deleteCharacter, getCharacterUsage } from '../../../api/characterApi';
 import { fetchQuestlineMeta } from '../../../api/questBuilderApi';
+import { ConfirmModal } from '../../../components/shared/ConfirmModal';
 import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { RewardDetailPanel } from './RewardDetailPanel';
 
-type Tab = 'characters' | 'chapters' | 'quests' | 'rewards';
+type Tab = 'characters' | 'rewards' | 'quests';
 
 const variantColor: Record<string, string> = {
   story: 'bg-purple-500',
@@ -27,19 +30,27 @@ const variantColor: Record<string, string> = {
 interface ProjectSidebarProps {
   questlineId: string;
   isOpen: boolean;
+  onQuestClick: (nodeId: string) => void;
+  onCharacterDeleted?: (id: string) => void;
+  onRewardDeleted?: (id: string) => void;
 }
 
-export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
+export function ProjectSidebar({ questlineId, isOpen, onQuestClick, onCharacterDeleted, onRewardDeleted }: ProjectSidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>('characters');
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
+  const [activeQuestId, setActiveQuestId] = useState<string | null>(null);
 
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [questSummaries, setQuestSummaries] = useState<QuestSummary[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
-  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [questStyleId, setQuestStyleId] = useState('');
+
+  // Pending deletions (with dependent-node warning)
+  const [pendingCharDelete, setPendingCharDelete] = useState<Character | null>(null);
+  const [charDeleteUsage, setCharDeleteUsage] = useState<{ nodeCount: number; questlineCount: number } | null>(null);
+  const [pendingRewardDelete, setPendingRewardDelete] = useState<Reward | null>(null);
+  const [rewardDeleteUsage, setRewardDeleteUsage] = useState<{ nodeCount: number } | null>(null);
 
   // Refs so tab switching can trigger the panel's own close guard
   const characterPanelCloseRef = useRef<(() => void) | null>(null);
@@ -47,7 +58,6 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
 
   useEffect(() => {
     fetchCharacters(questlineId).then(setCharacters).catch(console.error);
-    fetchChapters(questlineId).then(setChapters).catch(console.error);
     fetchQuestSummaries(questlineId).then(setQuestSummaries).catch(console.error);
     fetchRewards(questlineId).then(setRewards).catch(console.error);
     fetchQuestlineMeta(questlineId).then((m) => setQuestStyleId(m.styleId ?? '')).catch(console.error);
@@ -56,13 +66,70 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
   const selectedCharacter = characters.find((c) => c.id === selectedCharacterId) ?? null;
   const selectedReward = rewards.find((r) => r.id === selectedRewardId) ?? null;
 
-  const toggleChapter = (id: string) => {
-    setExpandedChapters((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  // ── Deletion with dependent-node warning + reference cleanup ───────────────
+  const requestCharDelete = (c: Character) => {
+    setPendingCharDelete(c);
+    setCharDeleteUsage(null);
+    getCharacterUsage(c.id)
+      .then(setCharDeleteUsage)
+      .catch(() => setCharDeleteUsage({ nodeCount: 0, questlineCount: 0 }));
   };
+
+  const confirmCharDelete = async () => {
+    if (!pendingCharDelete) return;
+    const target = pendingCharDelete;
+    setPendingCharDelete(null);
+    setCharDeleteUsage(null);
+    if (selectedCharacterId === target.id) setSelectedCharacterId(null);
+    try {
+      await deleteCharacter(target.id);
+      setCharacters((prev) => prev.filter((c) => c.id !== target.id));
+      onCharacterDeleted?.(target.id);
+      toast.success('Character deleted');
+    } catch {
+      toast.error('Failed to delete character');
+    }
+  };
+
+  const requestRewardDelete = (r: Reward) => {
+    setPendingRewardDelete(r);
+    setRewardDeleteUsage(null);
+    getRewardUsage(questlineId, r.id)
+      .then(setRewardDeleteUsage)
+      .catch(() => setRewardDeleteUsage({ nodeCount: 0 }));
+  };
+
+  const confirmRewardDelete = async () => {
+    if (!pendingRewardDelete) return;
+    const target = pendingRewardDelete;
+    setPendingRewardDelete(null);
+    setRewardDeleteUsage(null);
+    if (selectedRewardId === target.id) setSelectedRewardId(null);
+    try {
+      await deleteReward(questlineId, target.id);
+      setRewards((prev) => prev.filter((r) => r.id !== target.id));
+      onRewardDeleted?.(target.id);
+      toast.success('Reward deleted');
+    } catch {
+      toast.error('Failed to delete reward');
+    }
+  };
+
+  const charDeleteMessage = !pendingCharDelete
+    ? ''
+    : charDeleteUsage === null
+      ? `Checking where "${pendingCharDelete.name}" is used…`
+      : charDeleteUsage.nodeCount > 0
+        ? `"${pendingCharDelete.name}" is referenced by ${charDeleteUsage.nodeCount} quest node${charDeleteUsage.nodeCount === 1 ? '' : 's'}${charDeleteUsage.questlineCount > 1 ? ` across ${charDeleteUsage.questlineCount} questlines` : ''}. Deleting it will permanently remove the character and those references. This cannot be undone.`
+        : `"${pendingCharDelete.name}" will be permanently deleted. This cannot be undone.`;
+
+  const rewardDeleteMessage = !pendingRewardDelete
+    ? ''
+    : rewardDeleteUsage === null
+      ? `Checking where "${pendingRewardDelete.title}" is used…`
+      : rewardDeleteUsage.nodeCount > 0
+        ? `"${pendingRewardDelete.title}" is referenced by ${rewardDeleteUsage.nodeCount} quest node${rewardDeleteUsage.nodeCount === 1 ? '' : 's'}. Deleting it will remove the reward and those references. This cannot be undone.`
+        : `"${pendingRewardDelete.title}" will be permanently deleted. This cannot be undone.`;
 
   // When switching tabs, ask the open panel to close (it will show the unsaved dialog if dirty)
   const handleTabClick = (tab: Tab) => {
@@ -84,7 +151,6 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
   const tabs: { id: Tab; icon: React.ReactNode; label: string }[] = [
     { id: 'characters', icon: <Users className="w-4 h-4" />, label: 'Characters' },
     { id: 'rewards',    icon: <Gift className="w-4 h-4" />,  label: 'Rewards' },
-    { id: 'chapters',   icon: <BookOpen className="w-4 h-4" />, label: 'Chapters' },
     { id: 'quests',     icon: <ScrollText className="w-4 h-4" />, label: 'Quests' },
   ];
 
@@ -162,7 +228,7 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
                             <Copy className="w-3 h-3" />
                           </button>
                           <button
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); requestCharDelete(char); }}
                             className="p-1 text-zinc-500 hover:text-red-400 transition-colors"
                             title="Delete"
                           >
@@ -211,7 +277,7 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1">
                           <button
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); requestRewardDelete(reward); }}
                             className="p-1 text-zinc-500 hover:text-red-400 transition-colors"
                             title="Delete"
                           >
@@ -226,57 +292,24 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
                   </div>
                 )}
 
-                {/* ── Chapters ── */}
-                {activeTab === 'chapters' && (
-                  <div className="py-1">
-                    {chapters.map((chapter) => {
-                      const isExpanded = expandedChapters.has(chapter.id);
-                      return (
-                        <div key={chapter.id}>
-                          <button
-                            onClick={() => toggleChapter(chapter.id)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-zinc-800 transition-colors"
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />
-                            ) : (
-                              <ChevronRight className="w-3 h-3 text-zinc-500 flex-shrink-0" />
-                            )}
-                            <span className="text-zinc-200 text-sm truncate">{chapter.title}</span>
-                          </button>
-                          {isExpanded &&
-                            chapter.scenes.map((scene) => (
-                              <div
-                                key={scene.id}
-                                className="group flex items-center justify-between pl-8 pr-3 py-1.5 hover:bg-zinc-800 transition-colors cursor-pointer"
-                              >
-                                <span className="text-zinc-400 text-xs truncate">{scene.title}</span>
-                                <button
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-purple-400 transition-colors flex-shrink-0"
-                                  title="Continue Story"
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ))}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
                 {/* ── Quests ── */}
                 {activeTab === 'quests' && (
                   <div className="py-1">
                     {questSummaries.map((quest) => (
-                      <div
+                      <button
                         key={quest.id}
-                        className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-800 transition-colors cursor-pointer"
+                        onClick={() => { setActiveQuestId(quest.id); onQuestClick(quest.id); }}
+                        className={`w-full flex items-center gap-3 px-3 py-2 text-left border-l-2 transition-colors ${
+                          activeQuestId === quest.id
+                            ? 'bg-purple-500/10 border-purple-500'
+                            : 'border-transparent hover:bg-zinc-800'
+                        }`}
                       >
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${variantColor[quest.variant]}`} />
-                        <span className="text-zinc-300 text-sm truncate">{quest.title}</span>
-                      </div>
+                        <span className={`text-sm truncate ${activeQuestId === quest.id ? 'text-purple-300' : 'text-zinc-300'}`}>
+                          {quest.title}
+                        </span>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -330,6 +363,26 @@ export function ProjectSidebar({ questlineId, isOpen }: ProjectSidebarProps) {
               />
             )}
           </AnimatePresence>
+
+          <ConfirmModal
+            isOpen={pendingCharDelete !== null}
+            title="Delete character?"
+            message={charDeleteMessage}
+            confirmLabel="Delete"
+            danger
+            onConfirm={confirmCharDelete}
+            onCancel={() => { setPendingCharDelete(null); setCharDeleteUsage(null); }}
+          />
+
+          <ConfirmModal
+            isOpen={pendingRewardDelete !== null}
+            title="Delete reward?"
+            message={rewardDeleteMessage}
+            confirmLabel="Delete"
+            danger
+            onConfirm={confirmRewardDelete}
+            onCancel={() => { setPendingRewardDelete(null); setRewardDeleteUsage(null); }}
+          />
         </>
       )}
     </AnimatePresence>

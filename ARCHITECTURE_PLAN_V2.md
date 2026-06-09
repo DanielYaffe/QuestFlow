@@ -55,7 +55,7 @@ model).
 
 ---
 
-## Phase 0 — Bedrock removal + groundwork
+## Phase 0 — Bedrock removal + groundwork ✅
 
 Delete the dead AWS Bedrock code so the rest of the plan has no Bedrock surface area. Verified:
 nothing outside these files references Bedrock, so removal is non-breaking. S3 (`s3Helper.ts`) is
@@ -63,14 +63,14 @@ unaffected — only Bedrock AI is cut.
 
 | # | Task | Files |
 |---|------|-------|
-| 0.1 | Delete the Bedrock service dir | `backend/src/services/bedrock/{agentService,bedrockClient,knowledgeBaseService}.ts` |
-| 0.2 | Drop the two SDK deps (then reinstall to update the lockfile) | `backend/package.json` → remove `@aws-sdk/client-bedrock-agent`, `@aws-sdk/client-bedrock-agent-runtime` |
-| 0.3 | Remove Bedrock config | `backend/src/config/config.ts` (`AWS_BEDROCK_REGION`), `backend/.env.example` (`AWS_BEDROCK_REGION=...`) |
-| 0.4 | Extract a shared Gemini helper | New `backend/src/services/generation/agents/geminiClient.ts` — move `callGemini()` out of `questGenerationController.ts`; both quest gen and character agents import it |
+| 0.1 ✅ | Delete the Bedrock service dir | `backend/src/services/bedrock/{agentService,bedrockClient,knowledgeBaseService}.ts` |
+| 0.2 ✅ | Drop the two SDK deps (then reinstall to update the lockfile) | `backend/package.json` → remove `@aws-sdk/client-bedrock-agent`, `@aws-sdk/client-bedrock-agent-runtime` |
+| 0.3 ✅ | Remove Bedrock config | `backend/src/config/config.ts` (`AWS_BEDROCK_REGION`), `backend/.env.example` (`AWS_BEDROCK_REGION=...`) |
+| 0.4 ✅ | Extract a shared Gemini helper | New `backend/src/services/generation/agents/geminiClient.ts` — move `callGemini()` out of `questGenerationController.ts`; both quest gen and character agents import it |
 
 ---
 
-## Phase 1 — Projects + unified Character system (was Plan 9)
+## Phase 1 — Projects + unified Character system (was Plan 9) ✅
 
 **Goal:** introduce **Projects** as the top-level container and graduate NPCs/monsters into
 first-class, project-scoped **Character** records reusable across questlines. This is the data
@@ -92,17 +92,29 @@ foundation Phase 2 builds on, so it ships first.
 
 | # | Task | Depends | Files |
 |---|------|---------|-------|
-| 1.1 | `Project` model + CRUD | 0 | `models/projectModel.ts`, `routes/projectRoute.ts`, `controllers/projectController.ts` |
-| 1.2 | Unified `Character` model (npc+monster discriminator, `assets`, `speciesData`, `tags`) | — | `models/characterModel.ts` |
-| 1.3 | Character CRUD routes/controller | 1.2 | `routes/characterRoute.ts`, `controllers/characterController.ts` |
-| 1.4 | Questline model: add `projectId` + `characterIds` (refs); node `npcIds`/`monsterIds` resolve to Character `_id` | 1.2 | `models/questlineModel.ts` |
-| 1.5 | Migration: inline characters → Character collection; assign Inbox project; supersede `monsterModel` | 1.1–1.4 | `scripts/migrate-projects.ts` |
-| 1.6 | Projects list + dashboard pages | 1.1 | `frontend/src/app/pages/Projects/` |
-| 1.7 | Characters page (browse / filter / orphan tabs, grid+list) | 1.3 | `frontend/src/app/pages/Project/Characters.tsx` |
-| 1.8 | QuestBuilder character picker (pick existing / "+ Create new" full-page nav with `?returnTo=quest:<questId>:<nodeId>`) | 1.3, 1.4 | `frontend/src/app/pages/QuestBuilder/components/CharacterPicker.tsx` |
-| 1.9 | Sprite → Character "promote" button | 1.2 | `frontend/src/app/pages/SpriteGenerator/` |
+| 1.1 ✅ | `Project` model + CRUD | 0 | `models/projectModel.ts`, `routes/projectRoute.ts`, `controllers/projectController.ts` |
+| 1.2 ✅ | Unified `Character` model (npc+monster discriminator, `assets`, `speciesData`, `tags`) | — | `models/characterModel.ts` |
+| 1.3 ✅ | Character CRUD routes/controller | 1.2 | `routes/characterRoute.ts`, `controllers/characterController.ts` |
+| 1.4 ✅ | Questline model: add `projectId` + `characterIds` (refs); node `npcIds`/`monsterIds` resolve to Character `_id` | 1.2 | `models/questlineModel.ts` |
+| 1.5 ✅ | Migration: inline characters → Character collection; assign Inbox project; supersede `monsterModel` | 1.1–1.4 | `scripts/migrate-projects.ts` |
+| 1.6 ✅ | Projects list + dashboard pages | 1.1 | `frontend/src/app/pages/Projects/` |
+| 1.7 ✅ | Characters page (browse / filter / orphan tabs, grid+list) | 1.3 | `frontend/src/app/pages/Project/Characters.tsx` |
+| 1.8 ✅ | QuestBuilder character picker (pick existing / "+ Create new" full-page nav with `?returnTo=quest:<questId>:<nodeId>`) | 1.3, 1.4 | `frontend/src/app/pages/QuestBuilder/components/CharacterPicker.tsx` |
+| 1.9 ✅ | Sprite → Character "promote" button | 1.2 | `frontend/src/app/pages/SpriteGenerator/` |
 
 > The Character **Editor** page itself is task 2.6 — it needs the Phase 2 agents/loop.
+>
+> **Note:** Migration script written but not yet run against prod DB (data loss incident — see below).
+
+---
+
+## ⚠ Known issue: test suite destroyed prod DB
+
+`npm test` ran against the real `DATABASE_URL` because no `.env.test` existed. `afterAll` called
+`mongoose.connection.dropDatabase()` on prod. Fixed:
+
+- `jest.setup.ts` — now rewrites `DATABASE_URL` to append `_test` (single-file, no secrets duplication)
+- `auth.test.ts` `beforeAll` — hard guard: throws before any test runs if DB name doesn't end in `_test`
 
 ---
 

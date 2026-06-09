@@ -92,23 +92,6 @@ const options: swaggerJsdoc.Options = {
                         imageUrl:    { type: 'string', example: 'https://cdn.example.com/reward.png' },
                     },
                 },
-                Chapter: {
-                    type: 'object',
-                    properties: {
-                        _id:    { type: 'string', example: '60d0fe4f5311236168a109ce' },
-                        title:  { type: 'string', example: 'Chapter 1: The Call' },
-                        scenes: {
-                            type: 'array',
-                            items: {
-                                type: 'object',
-                                properties: {
-                                    id:    { type: 'string' },
-                                    title: { type: 'string' },
-                                },
-                            },
-                        },
-                    },
-                },
                 SpriteFilters: {
                     type: 'object',
                     properties: {
