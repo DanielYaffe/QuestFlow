@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull } from 'lucide-react';
 import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 import { motion, AnimatePresence } from 'motion/react';
-import { NodeVariant } from '../../../types/quest';
+import { NodeVariant, QuestExportFields } from '../../../types/quest';
 import { fetchCharacters, fetchRewards, Character, Reward } from '../../../api/projectSidebarApi';
+import { TemplateFieldsEditor, getTemplateFieldSchema } from './TemplateFieldsEditor';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,17 +17,44 @@ export interface NodeSnapshot {
   npcIds: string[];
   monsterIds: string[];
   rewardIds: string[];
+  exportFields?: QuestExportFields;
+  templateValues?: Record<string, unknown>;
 }
 
 interface NodeEditSidebarProps {
   isOpen: boolean;
   node: NodeSnapshot | null;
   questlineId: string;
+  template?: {
+    id: string;
+    name: string;
+    snapshot: unknown;
+  } | null;
   onClose: () => void;
   onApply: (updated: NodeSnapshot) => void;
 }
 
 type Phase = 'edit' | 'diff';
+
+const DEFAULT_EXPORT_FIELDS: QuestExportFields = {
+  silent: true,
+  preQuest: [-1],
+  daily: false,
+  toKill: [],
+  toCollect: [],
+  rewardItems: [],
+};
+
+function normalizeExportFields(fields?: QuestExportFields): QuestExportFields {
+  return {
+    ...DEFAULT_EXPORT_FIELDS,
+    ...fields,
+    preQuest: fields?.preQuest?.length ? fields.preQuest : [-1],
+    toKill: fields?.toKill ?? [],
+    toCollect: fields?.toCollect ?? [],
+    rewardItems: fields?.rewardItems ?? [],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Word-level LCS diff
@@ -335,7 +363,15 @@ function arraysEqual(a: string[], b: string[]) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }: NodeEditSidebarProps) {
+function exportFieldsEqual(a?: QuestExportFields, b?: QuestExportFields) {
+  return JSON.stringify(normalizeExportFields(a)) === JSON.stringify(normalizeExportFields(b));
+}
+
+function templateValuesEqual(a?: Record<string, unknown>, b?: Record<string, unknown>) {
+  return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+}
+
+export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, onApply }: NodeEditSidebarProps) {
   const { configs, getConfig } = useVariantConfigs();
   const [phase, setPhase] = useState<Phase>('edit');
   const [title,      setTitle]      = useState('');
@@ -344,6 +380,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
   const [npcIds,     setNpcIds]     = useState<string[]>([]);
   const [monsterIds, setMonsterIds] = useState<string[]>([]);
   const [rewardIds,  setRewardIds]  = useState<string[]>([]);
+  const [exportFields, setExportFields] = useState<QuestExportFields>(DEFAULT_EXPORT_FIELDS);
+  const [templateValues, setTemplateValues] = useState<Record<string, unknown>>({});
   const [width,      setWidth]      = useState(DEFAULT_WIDTH);
 
   const [characters,       setCharacters]       = useState<Character[]>([]);
@@ -364,6 +402,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
       setNpcIds(node.npcIds ?? []);
       setMonsterIds(node.monsterIds ?? []);
       setRewardIds(node.rewardIds ?? []);
+      setExportFields(normalizeExportFields(node.exportFields));
+      setTemplateValues(node.templateValues ?? {});
       setPhase('edit');
     }
   }, [node]);
@@ -415,18 +455,21 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
       variant      !== node.variant ||
       !arraysEqual([...npcIds].sort(),     [...(node.npcIds ?? [])].sort()) ||
       !arraysEqual([...monsterIds].sort(), [...(node.monsterIds ?? [])].sort()) ||
-      !arraysEqual([...rewardIds].sort(),  [...(node.rewardIds ?? [])].sort())
+      !arraysEqual([...rewardIds].sort(),  [...(node.rewardIds ?? [])].sort()) ||
+      !exportFieldsEqual(exportFields, node.exportFields) ||
+      !templateValuesEqual(templateValues, node.templateValues)
     );
 
   const handleClose = () => { setPhase('edit'); onClose(); };
   const handleApply = () => {
-    onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds });
+    onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds, exportFields, templateValues });
     setPhase('edit');
     onClose();
   };
 
   const getCharName   = (id: string) => characters.find((c) => c.id === id)?.name   ?? id;
   const getRewardName = (id: string) => rewards.find((r)    => r.id === id)?.title  ?? id;
+  const templateFieldSchema = getTemplateFieldSchema(template);
 
   return (
     <AnimatePresence>
@@ -563,6 +606,143 @@ export function NodeEditSidebar({ isOpen, node, questlineId, onClose, onApply }:
                   onToggle={toggleReward}
                   loading={!rewardsLoaded}
                 />
+
+                {templateFieldSchema.length > 0 && (
+                  <TemplateFieldsEditor
+                    template={template ?? null}
+                    fields={templateFieldSchema}
+                    title={title}
+                    exportFields={exportFields}
+                    templateValues={templateValues}
+                    onExportFieldsChange={setExportFields}
+                    onTemplateValuesChange={setTemplateValues}
+                  />
+                )}
+
+                {templateFieldSchema.length === 0 && (
+                <div className="border-t border-zinc-800 pt-5 space-y-4">
+                  <div>
+                    <h3 className="text-white text-sm font-semibold">Quest Export Fields</h3>
+                    <p className="text-zinc-500 text-xs mt-1">Each node exports as one quest file.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-zinc-400 text-xs uppercase tracking-wide mb-1 block">Quest ID</label>
+                      <input
+                        type="number"
+                        value={exportFields.questId ?? ''}
+                        onChange={(e) => setExportFields((prev) => ({ ...prev, questId: e.target.value ? Number(e.target.value) : undefined }))}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 text-xs uppercase tracking-wide mb-1 block">Prerequisites</label>
+                      <input
+                        value={exportFields.preQuest.join(', ')}
+                        onChange={(e) => setExportFields((prev) => ({
+                          ...prev,
+                          preQuest: e.target.value.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v)),
+                        }))}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 text-sm text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={exportFields.silent}
+                        onChange={(e) => setExportFields((prev) => ({ ...prev, silent: e.target.checked }))}
+                        className="accent-purple-600"
+                      />
+                      Silent
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={exportFields.daily}
+                        onChange={(e) => setExportFields((prev) => ({ ...prev, daily: e.target.checked }))}
+                        className="accent-purple-600"
+                      />
+                      Daily
+                    </label>
+                  </div>
+
+                  {[
+                    { key: 'toKill' as const, label: 'Combat Objectives', idLabel: 'Mob ID', amountLabel: 'Amount' },
+                    { key: 'toCollect' as const, label: 'Collection Objectives', idLabel: 'Item ID', amountLabel: 'Amount' },
+                    { key: 'rewardItems' as const, label: 'Item Rewards', idLabel: 'Item ID', amountLabel: 'Amount' },
+                  ].map((section) => {
+                    const rows = exportFields[section.key];
+                    return (
+                      <div key={section.key} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-zinc-400 text-xs uppercase tracking-wide">{section.label}</label>
+                          <button
+                            type="button"
+                            onClick={() => setExportFields((prev) => ({
+                              ...prev,
+                              [section.key]: [
+                                ...prev[section.key],
+                                section.key === 'toCollect' ? { itemId: 0, amount: 1 } : { id: 0, amount: 1 },
+                              ],
+                            }))}
+                            className="text-xs text-purple-300 hover:text-purple-200"
+                          >
+                            Add row
+                          </button>
+                        </div>
+                        {rows.length === 0 ? (
+                          <p className="text-xs text-zinc-600 italic">No rows yet</p>
+                        ) : rows.map((row, index) => {
+                          const currentId = 'itemId' in row ? row.itemId : row.id;
+                          return (
+                            <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                              <input
+                                type="number"
+                                placeholder={section.idLabel}
+                                value={currentId || ''}
+                                onChange={(e) => setExportFields((prev) => ({
+                                  ...prev,
+                                  [section.key]: prev[section.key].map((item, itemIndex) => {
+                                    if (itemIndex !== index) return item;
+                                    return 'itemId' in item
+                                      ? { ...item, itemId: Number(e.target.value) || 0 }
+                                      : { ...item, id: Number(e.target.value) || 0 };
+                                  }),
+                                }))}
+                                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                              />
+                              <input
+                                type="number"
+                                placeholder={section.amountLabel}
+                                value={row.amount || ''}
+                                onChange={(e) => setExportFields((prev) => ({
+                                  ...prev,
+                                  [section.key]: prev[section.key].map((item, itemIndex) => itemIndex === index ? { ...item, amount: Number(e.target.value) || 0 } : item),
+                                }))}
+                                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setExportFields((prev) => ({
+                                  ...prev,
+                                  [section.key]: prev[section.key].filter((_, itemIndex) => itemIndex !== index),
+                                }))}
+                                className="px-3 py-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+                )}
 
                 {/* Actions */}
                 <div className="pt-2 border-t border-zinc-800 flex gap-3">

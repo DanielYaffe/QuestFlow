@@ -23,17 +23,24 @@ export interface QuestlineMeta {
   title: string;
   genre: string;
   styleId: string;
+  templateId?: string;
+  templateName?: string;
 }
 
 export async function fetchQuestlineMeta(questlineId: string): Promise<QuestlineMeta> {
   const { data } = await api.get(`/questlines/${questlineId}`);
-  return { _id: data._id, title: data.title, genre: data.genre ?? '', styleId: data.styleId ?? '' };
+  return { _id: data._id, title: data.title, genre: data.genre ?? '', styleId: data.styleId ?? '', templateId: data.templateId, templateName: data.templateName };
 }
 
 export interface QuestlineData {
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
   nextNodeId: number;
+  template?: {
+    id: string;
+    name: string;
+    snapshot: unknown;
+  } | null;
 }
 
 export async function fetchQuestlineById(questlineId: string): Promise<QuestlineData> {

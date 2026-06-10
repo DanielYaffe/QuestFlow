@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Workflow, Home, Sparkles, PlayCircle, PlusCircle, LogOut } from 'lucide-react';
+import { Workflow, Home, Sparkles, PlayCircle, PlusCircle, LogOut, Settings2, FolderKanban } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { ProjectSwitcher } from './ProjectSwitcher';
 
 export function TopNav() {
   const navigate = useNavigate();
@@ -15,20 +16,26 @@ export function TopNav() {
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: Home },
+    { path: '/projects', label: 'Projects', icon: FolderKanban },
     { path: '/create', label: 'Create', icon: PlusCircle },
     { path: '/quest-builder', label: 'Quest Builder', icon: Workflow },
     { path: '/sprite-generator', label: 'Sprite Generator', icon: Sparkles },
     { path: '/sprite-animator', label: 'Sprite Animator', icon: PlayCircle },
+    { path: '/settings', label: 'Settings', icon: Settings2 },
   ];
 
   return (
     <nav className="bg-zinc-900 border-b border-zinc-800 px-6 py-3">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="bg-purple-600 p-2 rounded-lg">
-            <Workflow className="w-5 h-5 text-white" />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="bg-purple-600 p-2 rounded-lg">
+              <Workflow className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-white font-semibold">QuestFlow AI</span>
           </div>
-          <span className="text-white font-semibold">QuestFlow AI</span>
+          <div className="w-px h-6 bg-zinc-800" />
+          <ProjectSwitcher />
         </div>
 
         <div className="flex items-center gap-2">

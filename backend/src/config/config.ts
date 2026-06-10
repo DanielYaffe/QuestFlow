@@ -19,6 +19,7 @@ const envSchema = z.object({
     GOOGLE_CLIENT_SECRET: z.string().default(''),
     GOOGLE_CALLBACK_URL: z.string().default('http://localhost:3000/auth/google/callback'),
     FRONTEND_URL: z.string().default('http://localhost:5173'),
+    ENCRYPTION_KEY: z.string().length(64).default('0'.repeat(64)),
 });
 
 const parsed = envSchema.safeParse(process.env);

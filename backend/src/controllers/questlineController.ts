@@ -1,12 +1,45 @@
 import { Request, Response } from 'express';
 import BaseController from './baseController';
 import QuestlineModel, { BASE_VARIANTS } from '../models/questlineModel';
+import ExportTemplateModel from '../models/exportTemplateModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
+import { getProjectId } from '../utils/projectScope';
+import { IQuestNodeExportFields } from '../models/questlineModel';
 
 // S3 keys never start with http — presigned URLs always do
 function isS3Key(value: string): boolean {
   return !!value && !value.startsWith('http');
+}
+
+function defaultQuestId(nodeId: string): number {
+  const numeric = parseInt(nodeId, 10);
+  return Number.isFinite(numeric) ? numeric : Math.abs([...nodeId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0));
+}
+
+function normalizeExportFields(
+  nodeId: string,
+  raw?: Partial<IQuestNodeExportFields>,
+  incomingPreQuest: number[] = [-1],
+): IQuestNodeExportFields {
+  return {
+    questId: raw?.questId ?? defaultQuestId(nodeId),
+    silent: raw?.silent ?? true,
+    preQuest: raw?.preQuest?.length ? raw.preQuest : incomingPreQuest,
+    daily: raw?.daily ?? false,
+    toKill: (raw?.toKill ?? []).map((target) => ({
+      id: Number(target.id) || 0,
+      amount: Number(target.amount) || 0,
+    })).filter((target) => target.id > 0 && target.amount > 0),
+    toCollect: (raw?.toCollect ?? []).map((target) => ({
+      itemId: Number(target.itemId) || 0,
+      amount: Number(target.amount) || 0,
+    })).filter((target) => target.itemId > 0 && target.amount > 0),
+    rewardItems: (raw?.rewardItems ?? []).map((item) => ({
+      id: Number(item.id) || 0,
+      amount: Number(item.amount) || 0,
+    })).filter((item) => item.id > 0 && item.amount > 0),
+  };
 }
 
 class QuestlineController extends BaseController {
@@ -17,9 +50,12 @@ class QuestlineController extends BaseController {
   // GET /questlines — only return metadata for questlines owned by the authenticated user
   async get(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
+    const projectId = getProjectId(req);
     try {
-      const questlines = await QuestlineModel.find({ ownerId: userId })
-        .select('title description ownerId createdAt updatedAt');
+      const filter: Record<string, unknown> = { ownerId: userId };
+      if (projectId) filter.projectId = projectId;
+      const questlines = await QuestlineModel.find(filter)
+        .select('title description ownerId projectId createdAt updatedAt');
       res.json(questlines);
     } catch (error) {
       this.handleError(res, error);
@@ -34,6 +70,7 @@ class QuestlineController extends BaseController {
       return;
     }
     req.body.ownerId = userId;
+    req.body.projectId = getProjectId(req) || req.body.projectId || '';
     return super.create(req, res);
   }
 
@@ -80,7 +117,7 @@ class QuestlineController extends BaseController {
   async getGraph(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     try {
-      const questline = await QuestlineModel.findById(req.params.id).select('ownerId nodes edges characters rewards');
+      const questline = await QuestlineModel.findById(req.params.id).select('ownerId nodes edges characters rewards templateId templateName templateSnapshot');
       if (!questline) {
         res.status(404).json({ error: 'Questline not found' });
         return;
@@ -105,6 +142,18 @@ class QuestlineController extends BaseController {
       const remapId = (id: string, charMap: Map<string, string>, rewMap: Map<string, string>): string =>
         charMap.get(id) ?? rewMap.get(id) ?? id;
 
+      const questIdByNodeId = new Map<string, number>();
+      questline.nodes.forEach((n) => {
+        questIdByNodeId.set(n.nodeId, n.exportFields?.questId ?? defaultQuestId(n.nodeId));
+      });
+
+      const preQuestByNodeId = new Map<string, number[]>();
+      questline.edges.forEach((edge) => {
+        const sourceQuestId = questIdByNodeId.get(edge.source) ?? defaultQuestId(edge.source);
+        const current = preQuestByNodeId.get(edge.target) ?? [];
+        preQuestByNodeId.set(edge.target, [...current, sourceQuestId]);
+      });
+
       const shapedNodes = questline.nodes.map((n) => ({
         id: n.nodeId,
         type: n.type,
@@ -115,6 +164,8 @@ class QuestlineController extends BaseController {
           npcIds:     (n.npcIds     ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
           monsterIds: (n.monsterIds ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
           rewardIds:  (n.rewardIds  ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
+          exportFields: normalizeExportFields(n.nodeId, n.exportFields, preQuestByNodeId.get(n.nodeId)),
+          templateValues: n.templateValues ?? {},
         },
       }));
 
@@ -123,8 +174,36 @@ class QuestlineController extends BaseController {
         source: e.source,
         target: e.target,
       }));
+      const latestTemplate = questline.templateId
+        ? await ExportTemplateModel.findOne({
+          _id: questline.templateId,
+          $or: [{ isBuiltIn: true }, { ownerId: userId }],
+        }).lean()
+        : null;
+      const templateSnapshot = latestTemplate ? {
+        id: latestTemplate._id.toString(),
+        name: latestTemplate.name,
+        rawTemplate: latestTemplate.rawTemplate,
+        structure: latestTemplate.structure,
+        templateAst: latestTemplate.templateAst,
+        defaultOutputFormat: latestTemplate.defaultOutputFormat,
+        fieldSchema: latestTemplate.fieldSchema,
+        templateSchema: latestTemplate.templateSchema,
+        schemaSummary: latestTemplate.schemaSummary,
+        analysisStatus: latestTemplate.analysisStatus,
+        inferredAiGuidance: latestTemplate.inferredAiGuidance,
+      } : questline.templateSnapshot;
 
-      res.json({ nodes: shapedNodes, edges: shapedEdges, nextNodeId });
+      res.json({
+        nodes: shapedNodes,
+        edges: shapedEdges,
+        nextNodeId,
+        template: questline.templateId ? {
+          id: questline.templateId,
+          name: latestTemplate?.name ?? questline.templateName,
+          snapshot: templateSnapshot,
+        } : null,
+      });
     } catch (error) {
       this.handleError(res, error);
     }
@@ -145,9 +224,20 @@ class QuestlineController extends BaseController {
       }
 
       const { nodes, edges } = req.body as {
-        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[] } }[];
+        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; exportFields?: Partial<IQuestNodeExportFields>; templateValues?: Record<string, unknown> } }[];
         edges: { id: string; source: string; target: string }[];
       };
+
+      const incomingPreQuestByNodeId = new Map<string, number[]>();
+      const rawQuestIdByNodeId = new Map<string, number>();
+      (nodes ?? []).forEach((node) => {
+        rawQuestIdByNodeId.set(node.id, node.data.exportFields?.questId ?? defaultQuestId(node.id));
+      });
+      (edges ?? []).forEach((edge) => {
+        const sourceQuestId = rawQuestIdByNodeId.get(edge.source) ?? defaultQuestId(edge.source);
+        const current = incomingPreQuestByNodeId.get(edge.target) ?? [];
+        incomingPreQuestByNodeId.set(edge.target, [...current, sourceQuestId]);
+      });
 
       await QuestlineModel.findByIdAndUpdate(req.params.id, {
         nodes: (nodes ?? []).map((n) => ({
@@ -159,6 +249,8 @@ class QuestlineController extends BaseController {
           npcIds:     n.data.npcIds     ?? [],
           monsterIds: n.data.monsterIds ?? [],
           rewardIds:  n.data.rewardIds  ?? [],
+          exportFields: normalizeExportFields(n.id, n.data.exportFields, incomingPreQuestByNodeId.get(n.id)),
+          templateValues: n.data.templateValues ?? {},
         })),
         edges: (edges ?? []).map((e) => ({
           edgeId: e.id,

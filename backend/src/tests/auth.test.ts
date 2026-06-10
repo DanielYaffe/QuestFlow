@@ -13,13 +13,20 @@ let loginUser2: UserData;
 
 beforeAll(async () => {
     app = await initApp();
+    const dbName = mongoose.connection.name.toLowerCase();
+    if (!dbName.includes('test')) {
+        throw new Error(`Refusing to run destructive auth tests against non-test database "${mongoose.connection.name}"`);
+    }
     await userModel.deleteMany();
     loginUser1 = await getLogedInUser(userData1, app);
     loginUser2 = await getLogedInUser(userData2, app);
 });
 
 afterAll(async () => {
-    await mongoose.connection.dropDatabase();
+    const dbName = mongoose.connection.name.toLowerCase();
+    if (dbName.includes('test')) {
+        await mongoose.connection.dropDatabase();
+    }
     await mongoose.connection.close();
 });
 
