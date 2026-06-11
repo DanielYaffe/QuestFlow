@@ -12,7 +12,7 @@ interface GitHubFileResponse {
   sha: string;
 }
 
-class GitHubHttpError extends Error {
+export class GitHubHttpError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
     this.name = 'GitHubHttpError';
@@ -25,16 +25,22 @@ async function githubRequest<T>(
   token: string,
   body?: unknown,
 ): Promise<T> {
-  const res = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // fetch rejects only on network-level failures (DNS, TLS, offline).
+    throw new GitHubHttpError(502, 'Could not reach GitHub — check your connection and try again.');
+  }
 
   if (!res.ok) {
     const errorBody = await res.text();
@@ -58,6 +64,43 @@ async function githubRequest<T>(
   }
 
   return res.json() as Promise<T>;
+}
+
+interface VerifyRepoOptions {
+  token: string;
+  owner: string;
+  repo: string;
+  branch?: string;
+}
+
+// Confirms the token can reach the repo (and, when given, the branch) without
+// writing anything. Throws an Error with a user-facing message on failure.
+export async function verifyRepoAccess(options: VerifyRepoOptions): Promise<void> {
+  const { token, owner, repo, branch } = options;
+
+  try {
+    await githubRequest('GET', `https://api.github.com/repos/${owner}/${repo}`, token);
+  } catch (err) {
+    if (err instanceof GitHubHttpError && err.status === 404) {
+      throw new Error(`Repository '${owner}/${repo}' not found — check the owner and repo name.`);
+    }
+    throw err;
+  }
+
+  if (branch) {
+    try {
+      await githubRequest(
+        'GET',
+        `https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`,
+        token,
+      );
+    } catch (err) {
+      if (err instanceof GitHubHttpError && err.status === 404) {
+        throw new Error(`Branch '${branch}' not found in '${owner}/${repo}'.`);
+      }
+      throw err;
+    }
+  }
 }
 
 function buildVariantPath(filePath: string, n: number): string {
@@ -105,9 +148,11 @@ export async function pushFile(options: PushFileOptions): Promise<string> {
     const currentPath = attempt === 0 ? filePath : buildVariantPath(filePath, attempt);
     const apiUrl = contentUrl(owner, repo, currentPath);
 
-    const sha = await fetchSha(apiUrl, branch, token);
-
     try {
+      // fetchSha is inside the try so a missing-branch 404 it raises is mapped
+      // to a friendly message instead of leaking GitHub's raw "ref" wording.
+      const sha = await fetchSha(apiUrl, branch, token);
+
       await githubRequest('PUT', apiUrl, token, {
         message: commitMessage,
         content: encodedContent,
@@ -116,20 +161,26 @@ export async function pushFile(options: PushFileOptions): Promise<string> {
       });
       return currentPath;
     } catch (err) {
-      if (err instanceof GitHubHttpError) {
-        // 409 = SHA is stale (concurrent edit). Try the next numbered variant.
-        if (err.status === 409 && attempt < MAX_VARIANTS) continue;
-
-        if (err.status === 404) {
-          throw new Error(`Repository '${owner}/${repo}' not found — check the owner and repo name.`);
-        }
-        if (err.message.toLowerCase().includes('reference')) {
-          throw new Error(`Branch '${branch}' not found — check the branch name.`);
-        }
+      // 409 = SHA is stale (concurrent edit). Try the next numbered variant.
+      if (err instanceof GitHubHttpError && err.status === 409 && attempt < MAX_VARIANTS) {
+        continue;
       }
-      throw err;
+      throw mapPushError(err, owner, repo, branch);
     }
   }
 
-  throw new Error(`Push failed: could not write after ${MAX_VARIANTS} attempts.`);
+  throw new GitHubHttpError(409, `Could not write after ${MAX_VARIANTS} retries — the file kept changing remotely. Try again.`);
+}
+
+// Turns a raw GitHub error into a message that names the likely cause. A 404
+// can mean either the repo or the branch is missing; GitHub signals a missing
+// branch via "ref"/"commit"/"branch" wording, so we disambiguate on that.
+function mapPushError(err: unknown, owner: string, repo: string, branch: string): Error {
+  if (err instanceof GitHubHttpError && err.status === 404) {
+    const looksLikeBranch = /\b(ref|branch|commit)\b/i.test(err.message);
+    return looksLikeBranch
+      ? new GitHubHttpError(404, `Branch '${branch}' not found in '${owner}/${repo}' — check the branch name.`)
+      : new GitHubHttpError(404, `Repository '${owner}/${repo}' not found — check the owner and repo name.`);
+  }
+  return err instanceof Error ? err : new GitHubHttpError(502, 'Push failed.');
 }

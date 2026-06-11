@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getGitSettings, updateGitSettings } from '../controllers/userSettingsController';
+import { getGitSettings, updateGitSettings, testGitConnection } from '../controllers/userSettingsController';
 
 const userSettingsRouter = Router();
 
@@ -70,5 +70,40 @@ userSettingsRouter.get('/me/git-settings', getGitSettings);
  *         description: Updated git settings
  */
 userSettingsRouter.put('/me/git-settings', updateGitSettings);
+
+/**
+ * @swagger
+ * /users/me/git-settings/test:
+ *   post:
+ *     summary: Verify GitHub token + repository access without writing
+ *     tags: [UserSettings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - repoOwner
+ *               - repoName
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Optional token to test; falls back to the saved one
+ *               repoOwner:
+ *                 type: string
+ *               repoName:
+ *                 type: string
+ *               branch:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Connection succeeded
+ *       400:
+ *         description: Connection failed or invalid input
+ */
+userSettingsRouter.post('/me/git-settings/test', testGitConnection);
 
 export default userSettingsRouter;

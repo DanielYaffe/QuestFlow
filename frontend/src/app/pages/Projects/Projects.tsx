@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { FolderKanban, Plus, Check, Copy, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { FolderKanban, Plus, Check, Copy, Pencil, Trash2, Loader2, Github } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
 import { ProjectFormDialog } from '../../components/shared/ProjectFormDialog';
+import { ProjectRepoDialog } from '../../components/shared/ProjectRepoDialog';
+import { Project } from '../../api/projectApi';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -25,11 +27,13 @@ export function Projects() {
     renameProject,
     deleteProject,
     duplicateProject,
+    refreshProjects,
   } = useProject();
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [repoTarget, setRepoTarget] = useState<Project | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const handleCreate = async (name: string) => {
@@ -138,7 +142,21 @@ export function Projects() {
                         </span>
                       )}
                     </div>
-                    <p className="text-zinc-500 text-xs mt-0.5">Updated {timeAgo(p.updatedAt)}</p>
+                    <div className="flex items-center gap-2 text-zinc-500 text-xs mt-0.5">
+                      <span>Updated {timeAgo(p.updatedAt)}</span>
+                      <span className="text-zinc-700">·</span>
+                      {p.git?.repoOwner && p.git?.repoName ? (
+                        <span className="flex items-center gap-1 text-zinc-400 truncate">
+                          <Github className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{p.git.repoOwner}/{p.git.repoName}</span>
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <Github className="w-3 h-3 flex-shrink-0" />
+                          No repository
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -157,6 +175,14 @@ export function Projects() {
                       className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
                     >
                       <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setRepoTarget(p)}
+                      disabled={busy}
+                      title="Edit repository"
+                      className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      <Github className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDuplicate(p._id)}
@@ -194,6 +220,12 @@ export function Projects() {
         initialName={editing?.name}
         onClose={() => setEditing(null)}
         onSubmit={handleRename}
+      />
+      <ProjectRepoDialog
+        isOpen={repoTarget !== null}
+        project={repoTarget}
+        onClose={() => setRepoTarget(null)}
+        onSaved={refreshProjects}
       />
 
       {deleteTarget && (

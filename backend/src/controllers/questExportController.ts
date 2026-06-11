@@ -2,8 +2,9 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { exportQuestline, Format } from '../services/questExport';
 import { QuestlineRequest } from '../middlewares/requireQuestlineOwnership';
-import { pushFile } from '../services/githubService';
+import { pushFile, GitHubHttpError } from '../services/githubService';
 import UserModel from '../models/userModel';
+import ProjectModel from '../models/projectModel';
 import { decrypt } from '../utils/encryption';
 
 const formatSchema = z.enum([
@@ -117,13 +118,30 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
       return;
     }
 
+    // Resolve the destination repo from the questline's project first; the
+    // user-level gitSettings are kept only as a legacy fallback so pre-existing
+    // single-repo setups keep working. Token always comes from the user.
     const g = user.gitSettings;
-    const owner  = (bodyOwner  ?? g.repoOwner    ?? '').trim();
-    const repo   = (bodyRepo   ?? g.repoName     ?? '').trim();
-    const branch = (bodyBranch ?? g.defaultBranch ?? 'main').trim();
+    const projectId = req.questline?.projectId;
+    const project = projectId ? await ProjectModel.findById(projectId).select('git') : null;
+    const pg = project?.git;
+
+    const owner  = (bodyOwner  ?? pg?.repoOwner     ?? g.repoOwner    ?? '').trim();
+    const repo   = (bodyRepo   ?? pg?.repoName      ?? g.repoName     ?? '').trim();
+    const branch = (bodyBranch ?? pg?.defaultBranch ?? g.defaultBranch ?? 'main').trim();
 
     if (!owner || !repo) {
       res.status(400).json({ error: 'Repository owner and name are required.' });
+      return;
+    }
+
+    // Decrypt once, up front: a corrupt/legacy token is a user-fixable config
+    // problem, not a 500. (decrypt throws on a bad ciphertext or wrong key.)
+    let token: string;
+    try {
+      token = decrypt(g.encryptedToken!);
+    } catch {
+      res.status(400).json({ error: 'Saved GitHub token could not be read — re-enter it in Settings.' });
       return;
     }
 
@@ -133,14 +151,14 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
     });
     // Strip both leading and trailing slashes so a user-supplied path like
     // "/Assets/Quests/" never produces a double-slash in the GitHub API URL.
-    const baseDir = (bodyFilePath ?? g.defaultFilePath ?? '').replace(/^\/+|\/+$/g, '');
+    const baseDir = (bodyFilePath ?? pg?.defaultFilePath ?? g.defaultFilePath ?? '').replace(/^\/+|\/+$/g, '');
     const questlineFolder = `${slugifySegment(req.questline?.title ?? 'questline')}-${String(req.params.id).slice(-6)}`;
     const files = result.files?.length ? result.files : [{ filename: result.filename, content: result.content }];
     const usedPaths: string[] = [];
 
     for (const file of files) {
       const usedPath = await pushFile({
-        token: decrypt(g.encryptedToken!),
+        token,
         owner,
         repo,
         branch,
@@ -152,7 +170,16 @@ export async function pushToGithub(req: QuestlineRequest, res: Response): Promis
     }
 
     res.json({ message: `Pushed ${usedPaths.length} file(s) to ${owner}/${repo} → ${branch}:${questlineFolder}`, paths: usedPaths });
-  } catch (error: any) {
-    res.status(500).json({ error: error?.message ?? 'Push failed' });
+  } catch (error) {
+    if (error instanceof GitHubHttpError) {
+      // Surface GitHub's friendly message with a fitting status. Never emit 401
+      // here — the frontend's axios interceptor treats 401 as an app-auth
+      // failure and would redirect the user to /login.
+      const statusMap: Record<number, number> = { 401: 400, 403: 403, 404: 404, 409: 409, 502: 502 };
+      res.status(statusMap[error.status] ?? 502).json({ error: error.message });
+      return;
+    }
+    // Anything else (e.g. an export/serialization failure) is a genuine server error.
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Push failed' });
   }
 }

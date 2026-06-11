@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
@@ -27,6 +27,7 @@ import { NodeEditSidebar, NodeSnapshot } from './components/NodeEditSidebar';
 import { getLayoutedElements } from '../../utils/layoutUtils';
 import { QuestNodeData, NodeVariant } from '../../types/quest';
 import { useQuestlineData } from './hooks/useQuestlineData';
+import { useProject } from '../../context/ProjectContext';
 import {
   QuestFlowNode,
   defaultExportFields,
@@ -76,7 +77,18 @@ type PendingNode = { sourceNodeId: string; position: 'top' | 'bottom' | 'left' |
 
 export function QuestBuilder() {
   const { questlineId = '' } = useParams<{ questlineId: string }>();
-  const { nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, template, isLoading, error } = useQuestlineData(questlineId);
+  const navigate = useNavigate();
+  const { activeProjectId } = useProject();
+  const { projectId, nodes: fetchedNodes, edges: fetchedEdges, nextNodeId, template, isLoading, error } = useQuestlineData(questlineId);
+
+  // This questline belongs to one project. If the user switches the active
+  // project (here or anywhere — switcher, Projects page), leave the builder so
+  // they aren't stranded editing a quest outside the active project.
+  useEffect(() => {
+    if (projectId && activeProjectId && projectId !== activeProjectId) {
+      navigate('/quest-builder', { replace: true });
+    }
+  }, [projectId, activeProjectId, navigate]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<QuestFlowNode>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);

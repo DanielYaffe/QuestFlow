@@ -1,10 +1,18 @@
 import api from './axiosInstance';
 
+export interface ProjectGitSettings {
+  repoOwner?: string;
+  repoName?: string;
+  defaultBranch?: string;
+  defaultFilePath?: string;
+}
+
 export interface Project {
   _id: string;
   name: string;
   description: string;
   ownerId: string;
+  git?: ProjectGitSettings;
   createdAt: string;
   updatedAt: string;
 }
@@ -21,7 +29,7 @@ export async function createProject(name: string, description = ''): Promise<Pro
 
 export async function updateProject(
   id: string,
-  patch: Partial<Pick<Project, 'name' | 'description'>>,
+  patch: Partial<Pick<Project, 'name' | 'description' | 'git'>>,
 ): Promise<Project> {
   const { data } = await api.put(`/projects/${id}`, patch);
   return data;
