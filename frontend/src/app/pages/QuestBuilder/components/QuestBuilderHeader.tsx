@@ -1,22 +1,22 @@
-import { Node } from '@xyflow/react';
-import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft, Loader2, Check, Wand2 } from 'lucide-react';
-import { QuestNodeData } from '../../../types/quest';
+import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, PanelLeft, Loader2, Check, Wand2, Undo2, Redo2 } from 'lucide-react';
 
 interface QuestBuilderHeaderProps {
-  selectedNode: Node<QuestNodeData> | null;
-  onOpenSidebar: () => void;
   onAutoLayout: (direction: 'TB' | 'LR') => void;
   layoutDirection: 'TB' | 'LR';
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
   onExport: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   isAiEditOpen: boolean;
   onOpenAiEdit: () => void;
   isSaving: boolean;
   hasUnsavedChanges: boolean;
 }
 
-export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({ onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, canUndo, canRedo, onUndo, onRedo, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
   return (
     <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between z-10">
       <div className="flex items-center gap-3">
@@ -38,15 +38,26 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
       </div>
 
       <div className="flex items-center gap-4">
-        {selectedNode && (
+        {/* Undo / redo history */}
+        <div className="flex items-center bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden">
           <button
-            onClick={onOpenSidebar}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center gap-2"
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo last change"
+            className="px-3 py-2 flex items-center text-zinc-300 hover:text-white hover:bg-zinc-700 transition-colors disabled:text-zinc-600 disabled:hover:bg-transparent disabled:cursor-not-allowed"
           >
-            <Sparkles className="w-4 h-4" />
-            AI Assistant
+            <Undo2 className="w-4 h-4" />
           </button>
-        )}
+          <div className="w-px h-6 bg-zinc-700" />
+          <button
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="Redo"
+            className="px-3 py-2 flex items-center text-zinc-300 hover:text-white hover:bg-zinc-700 transition-colors disabled:text-zinc-600 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+          >
+            <Redo2 className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* Layout direction toggle */}
         <div className="flex items-center bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden">
