@@ -10,6 +10,8 @@ import {
 } from '../../../components/ui/dialog';
 import { getGitSettings } from '../../../api/userSettingsApi';
 import { pushToGithub, Format } from '../../../api/questExportApi';
+import { useProject } from '../../../context/ProjectContext';
+import { updateProject } from '../../../api/projectApi';
 
 interface PushToGithubDialogProps {
   isOpen: boolean;
@@ -26,30 +28,56 @@ interface FormValues {
   branch: string;
   filePath: string;
   commitMessage: string;
+  saveAsDefault: boolean;
 }
 
 export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templateId, nodeIds }: PushToGithubDialogProps) {
+  const { activeProject, activeProjectId, refreshProjects } = useProject();
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<FormValues>({
-    defaultValues: { repoOwner: '', repoName: '', branch: 'main', filePath: '', commitMessage: 'Update quest' },
+    defaultValues: { repoOwner: '', repoName: '', branch: 'main', filePath: '', commitMessage: 'Update quest', saveAsDefault: false },
   });
 
   useEffect(() => {
     if (!isOpen) return;
-    getGitSettings()
-      .then((s) => {
-        reset((prev) => ({
-          ...prev,
-          repoOwner: s.repoOwner || prev.repoOwner,
-          repoName:  s.repoName  || prev.repoName,
-          branch:    s.defaultBranch   || prev.branch,
-          filePath:  s.defaultFilePath || prev.filePath,
-        }));
-      })
-      .catch(() => {});
-  }, [isOpen, reset]);
+    // Prefill from the active project's repo first; fall back to the user-level
+    // git settings for legacy single-repo setups.
+    const pg = activeProject?.git;
+    reset((prev) => ({
+      ...prev,
+      repoOwner: pg?.repoOwner || prev.repoOwner,
+      repoName:  pg?.repoName  || prev.repoName,
+      branch:    pg?.defaultBranch   || prev.branch,
+      filePath:  pg?.defaultFilePath || prev.filePath,
+      saveAsDefault: false,
+    }));
+    if (!pg?.repoOwner && !pg?.repoName) {
+      getGitSettings()
+        .then((s) => {
+          reset((prev) => ({
+            ...prev,
+            repoOwner: s.repoOwner || prev.repoOwner,
+            repoName:  s.repoName  || prev.repoName,
+            branch:    s.defaultBranch   || prev.branch,
+            filePath:  s.defaultFilePath || prev.filePath,
+          }));
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, reset, activeProject]);
 
   const onSubmit = async (values: FormValues) => {
     try {
+      if (values.saveAsDefault && activeProjectId) {
+        await updateProject(activeProjectId, {
+          git: {
+            repoOwner:       values.repoOwner || undefined,
+            repoName:        values.repoName  || undefined,
+            defaultBranch:   values.branch    || undefined,
+            defaultFilePath: values.filePath  || undefined,
+          },
+        });
+        await refreshProjects();
+      }
       const res = await pushToGithub(questlineId, {
         format,
         templateId,
@@ -129,6 +157,15 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 text-sm"
             />
           </div>
+
+          <label className="flex items-center gap-2 text-zinc-400 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              {...register('saveAsDefault')}
+              className="h-4 w-4 rounded border-zinc-700 bg-zinc-800 text-purple-600 focus:ring-purple-500"
+            />
+            Save as this project&apos;s default repository
+          </label>
 
           <div className="flex justify-end gap-2 pt-1">
             <button

@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull } from 'lucide-react';
+import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull, Wand2, Loader2, Sparkles } from 'lucide-react';
+import { Node, Edge } from '@xyflow/react';
+import { toast } from 'sonner';
 import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 import { motion, AnimatePresence } from 'motion/react';
-import { NodeVariant, QuestExportFields } from '../../../types/quest';
+import { NodeVariant, QuestExportFields, QuestNodeData } from '../../../types/quest';
 import { fetchCharacters, fetchRewards, Character, Reward } from '../../../api/projectSidebarApi';
+import { requestAiEdit } from '../../../api/questAiEditApi';
 import { TemplateFieldsEditor, getTemplateFieldSchema } from './TemplateFieldsEditor';
 
 // ---------------------------------------------------------------------------
@@ -24,6 +27,11 @@ export interface NodeSnapshot {
 interface NodeEditSidebarProps {
   isOpen: boolean;
   node: NodeSnapshot | null;
+  /** Id of the node being edited — needed to scope AI suggestions to this step. */
+  nodeId?: string | null;
+  /** Full graph, sent to the AI endpoint so suggestions stay consistent with the story. */
+  nodes?: Node<QuestNodeData>[];
+  edges?: Edge[];
   questlineId: string;
   template?: {
     id: string;
@@ -35,6 +43,18 @@ interface NodeEditSidebarProps {
 }
 
 type Phase = 'edit' | 'diff';
+
+// Fields that surface an individual before/after diff the user can accept or skip.
+// `people` maps to NPCs for non-combat variants and monsters for combat variants.
+type FieldKey = 'title' | 'body' | 'variant' | 'people' | 'rewards';
+
+const ALL_ACCEPTED: Record<FieldKey, boolean> = {
+  title: true, body: true, variant: true, people: true, rewards: true,
+};
+
+const FIELD_LABEL: Record<FieldKey, string> = {
+  title: 'Title', body: 'Description', variant: 'Node Type', people: 'Characters', rewards: 'Rewards',
+};
 
 const DEFAULT_EXPORT_FIELDS: QuestExportFields = {
   silent: true,
@@ -135,10 +155,50 @@ function InlineTokens({ tokens, side }: { tokens: WordToken[]; side: 'old' | 'ne
 }
 
 // ---------------------------------------------------------------------------
+// AcceptToggle — per-field accept/skip control shown in a diff panel header
+// ---------------------------------------------------------------------------
+
+interface FieldAccept {
+  value: boolean;
+  onToggle: () => void;
+}
+
+function AcceptToggle({ accepted, onToggle }: { accepted: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={accepted ? 'This change will be applied — click to skip it' : 'This change will be skipped — click to apply it'}
+      className="flex items-center gap-1.5 text-xs font-medium transition-colors"
+    >
+      <span className={accepted ? 'text-purple-300' : 'text-zinc-500'}>
+        {accepted ? 'Apply' : 'Skip'}
+      </span>
+      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+        accepted ? 'bg-purple-600 border-purple-600' : 'border-zinc-600'
+      }`}>
+        {accepted && <Check className="w-2.5 h-2.5 text-white" />}
+      </div>
+    </button>
+  );
+}
+
+// Whether a diff panel should render at full opacity (changed and not skipped)
+function isFieldActive(changed: boolean, accept?: FieldAccept) {
+  return changed && (!accept || accept.value);
+}
+
+function DiffPanelStatus({ changed, accept }: { changed: boolean; accept?: FieldAccept }) {
+  if (changed && accept) return <AcceptToggle accepted={accept.value} onToggle={accept.onToggle} />;
+  if (changed) return <span className="text-xs text-purple-400 font-medium">Modified</span>;
+  return <span className="text-xs text-zinc-600">Unchanged</span>;
+}
+
+// ---------------------------------------------------------------------------
 // FieldDiffPanel
 // ---------------------------------------------------------------------------
 
-function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew, getVariantColor }: {
+function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew, getVariantColor, accept }: {
   label: string;
   oldVal: string;
   newVal: string;
@@ -146,20 +206,20 @@ function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew
   variantOld?: NodeVariant;
   variantNew?: NodeVariant;
   getVariantColor?: (key: string) => string;
+  accept?: FieldAccept;
 }) {
   const isVariant = variantOld !== undefined;
   const pairs = isVariant ? [] : buildLinePairs(oldVal, newVal);
+  const active = isFieldActive(changed, accept);
 
   return (
-    <div className={`rounded-lg border overflow-hidden transition-opacity ${changed ? 'border-zinc-700' : 'border-zinc-800 opacity-50'}`}>
+    <div className={`shrink-0 rounded-lg border overflow-hidden transition-opacity ${active ? 'border-zinc-700' : 'border-zinc-800 opacity-50'}`}>
       <div className="flex items-center justify-between px-4 py-2 bg-zinc-800/60 border-b border-zinc-700/60">
         <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">{label}</span>
-        {changed
-          ? <span className="text-xs text-purple-400 font-medium">Modified</span>
-          : <span className="text-xs text-zinc-600">Unchanged</span>}
+        <DiffPanelStatus changed={changed} accept={accept} />
       </div>
       <div className="grid grid-cols-2 divide-x divide-zinc-700/60 bg-zinc-900/60">
-        <div className="flex flex-col min-h-0">
+        <div className="flex flex-col min-h-0 min-w-0">
           <div className="px-3 py-1.5 border-b border-zinc-700/40 bg-zinc-800/30">
             <span className="text-xs font-medium text-zinc-400">Before</span>
           </div>
@@ -182,7 +242,7 @@ function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew
             )}
           </div>
         </div>
-        <div className="flex flex-col min-h-0">
+        <div className="flex flex-col min-h-0 min-w-0">
           <div className="px-3 py-1.5 border-b border-zinc-700/40 bg-zinc-800/30">
             <span className="text-xs font-medium text-zinc-400">After</span>
           </div>
@@ -214,24 +274,24 @@ function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew
 // IdListDiff — before/after chip display for id arrays
 // ---------------------------------------------------------------------------
 
-function IdListDiff({ label, oldIds, newIds, getName, changed }: {
+function IdListDiff({ label, oldIds, newIds, getName, changed, accept }: {
   label: string;
   oldIds: string[];
   newIds: string[];
   getName: (id: string) => string;
   changed: boolean;
+  accept?: FieldAccept;
 }) {
+  const active = isFieldActive(changed, accept);
   return (
-    <div className={`rounded-lg border overflow-hidden transition-opacity ${changed ? 'border-zinc-700' : 'border-zinc-800 opacity-50'}`}>
+    <div className={`shrink-0 rounded-lg border overflow-hidden transition-opacity ${active ? 'border-zinc-700' : 'border-zinc-800 opacity-50'}`}>
       <div className="flex items-center justify-between px-4 py-2 bg-zinc-800/60 border-b border-zinc-700/60">
         <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">{label}</span>
-        {changed
-          ? <span className="text-xs text-purple-400 font-medium">Modified</span>
-          : <span className="text-xs text-zinc-600">Unchanged</span>}
+        <DiffPanelStatus changed={changed} accept={accept} />
       </div>
       <div className="grid grid-cols-2 divide-x divide-zinc-700/60 bg-zinc-900/60">
         {[{ ids: oldIds, side: 'Before' }, { ids: newIds, side: 'After' }].map(({ ids, side }) => (
-          <div key={side} className="flex flex-col min-h-0">
+          <div key={side} className="flex flex-col min-h-0 min-w-0">
             <div className="px-3 py-1.5 border-b border-zinc-700/40 bg-zinc-800/30">
               <span className="text-xs font-medium text-zinc-400">{side}</span>
             </div>
@@ -371,9 +431,16 @@ function templateValuesEqual(a?: Record<string, unknown>, b?: Record<string, unk
   return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
 }
 
-export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, onApply }: NodeEditSidebarProps) {
+export function NodeEditSidebar({ isOpen, node, nodeId, nodes, edges, questlineId, template, onClose, onApply }: NodeEditSidebarProps) {
   const { configs, getConfig } = useVariantConfigs();
   const [phase, setPhase] = useState<Phase>('edit');
+  const [accepted, setAccepted] = useState<Record<FieldKey, boolean>>(ALL_ACCEPTED);
+  // Ask-AI state: an instruction that asks the model to rewrite this single step.
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  // Which fields the latest AI suggestion changed — surfaced as a banner + hint.
+  const [aiFields, setAiFields] = useState<FieldKey[]>([]);
   const [title,      setTitle]      = useState('');
   const [body,       setBody]       = useState('');
   const [variant,    setVariant]    = useState<NodeVariant>('story');
@@ -405,6 +472,9 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
       setExportFields(normalizeExportFields(node.exportFields));
       setTemplateValues(node.templateValues ?? {});
       setPhase('edit');
+      setAiInstruction('');
+      setAiError(null);
+      setAiFields([]);
     }
   }, [node]);
 
@@ -460,9 +530,102 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
       !templateValuesEqual(templateValues, node.templateValues)
     );
 
+  // Per-field change detection — drives the accept/skip toggles in the review phase.
+  // `people` follows the picker shown for the current variant (monsters for combat, NPCs otherwise).
+  const peopleIds      = isCombatVariant ? monsterIds : npcIds;
+  const peopleOriginal = isCombatVariant ? (node?.monsterIds ?? []) : (node?.npcIds ?? []);
+  const changedFields: Record<FieldKey, boolean> = {
+    title:   node !== null && title.trim() !== node.title,
+    body:    node !== null && body.trim()  !== node.body,
+    variant: node !== null && variant      !== node.variant,
+    people:  node !== null && !arraysEqual([...peopleIds].sort(), [...peopleOriginal].sort()),
+    rewards: node !== null && !arraysEqual([...rewardIds].sort(), [...(node?.rewardIds ?? [])].sort()),
+  };
+
+  // Export settings + template values aren't shown as toggleable diffs; they ride along with Apply.
+  const otherChanges =
+    node !== null && (
+      !exportFieldsEqual(exportFields, node.exportFields) ||
+      !templateValuesEqual(templateValues, node.templateValues)
+    );
+
+  const changedKeys = (Object.keys(changedFields) as FieldKey[]).filter((k) => changedFields[k]);
+  const selectedCount = changedKeys.filter((k) => accepted[k]).length;
+  const canApply = selectedCount > 0 || otherChanges;
+
+  const toggleAccept = (key: FieldKey) =>
+    setAccepted((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const goToReview = () => { setAccepted(ALL_ACCEPTED); setPhase('diff'); };
+
+  // Ask the AI to rewrite THIS step only, then drop its suggestion into the draft
+  // fields so it flows through the same per-field Apply/Skip review + Undo.
+  const handleAiSuggest = useCallback(async (rawText: string) => {
+    if (!node || !nodeId || aiLoading) return;
+    const userText = rawText.trim() || 'Improve the writing — make it clearer, more vivid and dramatic.';
+    setAiLoading(true);
+    setAiError(null);
+    setAiFields([]);
+
+    // Constrain the shared /ai-edit endpoint to a single-node rewrite.
+    const scoped =
+      `Focus ONLY on the quest node with id "${nodeId}" (currently titled "${node.title}"). ` +
+      `Return exactly one updateNode change for node id "${nodeId}" and do NOT add, delete, ` +
+      `connect or modify any other node. Instruction: ${userText}`;
+
+    try {
+      const { changes } = await requestAiEdit(questlineId, {
+        instruction: scoped,
+        nodes: nodes ?? [],
+        edges: edges ?? [],
+      });
+      const change = changes.find((c) => c.type === 'updateNode' && c.nodeId === nodeId);
+      if (!change || change.type !== 'updateNode') {
+        toast('No changes suggested', { description: 'The AI had nothing to change for this step.' });
+        return;
+      }
+
+      const touched: FieldKey[] = [];
+      if (change.after.title !== title)   { setTitle(change.after.title);   touched.push('title'); }
+      if (change.after.body  !== body)    { setBody(change.after.body);     touched.push('body'); }
+      if (change.after.variant && change.after.variant !== variant) {
+        setVariant(change.after.variant as NodeVariant);
+        touched.push('variant');
+      }
+
+      if (touched.length === 0) {
+        toast('No changes suggested', { description: 'The AI returned the same content for this step.' });
+        return;
+      }
+      setAiFields(touched);
+      setAiInstruction('');
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err &&
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          ? String((err as { response: { data: { error: string } } }).response.data.error)
+          : 'Something went wrong — please try again';
+      setAiError(msg);
+    } finally {
+      setAiLoading(false);
+    }
+  }, [node, nodeId, aiLoading, questlineId, nodes, edges, title, body, variant]);
+
   const handleClose = () => { setPhase('edit'); onClose(); };
   const handleApply = () => {
-    onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds, exportFields, templateValues });
+    if (!node || !canApply) return;
+    // A skipped field keeps the node's original value; accepted fields take the edited value.
+    const keep = (key: FieldKey) => changedFields[key] && !accepted[key];
+    onApply({
+      title:      keep('title')   ? node.title   : title.trim(),
+      body:       keep('body')    ? node.body    : body.trim(),
+      variant:    keep('variant') ? node.variant : variant,
+      npcIds:     keep('people') && !isCombatVariant ? (node.npcIds ?? [])     : npcIds,
+      monsterIds: keep('people') &&  isCombatVariant ? (node.monsterIds ?? []) : monsterIds,
+      rewardIds:  keep('rewards') ? (node.rewardIds ?? []) : rewardIds,
+      exportFields,
+      templateValues,
+    });
     setPhase('edit');
     onClose();
   };
@@ -505,7 +668,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
                   ? <Pencil className="w-4 h-4 text-purple-400" />
                   : <GitCompare className="w-4 h-4 text-purple-400" />}
                 <h2 className="text-white font-semibold text-base">
-                  {phase === 'edit' ? 'Edit Node' : 'Story Modification Preview'}
+                  {phase === 'edit' ? 'Edit Node' : 'Review Changes'}
                 </h2>
               </div>
               <button onClick={handleClose} className="text-zinc-500 hover:text-white transition-colors">
@@ -516,6 +679,58 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
             {/* ── Edit phase ── */}
             {phase === 'edit' && (
               <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
+                {/* Ask AI — rewrite this step (suggestion lands in the draft fields below) */}
+                {nodeId && (
+                  <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Wand2 className="w-4 h-4 text-purple-400" />
+                      <span className="text-sm font-medium text-purple-200">AI Assistant</span>
+                      <span className="text-xs text-zinc-500">— rewrite this step</span>
+                    </div>
+                    <textarea
+                      value={aiInstruction}
+                      onChange={(e) => setAiInstruction(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAiSuggest(aiInstruction); }}
+                      placeholder="e.g. make it darker, add a betrayal, tighten the writing…"
+                      rows={2}
+                      disabled={aiLoading}
+                      className="w-full bg-zinc-800 text-white px-3 py-2.5 rounded-lg border border-zinc-700 focus:border-purple-500 focus:outline-none placeholder:text-zinc-600 resize-none disabled:opacity-50 text-sm leading-relaxed"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      {['Make it darker', 'Add a twist', 'More vivid description', 'Tighten the writing'].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          disabled={aiLoading}
+                          onClick={() => handleAiSuggest(s)}
+                          className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-full border border-zinc-700 transition-colors disabled:opacity-50"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => handleAiSuggest(aiInstruction)}
+                      disabled={aiLoading}
+                      className="w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+                    >
+                      {aiLoading
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</>
+                        : <><Sparkles className="w-4 h-4" /> Suggest changes</>}
+                    </button>
+                    {aiError && <p className="text-red-400 text-xs">{aiError}</p>}
+                    {aiFields.length > 0 && (
+                      <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-950/30 border border-emerald-800/40 rounded-lg px-3 py-2">
+                        <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>
+                          AI updated {aiFields.map((f) => FIELD_LABEL[f]).join(', ')}. Tweak below if needed, then{' '}
+                          <span className="font-medium text-emerald-200">Review Changes</span> to approve.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Title */}
                 <div>
                   <label className="text-zinc-400 text-xs uppercase tracking-wide mb-2 block">Title</label>
@@ -753,7 +968,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
                     Cancel
                   </button>
                   <button
-                    onClick={() => setPhase('diff')}
+                    onClick={goToReview}
                     disabled={!hasChanges}
                     className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
@@ -767,32 +982,67 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
             {/* ── Diff phase ── */}
             {phase === 'diff' && (
               <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
-                <p className="text-zinc-500 text-sm">
-                  Compare the original and modified versions of your node below.
+                {/* Summary bar: how many proposed changes, with bulk accept/skip */}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-zinc-400 text-sm">
+                    {changedKeys.length > 0 ? (
+                      <>
+                        <span className="text-white font-medium">{selectedCount}</span>
+                        <span className="text-zinc-500"> of {changedKeys.length} change{changedKeys.length !== 1 ? 's' : ''} selected</span>
+                      </>
+                    ) : (
+                      'Review your changes before applying.'
+                    )}
+                  </p>
+                  {changedKeys.length > 1 && (
+                    <div className="flex items-center gap-3 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setAccepted(ALL_ACCEPTED)}
+                        className="text-purple-400 hover:text-purple-300 transition-colors"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAccepted({ title: false, body: false, variant: false, people: false, rewards: false })}
+                        className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                      >
+                        Skip all
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-zinc-500 text-xs -mt-2">
+                  Toggle <span className="text-purple-300">Apply</span> / <span className="text-zinc-400">Skip</span> on each change — only the ones you keep are applied. You can undo right after.
                 </p>
 
                 <FieldDiffPanel
                   label="Title"
                   oldVal={node.title}
                   newVal={title.trim()}
-                  changed={title.trim() !== node.title}
+                  changed={changedFields.title}
+                  accept={changedFields.title ? { value: accepted.title, onToggle: () => toggleAccept('title') } : undefined}
                 />
 
                 <FieldDiffPanel
                   label="Description"
                   oldVal={node.body}
                   newVal={body.trim()}
-                  changed={body.trim() !== node.body}
+                  changed={changedFields.body}
+                  accept={changedFields.body ? { value: accepted.body, onToggle: () => toggleAccept('body') } : undefined}
                 />
 
                 <FieldDiffPanel
                   label="Node Type"
                   oldVal=""
                   newVal=""
-                  changed={variant !== node.variant}
+                  changed={changedFields.variant}
                   variantOld={node.variant}
                   variantNew={variant}
                   getVariantColor={(key) => getConfig(key).iconColor}
+                  accept={changedFields.variant ? { value: accepted.variant, onToggle: () => toggleAccept('variant') } : undefined}
                 />
 
                 {!isCombatVariant && (
@@ -801,7 +1051,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
                     oldIds={node.npcIds ?? []}
                     newIds={npcIds}
                     getName={getCharName}
-                    changed={!arraysEqual([...npcIds].sort(), [...(node.npcIds ?? [])].sort())}
+                    changed={changedFields.people}
+                    accept={changedFields.people ? { value: accepted.people, onToggle: () => toggleAccept('people') } : undefined}
                   />
                 )}
 
@@ -811,7 +1062,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
                     oldIds={node.monsterIds ?? []}
                     newIds={monsterIds}
                     getName={getCharName}
-                    changed={!arraysEqual([...monsterIds].sort(), [...(node.monsterIds ?? [])].sort())}
+                    changed={changedFields.people}
+                    accept={changedFields.people ? { value: accepted.people, onToggle: () => toggleAccept('people') } : undefined}
                   />
                 )}
 
@@ -820,7 +1072,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
                   oldIds={node.rewardIds ?? []}
                   newIds={rewardIds}
                   getName={getRewardName}
-                  changed={!arraysEqual([...rewardIds].sort(), [...(node.rewardIds ?? [])].sort())}
+                  changed={changedFields.rewards}
+                  accept={changedFields.rewards ? { value: accepted.rewards, onToggle: () => toggleAccept('rewards') } : undefined}
                 />
 
                 <div className="pt-2 border-t border-zinc-800 flex gap-3 mt-auto">
@@ -833,10 +1086,11 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
                   </button>
                   <button
                     onClick={handleApply}
-                    className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                    disabled={!canApply}
+                    className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <Check className="w-4 h-4" />
-                    Apply Changes
+                    {selectedCount > 0 ? `Apply ${selectedCount} change${selectedCount !== 1 ? 's' : ''}` : 'Apply changes'}
                   </button>
                 </div>
               </div>

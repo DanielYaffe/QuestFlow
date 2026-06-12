@@ -1,9 +1,37 @@
 import { Response } from 'express';
+import { z } from 'zod';
 import BaseController from './baseController';
-import ProjectModel from '../models/projectModel';
+import ProjectModel, { IProjectGitSettings } from '../models/projectModel';
 import QuestlineModel from '../models/questlineModel';
 import SpriteModel from '../models/spriteModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
+
+// Empty strings are allowed so a field can be cleared. The regexes catch the
+// real footguns — spaces and slashes — that otherwise only surface as a cryptic
+// GitHub error at push time.
+const gitSettingsSchema = z
+  .object({
+    repoOwner: z.string().trim().max(100)
+      .regex(/^[A-Za-z0-9-]*$/, 'Owner may contain only letters, numbers, and hyphens.'),
+    repoName: z.string().trim().max(100)
+      .regex(/^[A-Za-z0-9._-]*$/, 'Repository may contain only letters, numbers, dots, hyphens, and underscores.'),
+    defaultBranch: z.string().trim().max(255)
+      .regex(/^\S*$/, 'Branch must not contain spaces.'),
+    defaultFilePath: z.string().trim().max(500),
+  })
+  .partial();
+
+// Validates req.body.git when present. Returns the parsed settings, or sends a
+// 400 and returns undefined when validation fails.
+function parseGitSettings(req: AuthRequest, res: Response): IProjectGitSettings | null | undefined {
+  if (req.body.git === undefined || req.body.git === null) return null;
+  const result = gitSettingsSchema.safeParse(req.body.git);
+  if (!result.success) {
+    res.status(400).json({ error: result.error.issues[0]?.message ?? 'Invalid git settings.' });
+    return undefined;
+  }
+  return result.data;
+}
 
 class ProjectController extends BaseController {
   constructor() {
@@ -19,7 +47,7 @@ class ProjectController extends BaseController {
     }
     try {
       const projects = await ProjectModel.find({ ownerId: userId })
-        .select('name description ownerId createdAt updatedAt')
+        .select('name description ownerId git createdAt updatedAt')
         .sort({ updatedAt: -1 });
       res.json(projects);
     } catch (error) {
@@ -51,11 +79,14 @@ class ProjectController extends BaseController {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+    const git = parseGitSettings(req, res);
+    if (git === undefined) return;
     try {
       const project = await ProjectModel.create({
         ownerId:     userId,
         name:        req.body.name,
         description: req.body.description ?? '',
+        git:         git ?? undefined,
       });
       res.status(201).json(project);
     } catch (error) {
@@ -63,9 +94,11 @@ class ProjectController extends BaseController {
     }
   }
 
-  // PUT /projects/:id — owner only (rename / edit description)
+  // PUT /projects/:id — owner only (rename / edit description / set repo)
   async put(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
+    const git = parseGitSettings(req, res);
+    if (git === undefined) return;
     try {
       const project = await ProjectModel.findById(req.params.id);
       if (!project) {
@@ -78,6 +111,18 @@ class ProjectController extends BaseController {
       }
       if (typeof req.body.name === 'string') project.name = req.body.name;
       if (typeof req.body.description === 'string') project.description = req.body.description;
+      if (git) {
+        // Field-level merge so callers can patch a single repo setting without
+        // clobbering the rest.
+        const existing = project.git;
+        project.git = {
+          repoOwner:       git.repoOwner       ?? existing?.repoOwner,
+          repoName:        git.repoName        ?? existing?.repoName,
+          defaultBranch:   git.defaultBranch   ?? existing?.defaultBranch,
+          defaultFilePath: git.defaultFilePath ?? existing?.defaultFilePath,
+        };
+        project.markModified('git');
+      }
       await project.save();
       res.json(project);
     } catch (error) {
@@ -134,6 +179,12 @@ class ProjectController extends BaseController {
         ownerId:     userId,
         name:        req.body.name?.trim() || `${source.name} (copy)`,
         description: source.description,
+        git:         source.git ? {
+          repoOwner:       source.git.repoOwner,
+          repoName:        source.git.repoName,
+          defaultBranch:   source.git.defaultBranch,
+          defaultFilePath: source.git.defaultFilePath,
+        } : undefined,
       });
       const newProjectId = copy._id.toString();
 

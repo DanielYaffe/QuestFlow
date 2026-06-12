@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Node, Edge } from '@xyflow/react';
-import { toast } from 'sonner';
 import { QuestNodeData } from '../../../types/quest';
 import { AIChange, requestAiEdit } from '../../../api/questAiEditApi';
 
@@ -34,7 +33,8 @@ interface AIEditPanelProps {
   questlineId: string;
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
-  onApplyChange: (change: AIChange) => void;
+  // Applies one or more approved changes as a single undoable batch (toast lives in the parent).
+  onApplyChanges: (changes: AIChange[]) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +434,7 @@ export function AIEditPanel({
   questlineId,
   nodes,
   edges,
-  onApplyChange,
+  onApplyChanges,
 }: AIEditPanelProps) {
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [instruction, setInstruction] = useState('');
@@ -513,10 +513,9 @@ export function AIEditPanel({
       ),
     }));
     if (approvedChange) {
-      onApplyChange(approvedChange);
-      toast.success(approvedChange.summary, { duration: 3000 });
+      onApplyChanges([approvedChange]);
     }
-  }, [exchanges, updateExchange, onApplyChange]);
+  }, [exchanges, updateExchange, onApplyChanges]);
 
   const handleReject = useCallback((exchangeId: string, itemIndex: number) => {
     updateExchange(exchangeId, (ex) => ({
@@ -536,11 +535,10 @@ export function AIEditPanel({
         item.status === 'pending' ? { ...item, status: 'approved' } : item,
       ),
     }));
-    pendingChanges.forEach((item) => onApplyChange(item.change));
     if (pendingChanges.length > 0) {
-      toast.success(`${pendingChanges.length} change${pendingChanges.length !== 1 ? 's' : ''} applied`);
+      onApplyChanges(pendingChanges.map((item) => item.change));
     }
-  }, [exchanges, updateExchange, onApplyChange]);
+  }, [exchanges, updateExchange, onApplyChanges]);
 
   const handleRejectAll = useCallback((exchangeId: string) => {
     updateExchange(exchangeId, (ex) => ({
