@@ -15,6 +15,13 @@ const envSchema = z.object({
     AWS_REGION: z.string().default('us-east-1'),
     AWS_S3_BUCKET: z.string().default(''),
     MINIO_ENDPOINT: z.string().default(''),
+    // When MINIO_ENDPOINT is set, controls TLS cert verification for that endpoint.
+    // Defaults to 'false' to tolerate the self-signed cert; set to 'true' once a
+    // valid cert is in place to re-enable strict verification. No effect on AWS S3.
+    MINIO_REJECT_UNAUTHORIZED: z
+        .enum(['true', 'false'])
+        .default('false')
+        .transform((v) => v === 'true'),
     GOOGLE_CLIENT_ID: z.string().default(''),
     GOOGLE_CLIENT_SECRET: z.string().default(''),
     GOOGLE_CALLBACK_URL: z.string().default('http://localhost:3000/auth/google/callback'),

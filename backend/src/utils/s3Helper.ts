@@ -1,11 +1,23 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import https from 'https';
 import crypto from 'crypto';
 import { config } from '../config/config';
+
+// For a self-hosted MinIO over HTTPS (self-signed cert), optionally skip TLS
+// verification. Gated behind MINIO_REJECT_UNAUTHORIZED so it can be re-enabled
+// once a valid cert is installed. Never applied to real AWS S3.
+const requestHandler = config.MINIO_ENDPOINT
+  ? new NodeHttpHandler({
+      httpsAgent: new https.Agent({ rejectUnauthorized: config.MINIO_REJECT_UNAUTHORIZED }),
+    })
+  : undefined;
 
 const s3Client = new S3Client({
   region: config.AWS_REGION,
   ...(config.MINIO_ENDPOINT ? { endpoint: config.MINIO_ENDPOINT } : {}),
+  ...(requestHandler ? { requestHandler } : {}),
   credentials: {
     accessKeyId:     config.AWS_ACCESS_KEY_ID,
     secretAccessKey: config.AWS_SECRET_ACCESS_KEY,
