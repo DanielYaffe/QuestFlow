@@ -8,15 +8,18 @@ import projectRouter from "./routes/projectRoute";
 import characterRouter from "./routes/characterRoute";
 import questlineRouter from "./routes/questlineRoute";
 import questGenerationRouter from "./routes/questGenerationRoute";
-import exportTemplateRouter from "./routes/exportTemplateRoute";
 import spriteRouter from "./routes/spriteRoute";
 import questStyleRouter from "./routes/questStyleRoute";
 import nodeVariantConfigRouter from "./routes/nodeVariantConfigRoute";
 import jobRouter from "./routes/jobRoute";
 import stylesRouter from "./routes/stylesRoute";
+import userSettingsRouter from "./routes/userSettingsRoute";
+import exportTemplateRouter from "./routes/exportTemplateRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import { seedThemes } from "./models/seedThemes";
+import { seedBuiltInExportTemplates } from "./models/exportTemplateModel";
+import { ensureDefaultProjects } from "./controllers/projectController";
 import cors from "cors";
 import "./config/passport";
 import { authenticate } from "./middlewares/authMiddleware";
@@ -42,12 +45,13 @@ app.use('/projects', projectRouter);
 app.use('/characters', characterRouter);
 app.use('/questlines', questlineRouter);
 app.use('/quests', questGenerationRouter);
-app.use('/export-templates', exportTemplateRouter);
 app.use('/sprites', spriteRouter);
 app.use('/quest-styles', questStyleRouter);
 app.use('/variant-configs', nodeVariantConfigRouter);
 app.use('/jobs', jobRouter);
 app.use('/styles', stylesRouter);
+app.use('/users', userSettingsRouter);
+app.use('/export-templates', exportTemplateRouter);
 
 const db = mongoose.connection;
 db.on("error", (error) => console.error(error));
@@ -62,9 +66,19 @@ const initApp = () => {
             mongoose
                 .connect(config.DATABASE_URL)
                 .then(() => {
-                    seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
-                    seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));
-                    seedThemes().catch((err) => console.error('[seed] themes failed:', err));
+                    if (process.env.NODE_ENV === 'test' && !mongoose.connection.name.toLowerCase().includes('test')) {
+                        const dbName = mongoose.connection.name;
+                        return mongoose.connection.close().then(() => {
+                            throw new Error(`Refusing to run tests against non-test database "${dbName}"`);
+                        });
+                    }
+                    if (process.env.NODE_ENV !== 'test') {
+                        seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
+                        seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));
+                        seedThemes().catch((err) => console.error('[seed] themes failed:', err));
+                        seedBuiltInExportTemplates().catch((err) => console.error('[seed] exportTemplates failed:', err));
+                        ensureDefaultProjects().catch((err) => console.error('[seed] defaultProjects failed:', err));
+                    }
                     resolve(app);
                 })
                 .catch((error) => {

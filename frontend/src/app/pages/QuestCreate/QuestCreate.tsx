@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Objective, Reward, GeneratedCharacter, generateObjectives, generateCharacters } from '../../api/questCreateApi';
+import { ExportTemplate, fetchExportTemplates } from '../../api/exportTemplateApi';
 import { StepStory } from './components/StepStory';
 import { StepStyle } from './components/StepStyle';
 import { StepObjectives } from './components/StepObjectives';
@@ -12,6 +13,8 @@ interface WizardState {
   storyInput: string;
   selectedGenre: string;
   selectedStyleId: string;
+  templates: ExportTemplate[];
+  selectedTemplateId: string;
   objectives: Objective[];
   selectedObjectives: string[];
   rewards: Reward[];
@@ -23,22 +26,57 @@ interface WizardState {
   error: string | null;
 }
 
+const DRAFT_STORAGE_KEY = 'questflow:create-wizard-draft';
+
+const DEFAULT_WIZARD_STATE: WizardState = {
+  step: 1,
+  storyInput: '',
+  selectedGenre: 'All',
+  selectedStyleId: '',
+  templates: [],
+  selectedTemplateId: '',
+  objectives: [],
+  selectedObjectives: [],
+  rewards: [],
+  selectedRewards: [],
+  characters: [],
+  selectedCharacters: [],
+  isLoadingObjectives: false,
+  isLoadingCharacters: false,
+  error: null,
+};
+
+function loadDraftState(): WizardState {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return DEFAULT_WIZARD_STATE;
+    const parsed = JSON.parse(raw) as Partial<WizardState>;
+    return {
+      ...DEFAULT_WIZARD_STATE,
+      ...parsed,
+      templates: [],
+      isLoadingObjectives: false,
+      isLoadingCharacters: false,
+      error: null,
+    };
+  } catch {
+    return DEFAULT_WIZARD_STATE;
+  }
+}
+
 export function QuestCreate() {
-  const [state, setState] = useState<WizardState>({
-    step: 1,
-    storyInput: '',
-    selectedGenre: 'All',
-    selectedStyleId: '',
-    objectives: [],
-    selectedObjectives: [],
-    rewards: [],
-    selectedRewards: [],
-    characters: [],
-    selectedCharacters: [],
-    isLoadingObjectives: false,
-    isLoadingCharacters: false,
-    error: null,
-  });
+  const [state, setState] = useState<WizardState>(() => loadDraftState());
+
+  useEffect(() => {
+    fetchExportTemplates()
+      .then((templates) => setState((s) => ({ ...s, templates })))
+      .catch(() => setState((s) => ({ ...s, templates: [] })));
+  }, []);
+
+  useEffect(() => {
+    const { templates, isLoadingObjectives, isLoadingCharacters, error, ...draft } = state;
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  }, [state]);
 
   const handleStorySubmit = () => {
     if (!state.storyInput.trim() || state.isLoadingObjectives) return;
@@ -48,7 +86,7 @@ export function QuestCreate() {
   const handleStyleSubmit = async () => {
     setState((s) => ({ ...s, isLoadingObjectives: true, error: null }));
     try {
-      const result = await generateObjectives(state.storyInput, state.selectedGenre);
+      const result = await generateObjectives(state.storyInput, state.selectedGenre, state.selectedTemplateId || undefined);
       setState((s) => ({
         ...s,
         isLoadingObjectives: false,
@@ -175,9 +213,12 @@ export function QuestCreate() {
           <StepStory
             storyInput={state.storyInput}
             selectedGenre={state.selectedGenre}
+            templates={state.templates}
+            selectedTemplateId={state.selectedTemplateId}
             isLoading={state.isLoadingObjectives}
             onStoryChange={(value) => setState((s) => ({ ...s, storyInput: value }))}
             onGenreChange={(genre) => setState((s) => ({ ...s, selectedGenre: genre }))}
+            onTemplateChange={(templateId) => setState((s) => ({ ...s, selectedTemplateId: templateId }))}
             onSubmit={handleStorySubmit}
           />
         )}
@@ -229,6 +270,9 @@ export function QuestCreate() {
             selectedRewards={state.selectedRewards}
             characters={state.characters.filter((c) => state.selectedCharacters.includes(c.id))}
             styleId={state.selectedStyleId}
+            templateId={state.selectedTemplateId}
+            templateName={state.templates.find((template) => template._id === state.selectedTemplateId)?.name ?? ''}
+            onGenerated={() => localStorage.removeItem(DRAFT_STORAGE_KEY)}
             onBack={() => setState((s) => ({ ...s, step: 4 }))}
           />
         )}

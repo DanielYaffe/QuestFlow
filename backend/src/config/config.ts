@@ -21,6 +21,7 @@ const envSchema = z.object({
     FRONTEND_URL: z.string().default('http://localhost:5173'),
     REDIS_URL: z.string().default('redis://localhost:6379'),
     COMFYUI_ENDPOINT: z.string().default('http://127.0.0.1:8188'),
+    ENCRYPTION_KEY: z.string().length(64).default('0'.repeat(64)),
 });
 
 const parsed = envSchema.safeParse(process.env);

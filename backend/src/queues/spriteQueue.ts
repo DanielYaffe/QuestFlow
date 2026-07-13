@@ -3,6 +3,7 @@ import { redis } from './connection';
 
 export interface SpriteJobData {
   userId: string;
+  projectId: string;
   userPrompt: string;
   styleId: string;
   negativePrompt?: string;

@@ -19,6 +19,12 @@ const roleConfig: Record<CharacterRole, { label: string; icon: React.ElementType
   monster: { label: 'Monster', icon: Skull, color: 'text-orange-400', border: 'border-orange-600' },
 };
 
+const fallbackRoleConfig = roleConfig.neutral;
+
+function getRoleConfig(role?: string) {
+  return roleConfig[role as CharacterRole] ?? fallbackRoleConfig;
+}
+
 export function StepCharacters({
   characters,
   selectedCharacters,
@@ -65,7 +71,7 @@ export function StepCharacters({
 
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pr-1">
             {characters.map((char) => {
-              const cfg = roleConfig[char.role];
+              const cfg = getRoleConfig(char.role);
               const Icon = cfg.icon;
               const isSelected = selectedCharacters.includes(char.id);
               return (

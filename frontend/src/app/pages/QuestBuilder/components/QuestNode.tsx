@@ -26,15 +26,35 @@ export function QuestNode({ data, selected }: { data: QuestNodeData; selected?: 
   const rewardChips  = rewardIds.map((id)  => rewardNames[id]    ?? id);
   const hasChips = npcChips.length > 0 || monsterChips.length > 0 || rewardChips.length > 0;
 
+  const highlight = data.aiHighlight as 'updated' | 'added' | undefined;
+
+  const borderClass = highlight === 'added'
+    ? 'border-emerald-500 shadow-lg shadow-emerald-500/30'
+    : highlight === 'updated'
+    ? 'border-blue-500 shadow-lg shadow-blue-500/30'
+    : selected
+    ? `${config.borderColor} shadow-lg ${config.shadowColor}`
+    : 'border-zinc-700 hover:border-zinc-500';
+
   return (
     <div
       onClick={() => data.onEdit?.()}
-      className={`relative bg-zinc-900 rounded-lg border-2 transition-all min-w-[280px] max-w-[320px] group cursor-pointer ${
-        selected
-          ? `${config.borderColor} shadow-lg ${config.shadowColor}`
-          : 'border-zinc-700 hover:border-zinc-500'
-      }`}
+      className={`relative bg-zinc-900 rounded-lg border-2 transition-all min-w-[280px] max-w-[320px] group cursor-pointer ${borderClass}`}
     >
+      {/* AI change highlight ring */}
+      {highlight && (
+        <span className={`absolute -inset-[4px] rounded-xl border-2 pointer-events-none animate-pulse ${
+          highlight === 'added' ? 'border-emerald-400/50' : 'border-blue-400/50'
+        }`} />
+      )}
+      {/* AI change badge */}
+      {highlight && (
+        <div className={`absolute -top-3 left-3 px-1.5 py-0.5 rounded-full text-xs font-medium pointer-events-none z-10 flex items-center gap-1 ${
+          highlight === 'added' ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'
+        }`}>
+          {highlight === 'added' ? '+ New' : '✎ Updated'}
+        </div>
+      )}
       {/* Target handle */}
       <Handle
         type="target"

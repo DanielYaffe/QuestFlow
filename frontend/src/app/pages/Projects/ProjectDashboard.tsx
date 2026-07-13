@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { ProjectRecord, getProject } from '../../api/projectApi';
 import { fetchQuestlines, QuestlineSummary } from '../../api/questBuilderApi';
 import { listCharacters, CharacterRecord } from '../../api/characterApi';
+import { useProject } from '../../context/ProjectContext';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -27,11 +28,18 @@ const CARD_GRADIENTS = [
 export function ProjectDashboard() {
   const navigate = useNavigate();
   const { projectId = '' } = useParams<{ projectId: string }>();
+  const { setActiveProject } = useProject();
 
   const [project, setProject] = useState<ProjectRecord | null>(null);
   const [questlines, setQuestlines] = useState<QuestlineSummary[]>([]);
   const [characters, setCharacters] = useState<CharacterRecord[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Drilling into a project makes it the active project, so scoped operations
+  // (new quest, sprite generation, exports) target it via the X-Project-Id header.
+  useEffect(() => {
+    if (projectId) setActiveProject(projectId);
+  }, [projectId, setActiveProject]);
 
   useEffect(() => {
     if (!projectId) return;

@@ -1,8 +1,6 @@
 import { Node } from '@xyflow/react';
-import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft, Save, Check, Loader2 } from 'lucide-react';
+import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelLeft, Loader2, Check, Wand2 } from 'lucide-react';
 import { QuestNodeData } from '../../../types/quest';
-
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 interface QuestBuilderHeaderProps {
   selectedNode: Node<QuestNodeData> | null;
@@ -11,12 +9,14 @@ interface QuestBuilderHeaderProps {
   layoutDirection: 'TB' | 'LR';
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
-  onSave: () => void;
-  saveState: SaveState;
-  isDirty: boolean;
+  onExport: () => void;
+  isAiEditOpen: boolean;
+  onOpenAiEdit: () => void;
+  isSaving: boolean;
+  hasUnsavedChanges: boolean;
 }
 
-export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onSave, saveState, isDirty }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
   return (
     <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between z-10">
       <div className="flex items-center gap-3">
@@ -77,26 +77,34 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
           </button>
         </div>
 
+        {isSaving ? (
+          <span className="flex items-center gap-1.5 text-zinc-400 text-sm">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Saving...
+          </span>
+        ) : !hasUnsavedChanges ? (
+          <span className="flex items-center gap-1.5 text-zinc-500 text-sm">
+            <Check className="w-3.5 h-3.5" />
+            Saved
+          </span>
+        ) : null}
+
         <button
-          onClick={onSave}
-          disabled={saveState === 'saving' || !isDirty}
-          title={isDirty ? 'Save changes' : 'All changes saved'}
-          className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-            isDirty
-              ? 'bg-purple-600 hover:bg-purple-700 text-white'
-              : 'bg-zinc-800 text-zinc-500 cursor-default'
+          onClick={onOpenAiEdit}
+          className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm ${
+            isAiEditOpen
+              ? 'bg-purple-500/10 border border-purple-500/50 text-purple-400'
+              : 'bg-purple-600 hover:bg-purple-700 text-white'
           }`}
         >
-          {saveState === 'saving' ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
-          ) : isDirty ? (
-            <><Save className="w-4 h-4" /> Save</>
-          ) : (
-            <><Check className="w-4 h-4" /> Saved</>
-          )}
+          <Wand2 className="w-4 h-4" />
+          AI Edit
         </button>
 
-        <button className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors">
+        <button
+          onClick={onExport}
+          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+        >
           Export Quest
         </button>
       </div>

@@ -6,6 +6,7 @@ import {
 import { generateSprite, getSprites, getStyles, SpriteRecord, SpriteStyle } from '../../api/spriteApi';
 import { useSpriteJobs } from '../../context/SpriteJobContext';
 import { PromoteToCharacterModal } from './components/PromoteToCharacterModal';
+import { useProject } from '../../context/ProjectContext';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -237,6 +238,7 @@ function Lightbox({ sprite, styleName, onClose, onDownload, onCopy, onPromote }:
 // ---------------------------------------------------------------------------
 
 export function SpriteGenerator() {
+  const { activeProjectId } = useProject();
   const [subject, setSubject] = useState('');
   const [selectedStyleId, setSelectedStyleId] = useState('none');
   const [styles, setStyles] = useState<SpriteStyle[]>([]);
@@ -271,6 +273,7 @@ export function SpriteGenerator() {
   }, []);
 
   useEffect(() => {
+    setLoadingHistory(true);
     getSprites()
       .then((records) => {
         setSprites(records);
@@ -290,7 +293,7 @@ export function SpriteGenerator() {
       })
       .catch(() => {})
       .finally(() => setLoadingHistory(false));
-  }, []);
+  }, [activeProjectId]);
 
   const { registerJob } = useSpriteJobs();
 

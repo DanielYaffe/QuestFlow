@@ -267,13 +267,6 @@ export function ProjectSidebar({ questlineId, isOpen, onQuestClick, onCharacterD
                           <span className={`text-sm truncate ${selectedRewardId === reward.id ? 'text-purple-300' : 'text-zinc-300'}`}>
                             {reward.title}
                           </span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full border flex-shrink-0 capitalize ${
-                            reward.rarity === 'epic' ? 'text-purple-300 bg-purple-500/10 border-purple-500/40' :
-                            reward.rarity === 'rare' ? 'text-blue-300 bg-blue-500/10 border-blue-500/40' :
-                            'text-zinc-400 bg-zinc-700/50 border-zinc-600'
-                          }`}>
-                            {reward.rarity}
-                          </span>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1">
                           <button

@@ -1,17 +1,25 @@
 import api from './axiosInstance';
 
-export interface ProjectRecord {
+// Unified project shape — superset of both efforts. The multi-project flow uses
+// name/description/ownerId; the architecture-phase1 flow adds per-project defaults,
+// the Inbox flag, and content counts returned by GET /projects.
+export interface Project {
   _id: string;
   name: string;
   description: string;
-  defaultThemeId: string;
-  defaultExportFormat: string;
-  isInbox: boolean;
+  ownerId?: string;
+  defaultThemeId?: string;
+  defaultExportFormat?: string;
+  isInbox?: boolean;
   questlineCount?: number;
+  spriteCount?: number;
   characterCount?: number;
   createdAt: string;
   updatedAt: string;
 }
+
+// Back-compat alias — architecture-phase1 code referred to this as ProjectRecord.
+export type ProjectRecord = Project;
 
 export interface CreateProjectInput {
   name: string;
@@ -20,29 +28,43 @@ export interface CreateProjectInput {
   defaultExportFormat?: string;
 }
 
-export async function listProjects(): Promise<ProjectRecord[]> {
-  const { data } = await api.get<ProjectRecord[]>('/projects');
+export async function fetchProjects(): Promise<Project[]> {
+  const { data } = await api.get<Project[]>('/projects');
   return data;
 }
 
-export async function getProject(id: string): Promise<ProjectRecord> {
-  const { data } = await api.get<ProjectRecord>(`/projects/${id}`);
+// Alias kept for architecture-phase1 callers (PromoteToCharacterModal, ProjectDashboard).
+export const listProjects = fetchProjects;
+
+export async function getProject(id: string): Promise<Project> {
+  const { data } = await api.get<Project>(`/projects/${id}`);
   return data;
 }
 
-export async function createProject(input: CreateProjectInput): Promise<ProjectRecord> {
-  const { data } = await api.post<ProjectRecord>('/projects', input);
+// Accepts either a plain name (multi-project callers) or a full input object
+// (architecture-phase1 callers that set per-project defaults).
+export async function createProject(
+  input: string | CreateProjectInput,
+  description = '',
+): Promise<Project> {
+  const body = typeof input === 'string' ? { name: input, description } : input;
+  const { data } = await api.post<Project>('/projects', body);
   return data;
 }
 
 export async function updateProject(
   id: string,
   patch: Partial<CreateProjectInput>,
-): Promise<ProjectRecord> {
-  const { data } = await api.put<ProjectRecord>(`/projects/${id}`, patch);
+): Promise<Project> {
+  const { data } = await api.put<Project>(`/projects/${id}`, patch);
   return data;
 }
 
 export async function deleteProject(id: string): Promise<void> {
   await api.delete(`/projects/${id}`);
+}
+
+export async function duplicateProject(id: string, name?: string): Promise<Project> {
+  const { data } = await api.post<Project>(`/projects/${id}/duplicate`, name ? { name } : {});
+  return data;
 }

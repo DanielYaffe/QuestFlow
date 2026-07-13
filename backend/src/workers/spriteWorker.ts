@@ -17,7 +17,7 @@ async function resolveStyle(styleId: string) {
 }
 
 async function processSpriteJob(job: Job<SpriteJobData, SpriteJobResult>): Promise<SpriteJobResult> {
-  const { userId, userPrompt, styleId, negativePrompt } = job.data;
+  const { userId, projectId, userPrompt, styleId, negativePrompt } = job.data;
 
   const style = await resolveStyle(styleId);
 
@@ -43,6 +43,7 @@ async function processSpriteJob(job: Job<SpriteJobData, SpriteJobResult>): Promi
 
   const sprite = await SpriteModel.create({
     ownerId:        userId,
+    projectId:      projectId ?? '',
     userPrompt,
     positivePrompt: composed.positive,
     negativePrompt: composed.negative,

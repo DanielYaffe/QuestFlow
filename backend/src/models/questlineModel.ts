@@ -20,6 +20,33 @@ export interface IQuestNode {
   npcIds: string[];
   monsterIds: string[];
   rewardIds: string[];
+  exportFields: IQuestNodeExportFields;
+  templateValues: Record<string, unknown>;
+}
+
+export interface IQuestExportTarget {
+  id: number;
+  amount: number;
+}
+
+export interface IQuestExportCollectTarget {
+  itemId: number;
+  amount: number;
+}
+
+export interface IQuestExportRewardItem {
+  id: number;
+  amount: number;
+}
+
+export interface IQuestNodeExportFields {
+  questId?: number;
+  silent: boolean;
+  preQuest: number[];
+  daily: boolean;
+  toKill: IQuestExportTarget[];
+  toCollect: IQuestExportCollectTarget[];
+  rewardItems: IQuestExportRewardItem[];
 }
 
 export interface IQuestEdge {
@@ -62,6 +89,9 @@ export interface IQuestline extends Document {
   styleId: string;
   themeId: string;
   exportFormat: string;
+  templateId?: string;
+  templateName?: string;
+  templateSnapshot?: unknown;
   ownerId: string;
   projectId: string;
   characterIds: string[];
@@ -85,6 +115,16 @@ const QuestNodeSchema = new Schema<IQuestNode>({
   npcIds:     { type: [String], default: [] },
   monsterIds: { type: [String], default: [] },
   rewardIds:  { type: [String], default: [] },
+  templateValues: { type: Schema.Types.Mixed, default: {} },
+  exportFields: {
+    questId:     { type: Number },
+    silent:      { type: Boolean, default: true },
+    preQuest:    { type: [Number], default: [-1] },
+    daily:       { type: Boolean, default: false },
+    toKill:      { type: [{ id: Number, amount: Number, _id: false }], default: [] },
+    toCollect:   { type: [{ itemId: Number, amount: Number, _id: false }], default: [] },
+    rewardItems: { type: [{ id: Number, amount: Number, _id: false }], default: [] },
+  },
 });
 
 const QuestEdgeSchema = new Schema<IQuestEdge>({
@@ -161,6 +201,9 @@ const QuestlineSchema = new Schema<IQuestline>(
     styleId:      { type: String, default: '' },
     themeId:      { type: String, default: 'generic_rpg' },
     exportFormat: { type: String, default: 'json' },
+    templateId:       { type: String, default: '' },
+    templateName:     { type: String, default: '' },
+    templateSnapshot: { type: Schema.Types.Mixed },
     ownerId:      { type: String, required: true, index: true },
     projectId:    { type: String, default: '', index: true },
     characterIds: { type: [String], default: [] },

@@ -1,10 +1,10 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 // ---------------------------------------------------------------------------
-// Project — top-level container. Owns many questlines + many characters and
-// carries the default theme / export format inherited by its questlines.
+// Project — top-level container. Owns many questlines, sprites and characters
+// and carries the default theme / export format inherited by its questlines.
 // Every user has exactly one auto-created "Inbox" project (isInbox: true) that
-// holds questlines/characters created before/without an explicit project.
+// holds questlines/sprites/characters created before/without an explicit project.
 // ---------------------------------------------------------------------------
 
 export interface IProject extends Document {
@@ -35,6 +35,8 @@ export interface IProject extends Document {
  *           type: string
  *         description:
  *           type: string
+ *         ownerId:
+ *           type: string
  *         defaultThemeId:
  *           type: string
  *         defaultExportFormat:
@@ -63,9 +65,9 @@ const ProjectSchema = new Schema<IProject>(
 const ProjectModel = mongoose.model<IProject>('Project', ProjectSchema);
 
 // ---------------------------------------------------------------------------
-// Find-or-create the user's "Inbox" project — the default home for questlines
-// and characters created without an explicit project. Every user has exactly
-// one. Shared by the controller (create defaults) and the migration script.
+// Find-or-create the user's "Inbox" project — the default home for questlines,
+// sprites and characters created without an explicit project. Every user has
+// exactly one. Shared by the controller (create defaults) and the migration.
 // ---------------------------------------------------------------------------
 export async function ensureInboxProject(ownerId: string): Promise<IProject> {
   const existing = await ProjectModel.findOne({ ownerId, isInbox: true });
@@ -73,14 +75,14 @@ export async function ensureInboxProject(ownerId: string): Promise<IProject> {
   return ProjectModel.create({
     ownerId,
     name: 'Inbox',
-    description: 'Default project for questlines and characters without a home.',
+    description: 'Default project for questlines, sprites and characters without a home.',
     isInbox: true,
   });
 }
 
-// Resolve the project a questline/character should belong to: the requested
-// project when it is owned by the user, otherwise the user's Inbox. Returns the
-// project _id as a string.
+// Resolve the project a questline/sprite/character should belong to: the
+// requested project when it is owned by the user, otherwise the user's Inbox.
+// Returns the project _id as a string.
 export async function resolveProjectId(ownerId: string, projectId?: string): Promise<string> {
   if (projectId) {
     const owned = await ProjectModel.exists({ _id: projectId, ownerId });

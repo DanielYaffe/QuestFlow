@@ -5,6 +5,8 @@ import SpriteModel from '../models/spriteModel';
 import SpriteStyleModel from '../models/spriteStyleModel';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { spriteQueue, SpriteJobData, SpriteJobResult } from '../queues/spriteQueue';
+import { getProjectId } from '../utils/projectScope';
+import { resolveProjectId } from '../models/projectModel';
 
 // ---------------------------------------------------------------------------
 // POST /sprites/generate — enqueue ComfyUI generation job
@@ -42,8 +44,12 @@ export async function generateSprite(req: AuthRequest, res: Response) {
     resolvedStyleId = fallback?.styleId ?? 'none';
   }
 
+  // Scope the sprite to the active project (X-Project-Id header), falling back to Inbox.
+  const projectId = await resolveProjectId(userId, getProjectId(req));
+
   const bullJob = await spriteQueue.add('generate', {
     userId,
+    projectId,
     userPrompt: prompt.trim(),
     styleId: resolvedStyleId,
     negativePrompt: negativePrompt ?? undefined,
@@ -114,7 +120,10 @@ export async function getSprites(req: AuthRequest, res: Response) {
   }
 
   try {
-    const sprites = await SpriteModel.find({ ownerId: userId })
+    const filter: Record<string, unknown> = { ownerId: userId };
+    const projectId = getProjectId(req);
+    if (projectId) filter.projectId = projectId;
+    const sprites = await SpriteModel.find(filter)
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();

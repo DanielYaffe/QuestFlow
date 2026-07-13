@@ -24,7 +24,9 @@ export interface QuestlineMeta {
   title: string;
   genre: string;
   styleId: string;
-  projectId: string;
+  projectId?: string;
+  templateId?: string;
+  templateName?: string;
 }
 
 export async function fetchQuestlineMeta(questlineId: string): Promise<QuestlineMeta> {
@@ -35,6 +37,8 @@ export async function fetchQuestlineMeta(questlineId: string): Promise<Questline
     genre: data.genre ?? '',
     styleId: data.styleId ?? '',
     projectId: data.projectId ?? '',
+    templateId: data.templateId,
+    templateName: data.templateName,
   };
 }
 
@@ -42,6 +46,11 @@ export interface QuestlineData {
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
   nextNodeId: number;
+  template?: {
+    id: string;
+    name: string;
+    snapshot: unknown;
+  } | null;
 }
 
 export async function fetchQuestlineById(questlineId: string): Promise<QuestlineData> {

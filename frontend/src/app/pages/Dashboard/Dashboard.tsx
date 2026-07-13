@@ -5,6 +5,7 @@ import { QuickActionCard } from './components/QuickActionCard';
 import { ProjectCard } from './components/ProjectCard';
 import { FeaturedProject } from './components/FeaturedProject';
 import { fetchQuestlines, fetchQuestlineById, QuestlineSummary } from '../../api/questBuilderApi';
+import { useProject } from '../../context/ProjectContext';
 
 const CARD_GRADIENTS = [
   'bg-gradient-to-br from-rose-600 to-violet-700',
@@ -29,6 +30,7 @@ function timeAgo(iso: string): string {
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const { activeProjectId } = useProject();
 
   const [questlines, setQuestlines] = useState<QuestlineSummary[]>([]);
   const [featuredNodes, setFeaturedNodes] = useState<{ id: string; title: string; variant: string }[]>([]);
@@ -36,6 +38,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     fetchQuestlines()
       .then(async (list) => {
         const sorted = [...list].sort(
@@ -56,7 +59,7 @@ export function Dashboard() {
         }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeProjectId]);
 
   const featured = questlines[0] ?? null;
   const rest = questlines.slice(1);
