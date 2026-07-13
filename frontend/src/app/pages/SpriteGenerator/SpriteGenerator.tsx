@@ -7,6 +7,7 @@ import { generateSprite, getSprites, getStyles, SpriteRecord, SpriteStyle } from
 import { useSpriteJobs } from '../../context/SpriteJobContext';
 import { PromoteToCharacterModal } from './components/PromoteToCharacterModal';
 import { useProject } from '../../context/ProjectContext';
+import { CHECKER_STYLE, CHECKER_SM } from '../../utils/spriteStyles';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -20,20 +21,6 @@ const QUICK_PROMPTS = [
   'A merchant turtle carrying a house on its back',
   'A tiny mushroom knight with a spore lance',
 ];
-
-const CHECKER_STYLE: React.CSSProperties = {
-  backgroundImage:
-    'linear-gradient(45deg, #3f3f46 25%, transparent 25%), linear-gradient(-45deg, #3f3f46 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #3f3f46 75%), linear-gradient(-45deg, transparent 75%, #3f3f46 75%)',
-  backgroundSize: '16px 16px',
-  backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
-  backgroundColor: '#27272a',
-};
-
-const CHECKER_SM: React.CSSProperties = {
-  ...CHECKER_STYLE,
-  backgroundSize: '12px 12px',
-  backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
-};
 
 // ---------------------------------------------------------------------------
 // Style Picker
