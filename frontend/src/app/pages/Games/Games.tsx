@@ -145,7 +145,7 @@ export function Games() {
             </div>
             <h2 className="text-white font-medium mb-1">No games yet</h2>
             <p className="text-zinc-500 text-sm max-w-sm mb-5">
-              A Game holds your world's knowledge base — lore, quests, characters and dialogue.
+              A Game holds your world's knowledge base — monsters, maps, items and world lore.
               Link it to projects so generated quests reference your actual game content.
             </p>
             <button

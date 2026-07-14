@@ -70,7 +70,13 @@ deleting the Game wipes its Qdrant collections and registry rows.
 | GET | `/games/:gameId/kb/documents` | registry list (no text) |
 | GET/PUT/DELETE | `/games/:gameId/kb/documents/:docId` | GET includes `originalText`; PUT re-embeds only if text changed |
 | POST | `/games/:gameId/kb/documents/:docId/retry` | re-run a `failed` ingestion |
-| GET | `/games/:gameId/kb/search?q=&type=&topK=` | test search (`type` ∈ lore, quests, characters, dialogue) |
+| GET | `/games/:gameId/kb/search?q=&type=&topK=` | test search (`type` ∈ monsters, maps, items, general) |
+
+> **KB categories (changed July 2026):** the original `lore | quests | characters |
+> dialogue` types were replaced by `monsters | maps | items | general` (default:
+> `general`). `KB_TYPES` in `backend/src/services/qdrant.ts` is the single source of
+> truth — the Mongoose enum, queue typing and zod schemas all derive from it. New types
+> mean new `kb_{gameId}_{type}` collections; no migration was needed (Qdrant was empty).
 
 ---
 
@@ -116,9 +122,9 @@ curl -X POST localhost:3000/games -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"name":"My World"}'
 curl -X POST localhost:3000/games/$GAME_ID/kb/ingest -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"type":"lore","title":"Region guide","text":"..."}'          # → 202 {docId}
+  -d '{"type":"general","title":"Region guide","text":"..."}'       # → 202 {docId}
 curl "localhost:3000/games/$GAME_ID/kb/documents" -H "Authorization: Bearer $TOKEN"   # wait for status:"ready"
-curl "localhost:3000/games/$GAME_ID/kb/search?q=who+guards+the+bridge&type=lore" \
+curl "localhost:3000/games/$GAME_ID/kb/search?q=who+guards+the+bridge&type=general" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -152,15 +158,20 @@ file header; the short version:
 
 ## Frontend — Games & Knowledge Base UI
 
-New "Games" section in the top nav (routes `#/games` and `#/games/:gameId`):
+New "Games" section in the top nav (routes `#/games`, `#/games/:gameId`,
+`#/games/:gameId/docs/new`, `#/games/:gameId/docs/:docId`, `#/games/:gameId/playground`):
 
 | File | Purpose |
 |------|---------|
 | `frontend/src/app/api/gameApi.ts` | Typed API layer for all `/games` endpoints |
 | `frontend/src/app/pages/Games/Games.tsx` | Games browser — card grid with doc counts, create/edit/delete |
-| `frontend/src/app/pages/Games/GameDetail.tsx` | Per-game KB manager + test search |
-| `frontend/src/app/pages/Games/KbDocumentDialog.tsx` | Add/edit document — paste text or load a local `.txt`/`.md`/`.json` (read client-side, no upload endpoint) |
-| `frontend/src/app/pages/Games/KbTestSearch.tsx` | Test panel: semantic query → scored chunks (exactly what generation would receive) |
+| `frontend/src/app/pages/Games/GameDetail.tsx` | Per-game KB manager: document registry with live status |
+| `frontend/src/app/pages/Games/KbDocumentEditor.tsx` | Full-page add/edit document — drag-drop or paste a `.txt`/`.md`/`.json` (read client-side, no upload endpoint), with per-category format help + insertable templates |
+| `frontend/src/app/pages/Games/KbPlayground.tsx` | Playground: one query searches all categories in parallel → scored chunks per category (exactly what generation would receive) + session query history |
+| `frontend/src/app/pages/Games/kbContent.ts` | Shared category labels/badges + the recommended-shape templates |
+
+(The original `KbDocumentDialog.tsx` modal and `KbTestSearch.tsx` sidebar panel were
+replaced by the two full-page flows above in July 2026.)
 
 Details worth knowing:
 - Document rows show live indexing state — **Indexing…** (auto-polls every 3 s while

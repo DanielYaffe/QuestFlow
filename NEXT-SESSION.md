@@ -1,76 +1,41 @@
-# Next session — KB category rework + UI renovation
+# Next session — RAG Part 2 (KB-aware generation)
 
-State: RAG Part 1 backend + Games UI are done, verified E2E, uncommitted on `RAG` branch.
-See `RAG-README.md` for what exists. This file is the to-do for the next session.
+State (July 2026): RAG Part 1 is committed on the `RAG` branch (`c27db88` + follow-up).
+The former items 1 & 2 of this file are **done**:
 
-## 1. Change KB categories (backend + frontend)
+1. ~~KB category rework~~ — types are now `monsters | maps | items | general`
+   (default `general`); `KB_TYPES` in `backend/src/services/qdrant.ts` is the single
+   source of truth.
+2. ~~Document creation + KB testing UX redo~~ — the modal and sidebar panel were
+   replaced by a full-page editor (`#/games/:gameId/docs/new`, `.../docs/:docId`,
+   drag-drop + per-category format templates) and a KB playground
+   (`#/games/:gameId/playground`, all-category parallel search + query history).
+   Styling deliberately stayed zinc/purple — the restyle is Part 3.
 
-Replace the current `lore | quests | characters | dialogue` types with:
+## Up next: Part 2 — game-data-aware generation
 
-- `monsters`
-- `maps`
-- `items` (items/rewards)
-- `general` (freeform catch-all)
+Follow `quest-gen-rag-part2-integration.md`. Build order (§7 there):
 
-Touch points (grep for the old union values):
-- `backend/src/services/qdrant.ts` — `KbType` + `KB_TYPES` (single source of truth;
-  collection names are `kb_{gameId}_{type}` so new types = new collections, no migration
-  needed — Qdrant is currently empty, no real docs exist yet)
-- `backend/src/models/kbDocumentModel.ts` — schema enum comes from KB_TYPES (auto)
-- `backend/src/queues/kbQueue.ts` — uses KbType (auto)
-- `backend/src/controllers/gameController.ts` — zod kbTypeSchema (auto via KB_TYPES),
-  swagger comments mention the old enum in `gameRoute.ts` — update docs strings
-- `frontend/src/app/api/gameApi.ts` — `KbType`, `KB_TYPES`
-- `frontend/src/app/pages/Games/KbDocumentDialog.tsx` — TYPE_LABELS
-- `frontend/src/app/pages/Games/KbTestSearch.tsx` — TYPE_LABELS
-- `frontend/src/app/pages/Games/GameDetail.tsx` — TYPE_BADGES colors
-- `RAG-README.md` + `quest-gen-rag-plan.md` mention the old four types — update
+1. Settle the §8 open decisions (recognized file set, progression inference,
+   dedup/link). The category rework already fixed the file set direction:
+   monsters / maps / items (+ general fallback).
+2. Structured-file ingestion + per-entity explosion (on top of Part 1's text path).
+3. Inferred progression scoring; index the computed field.
+4. Reference retrieval + context assembly (`buildReferenceContext`, optional,
+   progression-biased).
+5. Light prompt changes, one builder at a time; KB guides, never restricts.
+6. Link referenced existing entities (no duplicates).
+7. Frontend: quest-gen dialog Game/KB selector (`questline.gameId` override —
+   the model field already exists).
 
-Default type for new docs should become `general`.
+## After that: Part 3 — whole-app UI renovation
 
-## 2. Redesign document creation + KB testing UX (user dislikes current version)
+See `part3-ui-renovation.md` (extracted from this file). Load the ui-ux +
+frontend-design skills first, present style directions, user picks, dashboard first.
 
-Current: modal dialog with paste/load-file + a sidebar test-search panel with type pills.
-User feedback: "I don't like how we did the testing and the creation of documents."
-Redesign both flows as part of the overall UI renovation (below) — don't just restyle,
-rethink the flow. Ideas to explore with the user:
-- Document creation: full-page editor instead of a modal? Drag-drop file zone?
-  Per-category guided forms (e.g. monsters: name/stats fields) — ties into Part 2's
-  structured ingestion (`mobs.json` etc., see `quest-gen-rag-part2-integration.md` §3)
-- Testing: maybe a dedicated "playground" view, chat-like query history, side-by-side
-  category comparison, show which docs matched and why
-
-## 3. Whole-app UI renovation (the big one)
-
-User feedback, verbatim intent:
-- The app feels **too generic / "AI feel"** — wants a distinctive style
-- The **dashboard is not good**
-- Wants to **view different style directions** before committing
-
-Two skills are now installed for this (were NOT available last session — check the
-available-skills list and invoke via the Skill tool):
-- a **ui ux** skill
-- a **frontend design** skill
-
-Plan:
-1. Load both skills FIRST, before proposing anything.
-2. Produce several distinct style directions (mood/theme boards or sample screens —
-   e.g. as Artifacts or mock pages) for the user to choose from. QuestFlow is a
-   game-dev tool (quests, sprites, pixel art) — directions could lean into that
-   (pixel/retro, editorial, brutalist, warm parchment/fantasy, pro-tool dense like
-   Linear/Blender, etc.). Let the user pick; don't restyle everything unprompted.
-3. After a direction is chosen: dashboard first, then the Games/KB pages (combining
-   with item 2), then the rest.
-
-Current stack/style for reference: Tailwind 4, shadcn/radix components in
-`frontend/src/app/components/ui/`, dark zinc-950/900 + purple-600 accent everywhere,
-lucide icons, sonner toasts, motion/react modals. Nav is `components/layout/TopNav.tsx`;
-dashboard page is `pages/Dashboard/Dashboard.tsx`.
-
-## Loose ends from last session (small)
+## Loose ends (small)
 
 - 2 pre-existing questExport snapshot test failures (unrelated, also fail on main).
 - Server Redis: eviction policy should be `noeviction` (BullMQ warning); Redis+Mongo
   are on public ports — consider firewalling to known IPs.
 - OCI: port 6333 can be closed now that Caddy fronts Qdrant on 443.
-- Everything on `RAG` branch is uncommitted — user commits manually.

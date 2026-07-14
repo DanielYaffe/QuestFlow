@@ -5,8 +5,8 @@ import api from './axiosInstance';
 // and questlines can link a gameId to ground quest generation in its KB.
 // ---------------------------------------------------------------------------
 
-export type KbType = 'lore' | 'quests' | 'characters' | 'dialogue';
-export const KB_TYPES: KbType[] = ['lore', 'quests', 'characters', 'dialogue'];
+export type KbType = 'monsters' | 'maps' | 'items' | 'general';
+export const KB_TYPES: KbType[] = ['monsters', 'maps', 'items', 'general'];
 
 export type DocStatus = 'pending' | 'ready' | 'failed';
 

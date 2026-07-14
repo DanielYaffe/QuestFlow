@@ -16,8 +16,8 @@ const qdrant = new QdrantClient({
   apiKey: config.QDRANT_API_KEY || undefined,
 });
 
-export type KbType = 'lore' | 'quests' | 'characters' | 'dialogue';
-export const KB_TYPES: KbType[] = ['lore', 'quests', 'characters', 'dialogue'];
+export type KbType = 'monsters' | 'maps' | 'items' | 'general';
+export const KB_TYPES: KbType[] = ['monsters', 'maps', 'items', 'general'];
 
 export function isKbType(v: unknown): v is KbType {
   return typeof v === 'string' && (KB_TYPES as string[]).includes(v);

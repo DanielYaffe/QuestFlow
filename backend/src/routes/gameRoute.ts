@@ -86,7 +86,7 @@ gameRouter.delete('/:gameId', gameController.deleteGame);
  *             properties:
  *               type:
  *                 type: string
- *                 enum: [lore, quests, characters, dialogue]
+ *                 enum: [monsters, maps, items, general]
  *               title:
  *                 type: string
  *               text:
@@ -165,7 +165,7 @@ gameRouter.post('/:gameId/kb/documents/:docId/retry', gameController.retryDocume
  *         required: true
  *         schema:
  *           type: string
- *           enum: [lore, quests, characters, dialogue]
+ *           enum: [monsters, maps, items, general]
  *       - in: query
  *         name: topK
  *         schema:

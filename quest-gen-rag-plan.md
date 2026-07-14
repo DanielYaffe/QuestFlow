@@ -3,6 +3,12 @@
 A RAG layer that lets users build shareable, per-**Game** knowledge bases and generate
 quests, storyline lore, and character designs grounded in their own game content.
 
+> **Historical note (July 2026):** this plan was implemented — see `RAG-README.md` for
+> what shipped. One deviation: the KB categories written throughout this document as
+> `lore | quests | characters | dialogue` were later replaced by
+> `monsters | maps | items | general` (default `general`); read every mention below
+> accordingly. `KB_TYPES` in `backend/src/services/qdrant.ts` is the source of truth.
+
 > **This plan is split into two parts.**
 > - **Part 1 (this file) — RAG Foundation. Mandatory, build now.** The vector store, the
 >   AI provider layer, the `Game` entity + KB ingestion/retrieval, cross-store consistency,
