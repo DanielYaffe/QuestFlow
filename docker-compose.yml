@@ -10,6 +10,7 @@ services:
     depends_on:
       - redis
       - mongo
+      - qdrant
 
   worker:
     build:
@@ -21,6 +22,7 @@ services:
     depends_on:
       - redis
       - mongo
+      - qdrant
 
   redis:
     image: redis:7-alpine
@@ -34,5 +36,14 @@ services:
     volumes:
       - mongo_data:/data/db
 
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
+    ports:
+      - "6333:6333"   # REST/HTTP (QDRANT_URL)
+      - "6334:6334"   # gRPC (optional)
+    volumes:
+      - qdrant_data:/qdrant/storage
+
 volumes:
   mongo_data:
+  qdrant_data:

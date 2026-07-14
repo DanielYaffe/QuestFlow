@@ -1,7 +1,7 @@
 import { Response } from 'express';
-import { config } from '../config/config';
 import { QuestlineRequest } from '../middlewares/requireQuestlineOwnership';
-import { callGemini } from '../utils/gemini';
+import { complete } from '../services/ai';
+import { hasGenApiKey } from '../config/ai';
 import CharacterModel from '../models/characterModel';
 
 // ---------------------------------------------------------------------------
@@ -189,8 +189,8 @@ Return this exact JSON structure:
  *         description: AI returned malformed JSON
  */
 export async function aiEditQuestline(req: QuestlineRequest, res: Response): Promise<void> {
-  if (!config.GEMINI_API_KEY) {
-    res.status(500).json({ error: 'Gemini API key is not configured' });
+  if (!hasGenApiKey()) {
+    res.status(500).json({ error: 'AI provider API key is not configured' });
     return;
   }
 
@@ -236,7 +236,7 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
   );
 
   try {
-    const json = await callGemini(prompt);
+    const json = await complete(prompt);
     const parsed = JSON.parse(json) as { changes?: unknown };
     const raw = Array.isArray(parsed.changes) ? parsed.changes : [];
     const changes = raw.filter(isValidChange).slice(0, 8);

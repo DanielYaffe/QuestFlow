@@ -11,6 +11,8 @@ import { AuthCallback } from './pages/AuthCallback/AuthCallback';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { Projects } from './pages/Projects/Projects';
 import { ProjectDashboard } from './pages/Projects/ProjectDashboard';
+import { Games } from './pages/Games/Games';
+import { GameDetail } from './pages/Games/GameDetail';
 import { Characters } from './pages/Project/Characters';
 import { QuestBuilder } from './pages/QuestBuilder/QuestBuilder';
 import { QuestBuilderLanding } from './pages/QuestBuilder/QuestBuilderLanding';
@@ -35,6 +37,8 @@ export default function App() {
                   <Route path="/projects" element={<Projects />} />
                   <Route path="/projects/:projectId" element={<ProjectDashboard />} />
                   <Route path="/projects/:projectId/characters" element={<Characters />} />
+                  <Route path="/games" element={<Games />} />
+                  <Route path="/games/:gameId" element={<GameDetail />} />
                   <Route path="/quest-builder" element={<QuestBuilderLanding />} />
                   <Route path="/quest-builder/:questlineId" element={<QuestBuilder />} />
                   <Route path="/create" element={<QuestCreate />} />

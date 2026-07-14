@@ -8,6 +8,7 @@ import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { getProjectId } from '../utils/projectScope';
 import { IQuestNodeExportFields } from '../models/questlineModel';
+import { ownsGame } from '../services/gameService';
 
 // S3 keys never start with http — presigned URLs always do
 function isS3Key(value: string): boolean {
@@ -100,6 +101,12 @@ class QuestlineController extends BaseController {
       }
       if (questline.ownerId !== userId) {
         res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      const { gameId } = req.body as { gameId?: string };
+      // '' clears the per-questline KB override; a non-empty id must be owned.
+      if (gameId !== undefined && gameId !== '' && !(userId && await ownsGame(userId, gameId))) {
+        res.status(403).json({ error: 'Game not found or not owned by you' });
         return;
       }
       super.put(req, res);

@@ -6,6 +6,7 @@ import QuestlineModel from '../models/questlineModel';
 import SpriteModel from '../models/spriteModel';
 import CharacterModel from '../models/characterModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
+import { ownsGame } from '../services/gameService';
 
 interface CountRow {
   _id: string;
@@ -122,16 +123,25 @@ class ProjectController extends BaseController {
         res.status(403).json({ error: 'Forbidden' });
         return;
       }
-      const { name, description, defaultThemeId, defaultExportFormat } = req.body as {
+      const { name, description, defaultThemeId, defaultExportFormat, gameId } = req.body as {
         name?: string;
         description?: string;
         defaultThemeId?: string;
         defaultExportFormat?: string;
+        gameId?: string;
       };
       if (name !== undefined) project.name = name;
       if (description !== undefined) project.description = description;
       if (defaultThemeId !== undefined) project.defaultThemeId = defaultThemeId;
       if (defaultExportFormat !== undefined) project.defaultExportFormat = defaultExportFormat;
+      if (gameId !== undefined) {
+        // '' clears the link; a non-empty id must be a Game the user owns.
+        if (gameId !== '' && !(userId && await ownsGame(userId, gameId))) {
+          res.status(403).json({ error: 'Game not found or not owned by you' });
+          return;
+        }
+        project.gameId = gameId;
+      }
       await project.save();
       res.json(project);
     } catch (error) {

@@ -4,8 +4,6 @@ import { redis } from './connection';
 export interface QuestJobData {
   userId: string;
   themeId: string;
-  agentId: string;
-  agentAliasId: string;
   story: string;
   genre: string;
 }

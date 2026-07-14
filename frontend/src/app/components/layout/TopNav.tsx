@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Workflow, Home, Sparkles, PlayCircle, PlusCircle, LogOut, Settings2, FolderKanban } from 'lucide-react';
+import { Workflow, Home, Sparkles, PlayCircle, PlusCircle, LogOut, Settings2, FolderKanban, BookOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ProjectSwitcher } from './ProjectSwitcher';
 
@@ -17,6 +17,7 @@ export function TopNav() {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: Home },
     { path: '/projects', label: 'Projects', icon: FolderKanban },
+    { path: '/games', label: 'Games', icon: BookOpen },
     { path: '/create', label: 'Create', icon: PlusCircle },
     { path: '/quest-builder', label: 'Quest Builder', icon: Workflow },
     { path: '/sprite-generator', label: 'Sprite Generator', icon: Sparkles },
@@ -45,7 +46,9 @@ export function TopNav() {
               ? location.pathname.startsWith('/quest-builder')
               : item.path === '/projects'
                 ? location.pathname.startsWith('/projects')
-                : location.pathname === item.path;
+                : item.path === '/games'
+                  ? location.pathname.startsWith('/games')
+                  : location.pathname === item.path;
             return (
               <button
                 key={item.path}

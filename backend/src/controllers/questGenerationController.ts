@@ -1,6 +1,5 @@
 import { Response } from 'express';
 import mongoose from 'mongoose';
-import { config } from '../config/config';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getProjectId } from '../utils/projectScope';
 import QuestlineModel from '../models/questlineModel';
@@ -11,7 +10,8 @@ import GameThemeModel, { IGameTheme } from '../models/gameThemeModel';
 import ThemeConfigModel from '../models/themeConfigModel';
 import ExportTemplateModel from '../models/exportTemplateModel';
 import { resolveProjectId } from '../models/projectModel';
-import { callGemini } from '../services/generation/agents/geminiClient';
+import { complete } from '../services/ai';
+import { hasGenApiKey } from '../config/ai';
 
 const BASE_VARIANT_KEYS = new Set(BASE_VARIANT_SEEDS.map((s) => s.key));
 
@@ -306,8 +306,8 @@ export async function generateObjectives(req: AuthRequest, res: Response) {
     return;
   }
 
-  if (!config.GEMINI_API_KEY) {
-    res.status(500).json({ error: 'Gemini API key is not configured' });
+  if (!hasGenApiKey()) {
+    res.status(500).json({ error: 'AI provider API key is not configured' });
     return;
   }
 
@@ -340,7 +340,7 @@ export async function generateObjectives(req: AuthRequest, res: Response) {
       };
     }
 
-    const json = await callGemini(buildObjectivesPrompt(story, genre, themeContext, template));
+    const json = await complete(buildObjectivesPrompt(story, genre, themeContext, template));
     const parsed = JSON.parse(json) as { objectives: Objective[]; rewards: Reward[] };
     res.json(parsed);
   } catch (error) {
@@ -416,15 +416,15 @@ export async function generateCharacters(req: AuthRequest, res: Response) {
     return;
   }
 
-  if (!config.GEMINI_API_KEY) {
-    res.status(500).json({ error: 'Gemini API key is not configured' });
+  if (!hasGenApiKey()) {
+    res.status(500).json({ error: 'AI provider API key is not configured' });
     return;
   }
 
   try {
     const theme = await loadTheme(themeId);
     const themeContext = buildThemeContext(theme);
-    const json = await callGemini(buildCharactersPrompt(story, genre, themeContext));
+    const json = await complete(buildCharactersPrompt(story, genre, themeContext));
     const parsed = JSON.parse(json) as { characters: GeneratedCharacter[] };
     res.json({
       characters: (parsed.characters ?? []).map((character, index) => ({
@@ -561,8 +561,8 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     return;
   }
 
-  if (!config.GEMINI_API_KEY) {
-    res.status(500).json({ error: 'Gemini API key is not configured' });
+  if (!hasGenApiKey()) {
+    res.status(500).json({ error: 'AI provider API key is not configured' });
     return;
   }
 
@@ -611,7 +611,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     }
 
     // 2. Ask Gemini to generate the graph
-    const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix, themeContext));
+    const json = await complete(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix, themeContext));
     const generated = JSON.parse(json) as {
       title: string;
       nodes: { id: string; type: string; variant: string; title: string; body: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[] }[];

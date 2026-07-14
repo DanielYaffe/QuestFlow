@@ -15,6 +15,7 @@ import jobRouter from "./routes/jobRoute";
 import stylesRouter from "./routes/stylesRoute";
 import userSettingsRouter from "./routes/userSettingsRoute";
 import exportTemplateRouter from "./routes/exportTemplateRoute";
+import gameRouter from "./routes/gameRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import { seedThemes } from "./models/seedThemes";
@@ -52,6 +53,7 @@ app.use('/jobs', jobRouter);
 app.use('/styles', stylesRouter);
 app.use('/users', userSettingsRouter);
 app.use('/export-templates', exportTemplateRouter);
+app.use('/games', gameRouter);
 
 const db = mongoose.connection;
 db.on("error", (error) => console.error(error));

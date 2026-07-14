@@ -29,6 +29,20 @@ const envSchema = z.object({
     REDIS_URL: z.string().default('redis://localhost:6379'),
     COMFYUI_ENDPOINT: z.string().default('http://127.0.0.1:8188'),
     ENCRYPTION_KEY: z.string().length(64).default('0'.repeat(64)),
+    // --- AI generation (provider-swappable via OpenAI-compatible endpoints) ---
+    AI_PROVIDER: z.enum(['gemini', 'openai', 'anthropic', 'groq', 'ollama']).default('gemini'),
+    GEN_MODEL: z.string().default('gemini-2.5-flash-lite'),
+    OPENAI_API_KEY: z.string().default(''),
+    ANTHROPIC_API_KEY: z.string().default(''),
+    GROQ_API_KEY: z.string().default(''),
+    // --- Embeddings (PINNED — changing model/dimensions after ingest invalidates every stored vector) ---
+    EMBED_BASE_URL: z.string().default('https://generativelanguage.googleapis.com/v1beta/openai/'),
+    EMBED_API_KEY: z.string().default(''), // falls back to GEMINI_API_KEY in config/ai.ts
+    EMBED_MODEL: z.string().default('gemini-embedding-001'),
+    EMBED_DIMENSIONS: z.coerce.number().default(1536),
+    // --- Qdrant vector store ---
+    QDRANT_URL: z.string().default('http://localhost:6333'),
+    QDRANT_API_KEY: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);

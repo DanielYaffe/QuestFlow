@@ -1,5 +1,5 @@
-import { GoogleGenAI } from '@google/genai';
-import { config } from '../../config/config';
+import { complete } from '../ai';
+import { hasGenApiKey } from '../../config/ai';
 import {
   GameplayRole,
   ParsedTemplate,
@@ -222,17 +222,12 @@ export async function analyzeTemplate(
   parsed: ParsedTemplate,
   options: { forceAi?: boolean } = {},
 ): Promise<AnalysisResult> {
-  if (!config.GEMINI_API_KEY) {
-    return fallbackResult(parsed, 'Gemini API key is not configured; using parser fallback.');
+  if (!hasGenApiKey()) {
+    return fallbackResult(parsed, 'AI provider API key is not configured; using parser fallback.');
   }
 
   try {
-    const genAI = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
-    const result = await genAI.models.generateContent({
-      model: 'gemini-2.5-flash-lite',
-      contents: buildAnalysisPrompt(templateName, parsed),
-    });
-    const rawJson = stripJsonFences(result.text ?? '');
+    const rawJson = stripJsonFences(await complete(buildAnalysisPrompt(templateName, parsed)));
     const aiSchema = validateAiSchema(JSON.parse(rawJson), parsed.templateSchema);
     const schemaSummary = schemaSummaryFromSchema(aiSchema);
     return {

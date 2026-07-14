@@ -94,6 +94,9 @@ export interface IQuestline extends Document {
   templateSnapshot?: unknown;
   ownerId: string;
   projectId: string;
+  // Optional per-questline Game/KB override; falls back to the project's
+  // gameId when empty. '' = inherit.
+  gameId: string;
   characterIds: string[];
   nodes: IQuestNode[];
   edges: IQuestEdge[];
@@ -206,6 +209,7 @@ const QuestlineSchema = new Schema<IQuestline>(
     templateSnapshot: { type: Schema.Types.Mixed },
     ownerId:      { type: String, required: true, index: true },
     projectId:    { type: String, default: '', index: true },
+    gameId:       { type: String, default: '' },
     characterIds: { type: [String], default: [] },
     nodes:       { type: [QuestNodeSchema], default: [] },
     edges:       { type: [QuestEdgeSchema], default: [] },

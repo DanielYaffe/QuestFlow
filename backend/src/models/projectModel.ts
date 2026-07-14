@@ -14,6 +14,9 @@ export interface IProject extends Document {
   description: string;
   defaultThemeId: string;
   defaultExportFormat: string;
+  // Optional link to a Game whose knowledge base grounds this project's
+  // generation. Shared: many projects may reference the same Game. '' = none.
+  gameId: string;
   isInbox: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -57,6 +60,7 @@ const ProjectSchema = new Schema<IProject>(
     description:         { type: String, default: '' },
     defaultThemeId:      { type: String, default: 'generic_rpg' },
     defaultExportFormat: { type: String, default: 'json' },
+    gameId:              { type: String, default: '' },
     isInbox:             { type: Boolean, default: false },
   },
   { timestamps: true },
