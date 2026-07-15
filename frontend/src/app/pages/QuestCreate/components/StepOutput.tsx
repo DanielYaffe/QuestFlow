@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BookOpen } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
 import { QuestLoadingScreen } from './QuestLoadingScreen';
-import { Objective, Reward, GeneratedCharacter, generateQuestline } from '../../../api/questCreateApi';
+import { Objective, Reward, GeneratedCharacter, KbOptions, generateQuestline } from '../../../api/questCreateApi';
 
 interface StepOutputProps {
   story: string;
@@ -15,6 +16,8 @@ interface StepOutputProps {
   styleId: string;
   templateId: string;
   templateName: string;
+  kbOptions?: KbOptions;
+  gameName?: string;
   onGenerated?: () => void;
   onBack: () => void;
 }
@@ -30,6 +33,8 @@ export function StepOutput({
   styleId,
   templateId,
   templateName,
+  kbOptions,
+  gameName,
   onGenerated,
   onBack,
 }: StepOutputProps) {
@@ -39,6 +44,8 @@ export function StepOutput({
 
   const filteredObjectives = objectives.filter((o) => selectedObjectives.includes(o.id));
   const filteredRewards    = rewards.filter((r) => selectedRewards.includes(r.id));
+  const groundedCount      = characters.filter((c) => c.kbRef).length
+    + filteredRewards.filter((r) => r.kbRef).length;
 
   const handleOpenInBuilder = async () => {
     setGenerating(true);
@@ -52,6 +59,7 @@ export function StepOutput({
         characters,
         styleId,
         templateId || undefined,
+        kbOptions,
       );
       onGenerated?.();
       navigate(`/quest-builder/${id}`);
@@ -62,22 +70,28 @@ export function StepOutput({
   };
 
   return (
-    <div className="h-full flex flex-col gap-5">
+    <div className="flex flex-col gap-5">
       <QuestLoadingScreen visible={generating} mode="questline" />
-      <WizardStepIndicator currentStep={5} />
+      <WizardStepIndicator currentStep={6} />
 
       <div className="text-center flex flex-col gap-1">
         <h2 className="text-3xl font-bold text-white">Ready to generate</h2>
         <p className="text-zinc-400">Review your selections, then open in the Quest Builder</p>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
+      <div className="space-y-4">
         {/* Story summary */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <p className="text-zinc-500 text-xs uppercase tracking-wider mb-2">Story</p>
           <p className="text-zinc-300 text-sm line-clamp-3">{story}</p>
           <p className="text-zinc-500 text-xs mt-1">Genre: {genre} · Characters: {characters.length}</p>
           <p className="text-zinc-500 text-xs mt-1">Template: {templateName || 'No template'}</p>
+          <p className="text-zinc-500 text-xs mt-1">
+            Knowledge base: {kbOptions?.gameId && gameName ? `${gameName}${kbOptions.progression ? ` (${kbOptions.progression} game)` : ''}` : 'None (free generation)'}
+            {groundedCount > 0 && (
+              <span className="text-emerald-400"> · {groundedCount} grounded reference{groundedCount !== 1 ? 's' : ''}</span>
+            )}
+          </p>
         </div>
 
         {/* Objectives */}
@@ -107,8 +121,14 @@ export function StepOutput({
             {filteredRewards.map((r) => (
               <span
                 key={r.id}
-                className="px-2.5 py-1 rounded-lg border border-amber-600/50 text-xs font-medium text-amber-300 bg-amber-500/10"
+                title={r.kbRef ? `From your knowledge base: ${r.kbRef}` : undefined}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium ${
+                  r.kbRef
+                    ? 'border-emerald-600/50 text-emerald-300 bg-emerald-500/10'
+                    : 'border-amber-600/50 text-amber-300 bg-amber-500/10'
+                }`}
               >
+                {r.kbRef && <BookOpen className="w-3 h-3" />}
                 {r.title}
               </span>
             ))}

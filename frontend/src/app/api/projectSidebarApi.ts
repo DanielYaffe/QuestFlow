@@ -12,6 +12,8 @@ export type Character = {
   background: string;
   imageUrl?: string;
   questIds: string[];
+  // "{gameId}:{entityName}" when materialized from a KB entity; '' otherwise.
+  kbRef?: string;
 };
 
 export type QuestSummary = {
@@ -26,6 +28,8 @@ export type Reward = {
   description: string;
   rarity: 'common' | 'rare' | 'epic';
   imageUrl?: string;
+  // "{gameId}:{entityName}" when the reward is an existing KB item; '' otherwise.
+  kbRef?: string;
 };
 
 // ---------------------------------------------------------------------------

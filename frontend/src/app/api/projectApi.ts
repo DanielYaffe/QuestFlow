@@ -10,6 +10,7 @@ export interface Project {
   ownerId?: string;
   defaultThemeId?: string;
   defaultExportFormat?: string;
+  gameId?: string; // linked Game whose knowledge base grounds generation ('' = none)
   isInbox?: boolean;
   questlineCount?: number;
   spriteCount?: number;
@@ -66,5 +67,23 @@ export async function deleteProject(id: string): Promise<void> {
 
 export async function duplicateProject(id: string, name?: string): Promise<Project> {
   const { data } = await api.post<Project>(`/projects/${id}/duplicate`, name ? { name } : {});
+  return data;
+}
+
+// A reward aggregated across the project's questlines (dashboard Items section).
+export interface ProjectReward {
+  _id: string;
+  title: string;
+  description: string;
+  rarity: 'common' | 'rare' | 'epic';
+  imageUrl?: string;
+  // "{gameId}:{entityName}" when the reward is an existing KB item; '' otherwise.
+  kbRef: string;
+  questlineId: string;
+  questlineTitle: string;
+}
+
+export async function fetchProjectRewards(id: string): Promise<ProjectReward[]> {
+  const { data } = await api.get<ProjectReward[]>(`/projects/${id}/rewards`);
   return data;
 }

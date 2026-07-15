@@ -2,6 +2,7 @@ import React from 'react';
 import { Check, Target, Gift } from 'lucide-react';
 import { Objective, Reward } from '../../../api/questCreateApi';
 import { WizardStepIndicator } from './WizardStepIndicator';
+import { GroundedBadge } from '../../../components/shared/GroundedBadge';
 
 interface StepObjectivesProps {
   objectives: Objective[];
@@ -34,7 +35,7 @@ export function StepObjectives({
 
   return (
     <div className="h-full flex flex-col gap-6">
-      <WizardStepIndicator currentStep={3} />
+      <WizardStepIndicator currentStep={4} />
 
       <div className="text-center flex flex-col gap-2">
         <h2 className="text-3xl font-bold text-white">Shape your questline</h2>
@@ -127,6 +128,7 @@ export function StepObjectives({
                   <span className={`text-sm font-medium flex-1 ${isSelected ? 'text-white' : 'text-zinc-300'}`}>
                     {rew.title}
                   </span>
+                  {rew.kbRef && <GroundedBadge entityName={rew.kbRef} />}
                 </div>
               </button>
             );

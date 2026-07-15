@@ -5,8 +5,12 @@ import api from './axiosInstance';
 // and questlines can link a gameId to ground quest generation in its KB.
 // ---------------------------------------------------------------------------
 
-export type KbType = 'monsters' | 'maps' | 'items' | 'general';
-export const KB_TYPES: KbType[] = ['monsters', 'maps', 'items', 'general'];
+export type KbType = 'monsters' | 'characters' | 'maps' | 'items' | 'quests' | 'lore' | 'general';
+export const KB_TYPES: KbType[] = ['monsters', 'characters', 'maps', 'items', 'quests', 'lore', 'general'];
+
+// Prose categories: always indexed as plain text, never parsed into entities
+// (mirrors FREEFORM_TYPES in the backend's kbService).
+export const FREEFORM_ONLY_TYPES: KbType[] = ['lore', 'general'];
 
 export type DocStatus = 'pending' | 'ready' | 'failed';
 

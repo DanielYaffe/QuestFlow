@@ -1,6 +1,7 @@
 import { KbType, deleteDocumentPoints } from './qdrant';
 import { embedBatch } from './ai';
 import { chunkText } from './chunk';
+import { parseCollectionFile } from './structuredParse';
 import KbDocumentModel, { IKbDocument } from '../models/kbDocumentModel';
 import { kbQueue } from '../queues/kbQueue';
 
@@ -10,8 +11,41 @@ import { kbQueue } from '../queues/kbQueue';
 // request path); the synchronous operations here are the cheap ones.
 // ---------------------------------------------------------------------------
 
-/** Chunk + embed a document's text into Qdrant points (worker-side helper). */
+/**
+ * Chunk + embed a document's text into Qdrant points (worker-side helper).
+ *
+ * Part 2: entity-shaped categories first try the structured collection parser —
+ * one point per entity (name, role, inferred difficulty, and source fields in
+ * the payload). Anything that isn't an entity collection falls back to Part
+ * 1's freeform chunking; prose categories (lore/general) are always freeform.
+ */
+const FREEFORM_TYPES: KbType[] = ['lore', 'general'];
+
 export async function buildPoints(text: string, gameId: string, docId: string, type: KbType) {
+  const entities = FREEFORM_TYPES.includes(type) ? null : parseCollectionFile(text);
+
+  if (entities) {
+    const vectors = await embedBatch(entities.map((e) => e.text));
+    const points = entities.map((e, i) => ({
+      id: crypto.randomUUID(),
+      vector: vectors[i],
+      payload: {
+        text: e.text,
+        gameId,
+        docId,
+        type,
+        chunkIndex: i,
+        entity: e.name,
+        ...(e.role !== undefined ? { entityRole: e.role } : {}),
+        ...(e.difficulty !== undefined
+          ? { difficulty: e.difficulty, difficultyBucket: e.difficultyBucket }
+          : {}),
+        fields: e.fields,
+      },
+    }));
+    return { points, chunkCount: entities.length, entityCount: entities.length };
+  }
+
   const chunks = chunkText(text);
   const vectors = await embedBatch(chunks);
   const points = chunks.map((chunk, i) => ({
@@ -19,7 +53,7 @@ export async function buildPoints(text: string, gameId: string, docId: string, t
     vector: vectors[i],
     payload: { text: chunk, gameId, docId, type, chunkIndex: i },
   }));
-  return { points, chunkCount: chunks.length };
+  return { points, chunkCount: chunks.length, entityCount: 0 };
 }
 
 /** Create the pending registry row and enqueue ingestion. Returns the docId. */

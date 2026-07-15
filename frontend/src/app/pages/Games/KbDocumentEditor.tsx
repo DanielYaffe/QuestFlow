@@ -5,12 +5,13 @@ import { toast } from 'sonner';
 import {
   KbType,
   KB_TYPES,
+  FREEFORM_ONLY_TYPES,
   KbDocument,
   getKbDocument,
   ingestKbDocument,
   editKbDocument,
 } from '../../api/gameApi';
-import { TYPE_LABELS, FORMAT_HELP } from './kbContent';
+import { TYPE_LABELS, FORMAT_HELP, ACCEPTED_FORMATS } from './kbContent';
 
 // Full-page knowledge-base document editor.
 //   #/games/:gameId/docs/new     — create (drag-drop a file or paste text)
@@ -113,6 +114,11 @@ export function KbDocumentEditor() {
 
   const help = FORMAT_HELP[type];
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const isFreeformType = FREEFORM_ONLY_TYPES.includes(type);
+  // What the last completed ingest actually did with this document.
+  const entityCount = doc?.status === 'ready' && doc.metadata?.structured === true
+    ? Number(doc.metadata.entityCount ?? 0)
+    : 0;
 
   return (
     <div className="h-full overflow-y-auto bg-zinc-950">
@@ -137,6 +143,13 @@ export function KbDocumentEditor() {
               {isEdit
                 ? 'Changing the content re-indexes the document in the background.'
                 : 'Indexing runs in the background — the document is searchable once it turns Ready.'}
+              {isEdit && doc?.status === 'ready' && (
+                entityCount > 0
+                  ? <span className="text-emerald-400"> Last index: {entityCount} entit{entityCount === 1 ? 'y' : 'ies'} recognized.</span>
+                  : isFreeformType
+                    ? <span> Last index: plain text ({doc.chunkCount} chunk{doc.chunkCount === 1 ? '' : 's'}).</span>
+                    : <span className="text-amber-400/90"> Last index: no entities recognized — indexed as plain text. Check the accepted formats →</span>
+              )}
             </p>
           </div>
 
@@ -255,10 +268,36 @@ export function KbDocumentEditor() {
             >
               Insert template into content
             </button>
-            <p className="text-zinc-600 text-[11px] leading-relaxed">
-              Any text works — the shape above is a recommendation, not a requirement. Consistent
-              entries simply retrieve better.
-            </p>
+
+            {isFreeformType ? (
+              <p className="text-zinc-600 text-[11px] leading-relaxed">
+                {TYPE_LABELS[type]} is always indexed as plain text — no entity parsing. To get
+                individually recognized, linkable entities (grounded quest references), put them
+                in the Monsters, Characters, Maps, Items or Quests category instead.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4">
+                <h3 className="text-zinc-300 text-xs font-medium">Formats that become entities</h3>
+                <p className="text-zinc-500 text-[11px] leading-relaxed">
+                  Documents in this category are parsed into one entry per entity (name via
+                  <span className="text-zinc-400"> name / title / id</span>, or the map key / heading).
+                  Recognized entities are individually searchable and can be linked into quests
+                  as grounded references.
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {ACCEPTED_FORMATS.map((f) => (
+                    <li key={f.label} className="text-[11px] leading-relaxed">
+                      <span className="text-zinc-400">{f.label}</span>
+                      <pre className="text-zinc-600 whitespace-pre-wrap font-mono mt-0.5">{f.example}</pre>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-zinc-600 text-[11px] leading-relaxed">
+                  Anything else is still indexed as plain text — searchable, but not as individual
+                  entities. After indexing, the document list shows how many entities were recognized.
+                </p>
+              </div>
+            )}
           </aside>
         </div>
       </main>

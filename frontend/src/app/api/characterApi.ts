@@ -39,6 +39,10 @@ export interface CharacterRecord {
   assets: CharacterAssets;
   previewUrl?: string;
   isOrphan?: boolean;
+  // Questlines referencing this character (list endpoint only).
+  usedIn?: { questlineId: string; title: string }[];
+  // "{gameId}:{entityName}" when materialized from a KB entity; '' otherwise.
+  kbRef?: string;
   createdAt: string;
   updatedAt: string;
 }

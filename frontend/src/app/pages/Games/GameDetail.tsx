@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import {
   Game,
   KbDocument,
+  FREEFORM_ONLY_TYPES,
   getGame,
   listKbDocuments,
   retryKbDocument,
@@ -53,6 +54,27 @@ function StatusBadge({ doc }: { doc: KbDocument }) {
   return (
     <span className="flex items-center gap-1 text-red-400 text-xs" title={doc.statusError || 'Indexing failed'}>
       <XCircle className="w-3.5 h-3.5" /> Failed
+    </span>
+  );
+}
+
+// What ingestion actually did with a ready document. Entity recognition is the
+// difference between "searchable text" and "linkable, grounded quest
+// references", so a freeform result in an entity category is called out.
+function IngestSummary({ doc }: { doc: KbDocument }) {
+  const entityCount = doc.metadata?.structured === true ? Number(doc.metadata.entityCount ?? 0) : 0;
+  if (entityCount > 0) {
+    return <span className="text-emerald-400/90">{entityCount} entit{entityCount === 1 ? 'y' : 'ies'} recognized</span>;
+  }
+  if (FREEFORM_ONLY_TYPES.includes(doc.type)) {
+    return <span>{doc.chunkCount} chunk{doc.chunkCount === 1 ? '' : 's'}</span>;
+  }
+  return (
+    <span
+      className="text-amber-400/80"
+      title="Indexed as plain text — no entities were recognized, so nothing here can be linked into quests as a grounded reference. Open the document to see the accepted formats."
+    >
+      plain text — no entities recognized
     </span>
   );
 }
@@ -199,7 +221,7 @@ export function GameDetail() {
               <FileText className="w-8 h-8 text-zinc-700 mb-3" />
               <p className="text-zinc-400 text-sm mb-1">No documents yet</p>
               <p className="text-zinc-600 text-xs max-w-xs">
-                Add your monsters, maps, items or general world lore. Everything gets indexed
+                Add your monsters, characters, maps, items, quests or world lore. Everything gets indexed
                 for semantic search so generation can reference your real game content.
               </p>
             </div>
@@ -220,9 +242,7 @@ export function GameDetail() {
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 text-zinc-500 text-xs">
                       <StatusBadge doc={doc} />
-                      {doc.status === 'ready' && (
-                        <span>{doc.chunkCount} chunk{doc.chunkCount === 1 ? '' : 's'}</span>
-                      )}
+                      {doc.status === 'ready' && <IngestSummary doc={doc} />}
                       {doc.status === 'failed' && doc.statusError && (
                         <span className="text-red-400/70 truncate max-w-[16rem]" title={doc.statusError}>
                           {doc.statusError}

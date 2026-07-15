@@ -23,7 +23,7 @@ async function processKbJob(job: Job<KbIngestJobData>): Promise<void> {
     await deleteDocumentPoints(gameId, type, docId);
   }
 
-  const { points, chunkCount } = await buildPoints(doc.originalText, gameId, docId, type);
+  const { points, chunkCount, entityCount } = await buildPoints(doc.originalText, gameId, docId, type);
   await qdrant.upsert(collection, { points, wait: true });
 
   // The doc may have been deleted (user action or reconciler) while we were
@@ -37,6 +37,9 @@ async function processKbJob(job: Job<KbIngestJobData>): Promise<void> {
         statusError: '',
         chunkCount,
         pointIds: points.map((p) => String(p.id)),
+        // Dot paths: informational, must not clobber user-set metadata keys.
+        'metadata.structured': entityCount > 0,
+        'metadata.entityCount': entityCount,
       },
     },
   );

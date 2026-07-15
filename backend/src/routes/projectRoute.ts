@@ -56,6 +56,30 @@ projectRouter.get('/', projectController.get.bind(projectController));
  *       404:
  *         description: Not found
  */
+/**
+ * @swagger
+ * /projects/{id}/rewards:
+ *   get:
+ *     summary: List all rewards across the project's questlines (owner only)
+ *     tags: [Projects]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Rewards with their source questline and KB provenance (kbRef)
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Not found
+ */
+projectRouter.get('/:id/rewards', projectController.getRewards.bind(projectController));
+
 projectRouter.get('/:id', projectController.getById.bind(projectController));
 
 /**

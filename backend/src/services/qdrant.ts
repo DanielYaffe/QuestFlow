@@ -16,8 +16,8 @@ const qdrant = new QdrantClient({
   apiKey: config.QDRANT_API_KEY || undefined,
 });
 
-export type KbType = 'monsters' | 'maps' | 'items' | 'general';
-export const KB_TYPES: KbType[] = ['monsters', 'maps', 'items', 'general'];
+export type KbType = 'monsters' | 'characters' | 'maps' | 'items' | 'quests' | 'lore' | 'general';
+export const KB_TYPES: KbType[] = ['monsters', 'characters', 'maps', 'items', 'quests', 'lore', 'general'];
 
 export function isKbType(v: unknown): v is KbType {
   return typeof v === 'string' && (KB_TYPES as string[]).includes(v);
@@ -28,6 +28,14 @@ export function collectionName(gameId: string, type: KbType): string {
   return `kb_${gameId}_${type}`;
 }
 
+// Indexed payload fields: docId (delete/re-embed by document, Part 1),
+// entity + difficultyBucket (exact-by-name lookup and progression bias, Part 2).
+const PAYLOAD_INDEXES: { field: string; schema: 'keyword' }[] = [
+  { field: 'docId', schema: 'keyword' },
+  { field: 'entity', schema: 'keyword' },
+  { field: 'difficultyBucket', schema: 'keyword' },
+];
+
 export async function ensureCollection(gameId: string, type: KbType): Promise<string> {
   const name = collectionName(gameId, type);
   const { collections } = await qdrant.getCollections();
@@ -35,8 +43,13 @@ export async function ensureCollection(gameId: string, type: KbType): Promise<st
     await qdrant.createCollection(name, {
       vectors: { size: embedProvider.dimensions, distance: 'Cosine' },
     });
-    // docId is the only field Part 1 filters on (delete / re-embed by document).
-    await qdrant.createPayloadIndex(name, { field_name: 'docId', field_schema: 'keyword' });
+  }
+  // Ensured on every call so collections created before Part 2 pick up the new
+  // indexes with no re-ingest; re-creating an existing index is a no-op error.
+  for (const { field, schema } of PAYLOAD_INDEXES) {
+    await qdrant
+      .createPayloadIndex(name, { field_name: field, field_schema: schema })
+      .catch(() => { /* index already exists */ });
   }
   return name;
 }

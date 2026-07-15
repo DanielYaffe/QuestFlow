@@ -31,7 +31,7 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
 
   return (
     <div className="h-full flex flex-col gap-6">
-      <WizardStepIndicator currentStep={2} />
+      <WizardStepIndicator currentStep={3} />
 
       <div className="text-center flex flex-col gap-2">
         <h2 className="text-3xl font-bold text-white">Choose your visual style</h2>

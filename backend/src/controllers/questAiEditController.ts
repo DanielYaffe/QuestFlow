@@ -3,6 +3,8 @@ import { QuestlineRequest } from '../middlewares/requireQuestlineOwnership';
 import { complete } from '../services/ai';
 import { hasGenApiKey } from '../config/ai';
 import CharacterModel from '../models/characterModel';
+import ProjectModel from '../models/projectModel';
+import { buildReferenceContext } from '../services/generationContext';
 
 // ---------------------------------------------------------------------------
 // Input shapes (deserialized from frontend React Flow state)
@@ -59,6 +61,7 @@ function buildAiEditPrompt(
   characters: Array<{ name: string; background: string }>,
   rewards: Array<{ title: string; rarity: string }>,
   instruction: string,
+  referenceBlock: string,
 ): string {
   const nodeTitleMap = new Map(nodes.map((n) => [n.id, n.data?.title ?? n.id]));
 
@@ -105,7 +108,7 @@ ${characterList}
 
 Rewards in this questline:
 ${rewardList}
-
+${referenceBlock ? `${referenceBlock}\n` : ''}
 User instruction:
 """
 ${instruction}
@@ -225,6 +228,21 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
     rarity: r.rarity,
   }));
 
+  // KB grounding: the questline's own game, falling back to its project's
+  // linked game ('' on the questline means inherit). No game → free editing.
+  let effectiveGameId = questline.gameId || '';
+  if (!effectiveGameId && questline.projectId) {
+    const project = await ProjectModel.findById(questline.projectId).select('gameId').lean();
+    effectiveGameId = project?.gameId || '';
+  }
+  const trimmedInstruction = instruction.trim().slice(0, 500);
+  const reference = await buildReferenceContext({
+    ownerId: questline.ownerId,
+    gameId: effectiveGameId || undefined,
+    step: 'questline',
+    query: `${trimmedInstruction}\n${questline.storyPrompt || questline.description}`,
+  });
+
   const prompt = buildAiEditPrompt(
     questline.storyPrompt || questline.description,
     questline.genre,
@@ -232,7 +250,8 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
     edges as EdgeSnapshot[],
     characters,
     rewards,
-    instruction.trim().slice(0, 500),
+    trimmedInstruction,
+    reference.referenceBlock,
   );
 
   try {

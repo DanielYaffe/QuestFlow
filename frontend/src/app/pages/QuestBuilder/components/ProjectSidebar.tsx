@@ -15,6 +15,7 @@ import {
 import { deleteCharacter, getCharacterUsage } from '../../../api/characterApi';
 import { fetchQuestlineMeta } from '../../../api/questBuilderApi';
 import { ConfirmModal } from '../../../components/shared/ConfirmModal';
+import { GroundedBadge } from '../../../components/shared/GroundedBadge';
 import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { RewardDetailPanel } from './RewardDetailPanel';
 
@@ -218,6 +219,7 @@ export function ProjectSidebar({ questlineId, isOpen, onQuestClick, onCharacterD
                           <span className={`text-sm truncate ${selectedCharacterId === char.id ? 'text-purple-300' : 'text-zinc-300'}`}>
                             {char.name}
                           </span>
+                          {char.kbRef && <GroundedBadge entityName={char.kbRef} compact />}
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1">
                           <button
@@ -267,6 +269,7 @@ export function ProjectSidebar({ questlineId, isOpen, onQuestClick, onCharacterD
                           <span className={`text-sm truncate ${selectedRewardId === reward.id ? 'text-purple-300' : 'text-zinc-300'}`}>
                             {reward.title}
                           </span>
+                          {reward.kbRef && <GroundedBadge entityName={reward.kbRef} compact />}
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1">
                           <button

@@ -2,15 +2,16 @@ import React from 'react';
 import { Check } from 'lucide-react';
 
 interface WizardStepIndicatorProps {
-  currentStep: 1 | 2 | 3 | 4 | 5;
+  currentStep: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 const STEPS = [
   { number: 1, label: 'Story' },
-  { number: 2, label: 'Style' },
-  { number: 3, label: 'Objectives' },
-  { number: 4, label: 'Characters' },
-  { number: 5, label: 'Output' },
+  { number: 2, label: 'Knowledge' },
+  { number: 3, label: 'Style' },
+  { number: 4, label: 'Objectives' },
+  { number: 5, label: 'Characters' },
+  { number: 6, label: 'Output' },
 ];
 
 export function WizardStepIndicator({ currentStep }: WizardStepIndicatorProps) {
@@ -48,7 +49,7 @@ export function WizardStepIndicator({ currentStep }: WizardStepIndicatorProps) {
             {/* Connector line between steps */}
             {index < STEPS.length - 1 && (
               <div
-                className={`h-px w-20 mb-5 mx-1 transition-colors ${
+                className={`h-px w-14 mb-5 mx-1 transition-colors ${
                   step.number < currentStep ? 'bg-purple-600' : 'bg-zinc-700'
                 }`}
               />

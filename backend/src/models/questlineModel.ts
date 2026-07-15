@@ -75,6 +75,9 @@ export interface IReward {
   description: string;
   rarity: 'common' | 'rare' | 'epic';
   imageUrl?: string;
+  // KB provenance ("{gameId}:{entityName}") when this reward is an existing
+  // item from the game's knowledge base. '' = invented by the AI.
+  kbRef: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +155,7 @@ const RewardSchema = new Schema<IReward>({
   description: { type: String, default: '' },
   rarity:      { type: String, enum: ['common', 'rare', 'epic'], default: 'common' },
   imageUrl:    { type: String, default: '' },
+  kbRef:       { type: String, default: '' },
 });
 
 // ---------------------------------------------------------------------------

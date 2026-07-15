@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Loader2, Workflow, Users, Inbox, FolderOpen, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, Workflow, Users, Inbox, FolderOpen, ChevronRight, Gift } from 'lucide-react';
 import { toast } from 'sonner';
-import { ProjectRecord, getProject } from '../../api/projectApi';
+import { ProjectRecord, ProjectReward, getProject, fetchProjectRewards } from '../../api/projectApi';
 import { fetchQuestlines, QuestlineSummary } from '../../api/questBuilderApi';
 import { listCharacters, CharacterRecord } from '../../api/characterApi';
 import { useProject } from '../../context/ProjectContext';
@@ -33,6 +33,7 @@ export function ProjectDashboard() {
   const [project, setProject] = useState<ProjectRecord | null>(null);
   const [questlines, setQuestlines] = useState<QuestlineSummary[]>([]);
   const [characters, setCharacters] = useState<CharacterRecord[]>([]);
+  const [rewards, setRewards] = useState<ProjectReward[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Drilling into a project makes it the active project, so scoped operations
@@ -48,11 +49,13 @@ export function ProjectDashboard() {
       getProject(projectId),
       fetchQuestlines(projectId),
       listCharacters({ projectId }),
+      fetchProjectRewards(projectId).catch((): ProjectReward[] => []),
     ])
-      .then(([proj, qls, chars]) => {
+      .then(([proj, qls, chars, rews]) => {
         setProject(proj);
         setQuestlines([...qls].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
         setCharacters(chars);
+        setRewards(rews);
       })
       .catch(() => toast.error('Failed to load project'))
       .finally(() => setLoading(false));
@@ -131,6 +134,39 @@ export function ProjectDashboard() {
                     {c.previewUrl
                       ? <img src={c.previewUrl} alt={c.name} className="w-full h-full object-cover" />
                       : <span className="text-[10px] text-zinc-400">{c.name.slice(0, 2)}</span>}
+                  </div>
+                ))}
+              </div>
+              <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+            </div>
+          </button>
+        </section>
+
+        {/* Items summary — every reward across the project's questlines */}
+        <section>
+          <button
+            onClick={() => navigate(`/projects/${project._id}/items`)}
+            className="w-full flex items-center justify-between bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl px-5 py-4 transition-colors group"
+          >
+            <div className="flex items-center gap-3">
+              <Gift className="w-5 h-5 text-amber-400" />
+              <div className="text-left">
+                <p className="text-white text-sm font-medium">Items</p>
+                <p className="text-zinc-500 text-xs">
+                  {rewards.length} in this project
+                  {rewards.some((r) => r.kbRef) && (
+                    <span className="text-emerald-400"> · {rewards.filter((r) => r.kbRef).length} grounded</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex -space-x-2">
+                {rewards.slice(0, 5).map((r) => (
+                  <div key={r._id} className="w-8 h-8 rounded-full border-2 border-zinc-900 bg-zinc-800 overflow-hidden flex items-center justify-center">
+                    {r.imageUrl
+                      ? <img src={r.imageUrl} alt={r.title} className="w-full h-full object-cover" />
+                      : <Gift className="w-3.5 h-3.5 text-zinc-500" />}
                   </div>
                 ))}
               </div>

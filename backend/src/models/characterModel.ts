@@ -46,6 +46,10 @@ export interface ICharacter extends Document {
   appearance: string;              // visually concrete — used as the sprite subject
   lore: string;                    // background / story
   tags: string[];
+  // KB provenance tag ("{gameId}:{entityName}") for characters materialized
+  // from a knowledge-base entity — generation reuses the existing doc instead
+  // of duplicating it. '' = not KB-linked.
+  kbRef: string;
   // NPC-only
   portraitUrl: string;
   dialogueTraits: string[];
@@ -134,6 +138,7 @@ const CharacterSchema = new Schema<ICharacter>(
     appearance:     { type: String, default: '' },
     lore:           { type: String, default: '' },
     tags:           { type: [String], default: [] },
+    kbRef:          { type: String, default: '', index: true },
     portraitUrl:    { type: String, default: '' },
     dialogueTraits: { type: [String], default: [] },
     speciesData:    { type: SpeciesDataSchema, default: () => ({}) },

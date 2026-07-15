@@ -54,26 +54,35 @@ class CharacterController extends BaseController {
 
       const characters = await CharacterModel.find(filter).sort({ updatedAt: -1 }).lean();
 
-      // Build the set of character ids referenced by questlines (scoped to the
-      // same project when filtering) to flag orphans.
+      // Map character id → questlines referencing it (scoped to the same
+      // project when filtering) — powers isOrphan and the "used in" display.
       const qlFilter: Record<string, unknown> = { ownerId: userId };
       if (projectId) qlFilter.projectId = projectId;
-      const questlines = await QuestlineModel.find(qlFilter).select('characterIds nodes').lean();
-      const referenced = new Set<string>();
+      const questlines = await QuestlineModel.find(qlFilter).select('title characterIds nodes').lean();
+      const usedIn = new Map<string, { questlineId: string; title: string }[]>();
       for (const ql of questlines) {
-        (ql.characterIds ?? []).forEach((id) => referenced.add(id));
+        const ids = new Set<string>(ql.characterIds ?? []);
         for (const n of ql.nodes ?? []) {
-          (n.npcIds ?? []).forEach((id) => referenced.add(id));
-          (n.monsterIds ?? []).forEach((id) => referenced.add(id));
+          (n.npcIds ?? []).forEach((id) => ids.add(id));
+          (n.monsterIds ?? []).forEach((id) => ids.add(id));
+        }
+        for (const id of ids) {
+          const arr = usedIn.get(id) ?? [];
+          arr.push({ questlineId: ql._id.toString(), title: ql.title });
+          usedIn.set(id, arr);
         }
       }
 
       const results = await Promise.all(
-        characters.map(async (c) => ({
-          ...c,
-          previewUrl: await signPreview(c),
-          isOrphan: !referenced.has(c._id.toString()),
-        })),
+        characters.map(async (c) => {
+          const uses = usedIn.get(c._id.toString()) ?? [];
+          return {
+            ...c,
+            previewUrl: await signPreview(c),
+            isOrphan: uses.length === 0,
+            usedIn: uses,
+          };
+        }),
       );
       res.json(results);
     } catch (error) {

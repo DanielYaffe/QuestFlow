@@ -10,6 +10,8 @@ export interface Objective {
 export interface Reward {
   id: string;
   title: string;
+  // Set when the reward is an existing item from the game's knowledge base.
+  kbRef?: string;
 }
 
 export type CharacterRole = 'npc' | 'monster';
@@ -20,11 +22,25 @@ export interface GeneratedCharacter {
   role: CharacterRole;
   appearance: string;
   background: string;
+  // Set when the character is an existing knowledge-base entity — the backend
+  // links the existing Character doc instead of creating a duplicate.
+  kbRef?: string;
+  // Set when the character reuses an existing project Character (its _id) —
+  // linked directly instead of inserting a duplicate.
+  existingId?: string;
 }
 
 export interface GenerateObjectivesResult {
   objectives: Objective[];
   rewards: Reward[];
+}
+
+export type GameStage = 'early' | 'mid' | 'late';
+
+// Optional KB grounding for a generation call. No gameId = free generation.
+export interface KbOptions {
+  gameId?: string;
+  progression?: GameStage;
 }
 
 function getApiErrorMessage(error: unknown, fallback: string): string {
@@ -38,9 +54,10 @@ export async function generateObjectives(
   story: string,
   genre: string,
   templateId?: string,
+  kb?: KbOptions,
 ): Promise<GenerateObjectivesResult> {
   try {
-    const { data } = await api.post('/quests/generate', { story, genre, templateId });
+    const { data } = await api.post('/quests/generate', { story, genre, templateId, ...kb });
     return data;
   } catch (error) {
     throw new Error(getApiErrorMessage(error, 'Failed to generate objectives'));
@@ -50,9 +67,10 @@ export async function generateObjectives(
 export async function generateCharacters(
   story: string,
   genre: string,
+  kb?: KbOptions,
 ): Promise<{ characters: GeneratedCharacter[] }> {
   try {
-    const { data } = await api.post('/quests/generate-characters', { story, genre });
+    const { data } = await api.post('/quests/generate-characters', { story, genre, ...kb });
     return data;
   } catch (error) {
     throw new Error(getApiErrorMessage(error, 'Failed to generate characters'));
@@ -67,6 +85,7 @@ export async function generateQuestline(
   characters: GeneratedCharacter[],
   styleId: string,
   templateId?: string,
+  kb?: KbOptions,
 ): Promise<string> {
   try {
     const { data } = await api.post('/quests/generate-questline', {
@@ -77,6 +96,7 @@ export async function generateQuestline(
       characters,
       styleId,
       templateId,
+      ...kb,
     });
     return data.questlineId;
   } catch (error) {

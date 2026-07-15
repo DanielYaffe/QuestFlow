@@ -16,6 +16,7 @@ import { GameDetail } from './pages/Games/GameDetail';
 import { KbDocumentEditor } from './pages/Games/KbDocumentEditor';
 import { KbPlayground } from './pages/Games/KbPlayground';
 import { Characters } from './pages/Project/Characters';
+import { Items } from './pages/Project/Items';
 import { QuestBuilder } from './pages/QuestBuilder/QuestBuilder';
 import { QuestBuilderLanding } from './pages/QuestBuilder/QuestBuilderLanding';
 import { QuestCreate } from './pages/QuestCreate/QuestCreate';
@@ -39,6 +40,7 @@ export default function App() {
                   <Route path="/projects" element={<Projects />} />
                   <Route path="/projects/:projectId" element={<ProjectDashboard />} />
                   <Route path="/projects/:projectId/characters" element={<Characters />} />
+                  <Route path="/projects/:projectId/items" element={<Items />} />
                   <Route path="/games" element={<Games />} />
                   <Route path="/games/:gameId" element={<GameDetail />} />
                   <Route path="/games/:gameId/docs/new" element={<KbDocumentEditor />} />

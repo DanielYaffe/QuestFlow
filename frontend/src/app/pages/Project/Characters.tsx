@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Plus, Search, LayoutGrid, List, Loader2, X,
-  Skull, User, Trash2, Unlink,
+  Skull, User, Trash2, Unlink, Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -10,8 +10,9 @@ import {
   listCharacters, createCharacter, updateCharacter, deleteCharacter, getCharacterUsage,
 } from '../../api/characterApi';
 import { ConfirmModal } from '../../components/shared/ConfirmModal';
+import { GroundedBadge } from '../../components/shared/GroundedBadge';
 
-type Filter = 'all' | 'npc' | 'monster' | 'orphan';
+type Filter = 'all' | 'npc' | 'monster' | 'orphan' | 'grounded';
 type ViewMode = 'grid' | 'list';
 
 // ---------------------------------------------------------------------------
@@ -137,6 +138,7 @@ function CharacterDetailModal({
   onSaved: (c: CharacterRecord) => void;
   onDeleteRequest: () => void;
 }) {
+  const navigate = useNavigate();
   const [name, setName] = useState(character.name);
   const [appearance, setAppearance] = useState(character.appearance);
   const [lore, setLore] = useState(character.lore);
@@ -164,6 +166,7 @@ function CharacterDetailModal({
           <div className="flex items-center gap-2">
             {character.kind === 'monster' ? <Skull className="w-4 h-4 text-rose-400" /> : <User className="w-4 h-4 text-blue-400" />}
             <h2 className="text-white font-semibold text-base">Character</h2>
+            {character.kbRef && <GroundedBadge entityName={character.kbRef} />}
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
         </div>
@@ -200,6 +203,24 @@ function CharacterDetailModal({
               className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 resize-none"
             />
           </div>
+          {(character.usedIn?.length ?? 0) > 0 && (
+            <div className="flex flex-col gap-2">
+              <label className="text-zinc-400 text-xs uppercase tracking-wide">Used in</label>
+              <div className="flex flex-wrap gap-2">
+                {(character.usedIn ?? []).map((u) => (
+                  <button
+                    key={u.questlineId}
+                    onClick={() => navigate(`/quest-builder/${u.questlineId}`)}
+                    title="Open in Quest Builder"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white rounded-lg text-xs transition-colors"
+                  >
+                    <Workflow className="w-3.5 h-3.5 text-purple-400" />
+                    {u.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 px-6 py-4 border-t border-zinc-800">
@@ -316,6 +337,7 @@ export function Characters() {
     npc: characters.filter((c) => c.kind === 'npc').length,
     monster: characters.filter((c) => c.kind === 'monster').length,
     orphan: characters.filter((c) => c.isOrphan).length,
+    grounded: characters.filter((c) => c.kbRef).length,
   }), [characters]);
 
   const visible = useMemo(() => {
@@ -324,7 +346,11 @@ export function Characters() {
       if (filter === 'npc' && c.kind !== 'npc') return false;
       if (filter === 'monster' && c.kind !== 'monster') return false;
       if (filter === 'orphan' && !c.isOrphan) return false;
-      if (q && !c.name.toLowerCase().includes(q) && !c.tags.some((t) => t.toLowerCase().includes(q))) return false;
+      if (filter === 'grounded' && !c.kbRef) return false;
+      if (q
+        && !c.name.toLowerCase().includes(q)
+        && !c.tags.some((t) => t.toLowerCase().includes(q))
+        && !(c.usedIn ?? []).some((u) => u.title.toLowerCase().includes(q))) return false;
       return true;
     });
   }, [characters, filter, query]);
@@ -334,6 +360,7 @@ export function Characters() {
     { key: 'npc', label: 'NPCs' },
     { key: 'monster', label: 'Monsters' },
     { key: 'orphan', label: 'Orphans' },
+    { key: 'grounded', label: 'Grounded' },
   ];
 
   return (
@@ -407,7 +434,7 @@ export function Characters() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name or tag…"
+              placeholder="Search by name, tag or questline…"
               className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 focus:outline-none"
             />
           </div>
@@ -448,10 +475,23 @@ export function Characters() {
                       <Unlink className="w-2.5 h-2.5" />
                     </span>
                   )}
+                  {c.kbRef && (
+                    <span className="absolute top-1.5 left-1.5">
+                      <GroundedBadge entityName={c.kbRef} compact />
+                    </span>
+                  )}
                 </div>
                 <div className="px-3 py-2 border-t border-zinc-800">
                   <p className="text-white text-xs font-medium truncate group-hover:text-purple-400 transition-colors">{c.name}</p>
-                  <p className="text-zinc-500 text-[11px] capitalize">{c.kind}</p>
+                  <p
+                    className="text-zinc-500 text-[11px] truncate"
+                    title={(c.usedIn ?? []).map((u) => u.title).join(', ') || undefined}
+                  >
+                    <span className="capitalize">{c.kind}</span>
+                    {(c.usedIn?.length ?? 0) > 0 && (
+                      <> · in {c.usedIn?.length} quest{(c.usedIn?.length ?? 0) === 1 ? '' : 's'}</>
+                    )}
+                  </p>
                 </div>
               </button>
             ))}
@@ -471,8 +511,17 @@ export function Characters() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm font-medium truncate group-hover:text-purple-400 transition-colors">{c.name}</p>
-                  <p className="text-zinc-500 text-xs capitalize">{c.kind}</p>
+                  <p
+                    className="text-zinc-500 text-xs truncate"
+                    title={(c.usedIn ?? []).map((u) => u.title).join(', ') || undefined}
+                  >
+                    <span className="capitalize">{c.kind}</span>
+                    {(c.usedIn?.length ?? 0) > 0 && (
+                      <> · used in {c.usedIn?.[0].title}{(c.usedIn?.length ?? 0) > 1 ? ` +${(c.usedIn?.length ?? 0) - 1}` : ''}</>
+                    )}
+                  </p>
                 </div>
+                {c.kbRef && <GroundedBadge entityName={c.kbRef} />}
                 {c.isOrphan && (
                   <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 text-amber-300 text-[11px] rounded-full">
                     <Unlink className="w-3 h-3" /> Orphan

@@ -392,6 +392,7 @@ class QuestlineController extends BaseController {
           background: c.lore ?? '',
           imageUrl:   await signCharacterPreview(c),
           questIds:   nodeIdsByCharacter.get(c._id.toString()) ?? [],
+          kbRef:      c.kbRef ?? '',
         })),
       );
       res.json(shaped);

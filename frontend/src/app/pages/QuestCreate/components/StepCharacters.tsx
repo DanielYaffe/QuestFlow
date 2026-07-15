@@ -1,7 +1,8 @@
 import React from 'react';
-import { Check, User, Skull, RefreshCw, Loader2 } from 'lucide-react';
+import { Check, User, Skull, RefreshCw, Loader2, FolderOpen } from 'lucide-react';
 import { GeneratedCharacter, CharacterRole } from '../../../api/questCreateApi';
 import { WizardStepIndicator } from './WizardStepIndicator';
+import { GroundedBadge } from '../../../components/shared/GroundedBadge';
 
 interface StepCharactersProps {
   characters: GeneratedCharacter[];
@@ -40,7 +41,7 @@ export function StepCharacters({
 
   return (
     <div className="h-full flex flex-col gap-6">
-      <WizardStepIndicator currentStep={4} />
+      <WizardStepIndicator currentStep={5} />
 
       <div className="text-center flex flex-col gap-2">
         <h2 className="text-3xl font-bold text-white">Characters in your story</h2>
@@ -103,6 +104,16 @@ export function StepCharacters({
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-zinc-800 border ${cfg.border} border-opacity-40 ${cfg.color}`}>
                         {cfg.label}
                       </span>
+                      {char.kbRef && <GroundedBadge entityName={char.kbRef} />}
+                      {char.existingId && !char.kbRef && (
+                        <span
+                          title="Reuses an existing character from this project — no duplicate will be created"
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/40 text-blue-300 text-[10px] font-medium uppercase tracking-wide shrink-0"
+                        >
+                          <FolderOpen className="w-3 h-3" />
+                          Project
+                        </span>
+                      )}
                     </div>
                     <p className="text-zinc-400 text-xs leading-relaxed mb-1">{char.appearance}</p>
                     <p className="text-zinc-500 text-xs leading-relaxed italic">{char.background}</p>

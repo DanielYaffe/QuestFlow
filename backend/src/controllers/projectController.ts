@@ -7,10 +7,16 @@ import SpriteModel from '../models/spriteModel';
 import CharacterModel from '../models/characterModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { ownsGame } from '../services/gameService';
+import { getPresignedUrl } from '../utils/s3Helper';
 
 interface CountRow {
   _id: string;
   n: number;
+}
+
+// S3 keys never start with http — presigned URLs always do
+function isS3Key(value: string): boolean {
+  return !!value && !value.startsWith('http');
 }
 
 class ProjectController extends BaseController {
@@ -56,6 +62,45 @@ class ProjectController extends BaseController {
           characterCount: charMap.get(p._id.toString()) ?? 0,
         })),
       );
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  }
+
+  // GET /projects/:id/rewards — every reward across the project's questlines,
+  // shaped for the project dashboard's Items section (kbRef marks KB-grounded ones).
+  async getRewards(req: AuthRequest, res: Response) {
+    const userId = req.user?._id;
+    try {
+      const project = await ProjectModel.findById(req.params.id).select('ownerId').lean();
+      if (!project) {
+        res.status(404).json({ error: 'Project not found' });
+        return;
+      }
+      if (project.ownerId !== userId) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+
+      const questlines = await QuestlineModel.find({ projectId: req.params.id })
+        .select('title rewards')
+        .sort({ updatedAt: -1 })
+        .lean();
+      const rewards = await Promise.all(
+        questlines.flatMap((ql) =>
+          (ql.rewards ?? []).map(async (r) => ({
+            _id:            r._id.toString(),
+            title:          r.title,
+            description:    r.description ?? '',
+            rarity:         r.rarity ?? 'common',
+            imageUrl:       isS3Key(r.imageUrl ?? '') ? await getPresignedUrl(r.imageUrl as string) : (r.imageUrl ?? ''),
+            kbRef:          r.kbRef ?? '',
+            questlineId:    ql._id.toString(),
+            questlineTitle: ql.title,
+          })),
+        ),
+      );
+      res.json(rewards);
     } catch (error) {
       this.handleError(res, error);
     }
