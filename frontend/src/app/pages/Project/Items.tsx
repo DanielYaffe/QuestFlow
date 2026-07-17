@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Search, LayoutGrid, List, Loader2, X,
-  Gift, Trash2, Workflow,
+  Gift, Palette, Trash2, Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProjectReward, fetchProjectRewards } from '../../api/projectApi';
@@ -17,7 +17,7 @@ type ViewMode = 'grid' | 'list';
 const RARITY_STYLES: Record<Rarity, string> = {
   common: 'bg-amber-500/10 text-amber-300 border-amber-600/50',
   rare:   'bg-blue-500/10 text-blue-300 border-blue-600/50',
-  epic:   'bg-purple-500/10 text-purple-300 border-purple-600/50',
+  epic:   'bg-steel-800 text-pulse border-pulse/50',
 };
 
 function RarityChip({ rarity }: { rarity: Rarity }) {
@@ -66,39 +66,39 @@ function ItemDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-lg w-full flex flex-col max-h-[calc(100vh-2rem)]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+      <div className="bg-steel-850 border border-steel-600 rounded-md max-w-lg w-full flex flex-col max-h-[calc(100vh-2rem)]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-steel-700">
           <div className="flex items-center gap-2">
             <Gift className="w-4 h-4 text-amber-400" />
-            <h2 className="text-white font-semibold text-base">Item</h2>
+            <h2 className="text-steel-100 font-semibold text-base">Item</h2>
             {item.kbRef && <GroundedBadge entityName={item.kbRef} />}
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-steel-400 hover:text-steel-100 transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="overflow-y-auto px-6 py-5 flex flex-col gap-4">
           {item.imageUrl && (
             <div className="w-full flex justify-center">
-              <img src={item.imageUrl} alt={item.title} className="max-h-48 object-contain rounded-lg border border-zinc-700" />
+              <img src={item.imageUrl} alt={item.title} className="max-h-48 object-contain rounded-lg border border-steel-600" />
             </div>
           )}
           <div className="flex flex-col gap-2">
-            <label className="text-zinc-400 text-xs uppercase tracking-wide">Title</label>
+            <label className="text-steel-400 text-xs uppercase tracking-wide">Title</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+              className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 focus:outline-none focus:border-pulse"
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-zinc-400 text-xs uppercase tracking-wide">Rarity</label>
+            <label className="text-steel-400 text-xs uppercase tracking-wide">Rarity</label>
             <div className="grid grid-cols-3 gap-2">
               {(['common', 'rare', 'epic'] as Rarity[]).map((r) => (
                 <button
                   key={r}
                   onClick={() => setRarity(r)}
                   className={`px-3 py-2 rounded-lg border text-sm capitalize transition-all ${
-                    rarity === r ? RARITY_STYLES[r] : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                    rarity === r ? RARITY_STYLES[r] : 'border-steel-600 text-steel-400 hover:border-steel-400'
                   }`}
                 >
                   {r}
@@ -107,37 +107,45 @@ function ItemDetailModal({
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-zinc-400 text-xs uppercase tracking-wide">Description</label>
+            <label className="text-steel-400 text-xs uppercase tracking-wide">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 resize-none"
+              className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 focus:outline-none focus:border-pulse resize-none"
             />
           </div>
           <button
             onClick={() => navigate(`/quest-builder/${item.questlineId}`)}
-            className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm transition-colors self-start"
+            className="flex items-center gap-2 text-pulse hover:text-pulse text-sm transition-colors self-start"
           >
             <Workflow className="w-4 h-4" />
             From questline "{item.questlineTitle}" — open in builder
           </button>
         </div>
 
-        <div className="flex items-center gap-2 px-6 py-4 border-t border-zinc-800">
+        <div className="flex items-center gap-2 px-6 py-4 border-t border-steel-700">
           <button
             onClick={onDeleteRequest}
-            className="flex items-center gap-1.5 px-3 py-2.5 bg-zinc-800 hover:bg-red-600/80 text-zinc-400 hover:text-white rounded-lg text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-steel-800 hover:bg-red-600/80 text-steel-400 hover:text-white rounded-lg text-sm transition-colors"
           >
             <Trash2 className="w-4 h-4" />
             Delete
           </button>
+          <button
+            onClick={() => navigate(`/studio/items/${item._id}`)}
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-steel-800 hover:bg-steel-700 border border-steel-600 text-steel-200 hover:text-steel-100 rounded-lg text-sm transition-colors"
+            title="Sprite, identity and publish-to-KB"
+          >
+            <Palette className="w-4 h-4 text-pulse" />
+            Open in Studio
+          </button>
           <div className="flex-1" />
-          <button onClick={onClose} className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition-colors">Close</button>
+          <button onClick={onClose} className="px-4 py-2.5 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg text-sm transition-colors">Close</button>
           <button
             onClick={save}
             disabled={!dirty || !title.trim() || saving}
-            className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            className="px-5 py-2.5 bg-volt hover:brightness-95 disabled:bg-steel-700 disabled:text-steel-400 text-steel-950 font-semibold rounded-lg text-sm transition-colors flex items-center gap-2"
           >
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
             Save
@@ -232,7 +240,7 @@ export function Items() {
   ];
 
   return (
-    <div className="h-full overflow-y-auto bg-zinc-950">
+    <div className="h-full overflow-y-auto bg-steel-950">
       {selected && (
         <ItemDetailModal
           item={selected}
@@ -256,26 +264,26 @@ export function Items() {
         <div>
           <button
             onClick={() => navigate(`/projects/${projectId}`)}
-            className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 text-xs transition-colors mb-4"
+            className="flex items-center gap-1.5 text-steel-400 hover:text-steel-200 text-xs transition-colors mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to project
           </button>
           <div className="flex items-center justify-between">
-            <h1 className="text-white font-semibold text-lg">Items</h1>
-            <p className="text-zinc-500 text-xs">New items are created inside questlines — this collects them all.</p>
+            <h1 className="text-steel-100 font-semibold text-lg">Items</h1>
+            <p className="text-steel-400 text-xs">New items are created inside questlines — this collects them all.</p>
           </div>
         </div>
 
         {/* Controls */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-steel-850 border border-steel-700 rounded-lg p-1">
             {TABS.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setFilter(t.key)}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  filter === t.key ? 'bg-purple-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                  filter === t.key ? 'bg-volt text-steel-950 font-semibold' : 'text-steel-400 hover:text-steel-200'
                 }`}
               >
                 {t.label} <span className="opacity-60">{counts[t.key]}</span>
@@ -283,21 +291,21 @@ export function Items() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 flex-1 min-w-[180px]">
-            <Search className="w-4 h-4 text-zinc-500" />
+          <div className="flex items-center gap-2 bg-steel-850 border border-steel-700 rounded-lg px-3 py-2 flex-1 min-w-[180px]">
+            <Search className="w-4 h-4 text-steel-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by name or questline…"
-              className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 focus:outline-none"
+              className="flex-1 bg-transparent text-sm text-steel-100 placeholder-steel-500 focus:outline-none"
             />
           </div>
 
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-            <button onClick={() => setView('grid')} className={`p-1.5 rounded-md transition-colors ${view === 'grid' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
+          <div className="flex items-center gap-1 bg-steel-850 border border-steel-700 rounded-lg p-1">
+            <button onClick={() => setView('grid')} className={`p-1.5 rounded-md transition-colors ${view === 'grid' ? 'bg-steel-700 text-steel-100' : 'text-steel-400 hover:text-steel-200'}`}>
               <LayoutGrid className="w-4 h-4" />
             </button>
-            <button onClick={() => setView('list')} className={`p-1.5 rounded-md transition-colors ${view === 'list' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
+            <button onClick={() => setView('list')} className={`p-1.5 rounded-md transition-colors ${view === 'list' ? 'bg-steel-700 text-steel-100' : 'text-steel-400 hover:text-steel-200'}`}>
               <List className="w-4 h-4" />
             </button>
           </div>
@@ -306,10 +314,10 @@ export function Items() {
         {/* Results */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+            <Loader2 className="w-6 h-6 text-pulse animate-spin" />
           </div>
         ) : visible.length === 0 ? (
-          <div className="text-center py-16 text-zinc-500 bg-zinc-900/40 border border-zinc-800 border-dashed rounded-xl">
+          <div className="text-center py-16 text-steel-400 bg-steel-850/40 border border-steel-700 border-dashed rounded-md">
             <p className="text-sm">{items.length === 0 ? 'No items yet — rewards from generated questlines appear here.' : 'No items match.'}</p>
           </div>
         ) : view === 'grid' ? (
@@ -318,23 +326,23 @@ export function Items() {
               <button
                 key={i._id}
                 onClick={() => setSelected(i)}
-                className="group bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl overflow-hidden text-left transition-colors"
+                className="group bg-steel-850 border border-steel-700 hover:border-steel-500 rounded-md overflow-hidden text-left transition-colors"
               >
-                <div className="aspect-square bg-zinc-800/60 flex items-center justify-center relative">
+                <div className="aspect-square bg-steel-800/60 flex items-center justify-center relative">
                   {i.imageUrl
                     ? <img src={i.imageUrl} alt={i.title} className="w-full h-full object-contain p-2" />
-                    : <Gift className="w-10 h-10 text-zinc-600" />}
+                    : <Gift className="w-10 h-10 text-steel-500" />}
                   {i.kbRef && (
                     <span className="absolute top-1.5 left-1.5">
                       <GroundedBadge entityName={i.kbRef} compact />
                     </span>
                   )}
                 </div>
-                <div className="px-3 py-2 border-t border-zinc-800">
-                  <p className="text-white text-xs font-medium truncate group-hover:text-purple-400 transition-colors">{i.title}</p>
+                <div className="px-3 py-2 border-t border-steel-700">
+                  <p className="text-steel-100 text-xs font-medium truncate group-hover:text-pulse transition-colors">{i.title}</p>
                   <div className="flex items-center justify-between mt-1">
                     <RarityChip rarity={i.rarity} />
-                    <span className="text-zinc-600 text-[10px] truncate ml-2" title={i.questlineTitle}>{i.questlineTitle}</span>
+                    <span className="text-steel-500 text-[10px] truncate ml-2" title={i.questlineTitle}>{i.questlineTitle}</span>
                   </div>
                 </div>
               </button>
@@ -346,16 +354,16 @@ export function Items() {
               <button
                 key={i._id}
                 onClick={() => setSelected(i)}
-                className="group flex items-center gap-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-lg px-3 py-2.5 text-left transition-colors"
+                className="group flex items-center gap-3 bg-steel-850 border border-steel-700 hover:border-steel-500 rounded-lg px-3 py-2.5 text-left transition-colors"
               >
-                <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-steel-800 flex items-center justify-center overflow-hidden shrink-0">
                   {i.imageUrl
                     ? <img src={i.imageUrl} alt={i.title} className="w-full h-full object-contain" />
-                    : <Gift className="w-5 h-5 text-zinc-600" />}
+                    : <Gift className="w-5 h-5 text-steel-500" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate group-hover:text-purple-400 transition-colors">{i.title}</p>
-                  <p className="text-zinc-500 text-xs truncate">{i.questlineTitle}</p>
+                  <p className="text-steel-100 text-sm font-medium truncate group-hover:text-pulse transition-colors">{i.title}</p>
+                  <p className="text-steel-400 text-xs truncate">{i.questlineTitle}</p>
                 </div>
                 {i.kbRef && <GroundedBadge entityName={i.kbRef} />}
                 <RarityChip rarity={i.rarity} />

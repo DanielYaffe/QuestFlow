@@ -5,6 +5,7 @@ import { getProjectId } from '../utils/projectScope';
 import QuestlineModel from '../models/questlineModel';
 import QuestStyleModel from '../models/questStyleModel';
 import CharacterModel from '../models/characterModel';
+import ItemModel from '../models/itemModel';
 import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVariantConfigModel';
 import GameThemeModel, { IGameTheme } from '../models/gameThemeModel';
 import ThemeConfigModel from '../models/themeConfigModel';
@@ -117,9 +118,13 @@ async function loadProjectRewardTitles(userId: string | undefined, projectIdHint
   if (!userId) return [];
   try {
     const projectId = await resolveProjectId(userId, projectIdHint);
-    const questlines = await QuestlineModel.find({ projectId }).select('rewards.title').lean();
-    const titles = questlines.flatMap((q) => (q.rewards ?? []).map((r) => r.title.trim()).filter(Boolean));
-    return [...new Set(titles)].slice(0, ROSTER_LIMIT);
+    const items = await ItemModel.find({ projectId })
+      .select('name')
+      .sort({ updatedAt: -1 })
+      .limit(ROSTER_LIMIT)
+      .lean();
+    const titles = items.map((i) => i.name.trim()).filter(Boolean);
+    return [...new Set(titles)];
   } catch {
     return [];
   }
@@ -719,9 +724,10 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     return;
   }
 
-  // Track inserted Character docs so we can roll them back if the questline
-  // itself fails to persist (standalone Mongo has no transactions).
+  // Track inserted Character/Item docs so we can roll them back if the
+  // questline itself fails to persist (standalone Mongo has no transactions).
   let insertedCharacterIds: mongoose.Types.ObjectId[] = [];
+  let insertedItemIds: mongoose.Types.ObjectId[] = [];
   let questlineSaved = false;
 
   try {
@@ -845,6 +851,50 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       }
     });
 
+    // 4b. Create standalone Item documents for rewards (mirrors characters):
+    //     reuse an existing project item when the kbRef tag or exact title
+    //     matches, otherwise insert a new Item; the questline stores references.
+    const existingItems = await ItemModel.find({ projectId: resolvedProjectId })
+      .select('name kbRef')
+      .lean();
+    const itemByName  = new Map(existingItems.map((i) => [i.name.trim().toLowerCase(), String(i._id)]));
+    const itemByKbRef = new Map(existingItems.filter((i) => i.kbRef).map((i) => [i.kbRef, String(i._id)]));
+
+    const questlineItemIds: string[] = [];
+    const itemsToInsert: { r: Reward; kbRefTag: string }[] = [];
+    for (const r of rewards ?? []) {
+      if (!r.title?.trim()) continue;
+      const kbRefTag = ownedGameId && typeof r.kbRef === 'string' && r.kbRef.trim()
+        ? `${ownedGameId}:${r.kbRef.trim()}`
+        : '';
+      const existingId = (kbRefTag && itemByKbRef.get(kbRefTag))
+        || itemByName.get(r.title.trim().toLowerCase());
+      if (existingId) {
+        rewardIdMap.set(r.id, existingId);
+        if (!questlineItemIds.includes(existingId)) questlineItemIds.push(existingId);
+        continue;
+      }
+      itemsToInsert.push({ r, kbRefTag });
+    }
+
+    const itemDocs = await ItemModel.insertMany(
+      itemsToInsert.map(({ r, kbRefTag }) => ({
+        ownerId:   userId,
+        projectId: resolvedProjectId,
+        name:      r.title.trim(),
+        kbRef:     kbRefTag,
+      })),
+    );
+    insertedItemIds = itemDocs.map((d) => d._id);
+    itemsToInsert.forEach(({ r }, i) => {
+      const mongoId = itemDocs[i]?._id?.toString();
+      if (mongoId) {
+        rewardIdMap.set(r.id, mongoId);
+        questlineItemIds.push(mongoId);
+        itemByName.set(r.title.trim().toLowerCase(), mongoId);
+      }
+    });
+
     const questline = await QuestlineModel.create({
       ownerId:      userId,
       projectId:    resolvedProjectId,
@@ -911,23 +961,10 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
         title:       o.title,
         description: o.description,
       })),
-      rewards: (rewards ?? []).map((r) => ({
-        title:       r.title,
-        description: '',
-        // Same tag shape as Character.kbRef so provenance survives generation.
-        kbRef:       ownedGameId && typeof r.kbRef === 'string' && r.kbRef.trim()
-          ? `${ownedGameId}:${r.kbRef.trim()}`
-          : '',
-      })),
+      itemIds: questlineItemIds,
     });
 
-    // 5. Build reward temp-id → MongoDB _id map from the embedded reward docs
-    (rewards ?? []).forEach((r, i) => {
-      const mongoId = questline.rewards[i]?._id?.toString();
-      if (mongoId) rewardIdMap.set(r.id, mongoId);
-    });
-
-    // 6. Remap node arrays from temp IDs to MongoDB _ids and save
+    // 5. Remap node arrays from temp IDs to MongoDB _ids and save
     const remappedNodes = questline.nodes.map((n) => ({
       _id:        n._id,
       nodeId:     n.nodeId,
@@ -947,9 +984,12 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
 
     res.status(201).json({ questlineId: questline._id.toString() });
   } catch (error) {
-    // Roll back orphaned Character docs if the questline never persisted.
+    // Roll back orphaned Character/Item docs if the questline never persisted.
     if (!questlineSaved && insertedCharacterIds.length > 0) {
       await CharacterModel.deleteMany({ _id: { $in: insertedCharacterIds } }).catch(() => {});
+    }
+    if (!questlineSaved && insertedItemIds.length > 0) {
+      await ItemModel.deleteMany({ _id: { $in: insertedItemIds } }).catch(() => {});
     }
     console.error('[generateQuestline]', error);
     if (error instanceof SyntaxError) {

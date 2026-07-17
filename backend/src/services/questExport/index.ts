@@ -1,6 +1,7 @@
 import QuestlineModel from '../../models/questlineModel';
 import ExportTemplateModel from '../../models/exportTemplateModel';
 import CharacterModel from '../../models/characterModel';
+import ItemModel from '../../models/itemModel';
 import { buildExportPayload } from './buildExportPayload';
 import { formats } from './formats';
 import { CanonicalNode, ExportFile, Format, ExportResult } from './types';
@@ -347,9 +348,11 @@ export async function exportQuestline(
   }
 
   const characterDocs = await CharacterModel.find({ _id: { $in: questline.characterIds ?? [] } }).lean();
+  const itemDocs = await ItemModel.find({ _id: { $in: questline.itemIds ?? [] } }).lean();
   const payload = buildExportPayload(
     questline,
     characterDocs.map((c) => ({ _id: c._id, name: c.name, appearance: c.appearance ?? '', background: c.lore ?? '' })),
+    itemDocs.map((i) => ({ _id: i._id, title: i.name, description: i.description ?? '', rarity: i.rarity ?? 'common' })),
   );
 
   if (isTemplateFormat(format)) {

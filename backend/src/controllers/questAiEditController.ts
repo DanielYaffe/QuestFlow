@@ -3,6 +3,7 @@ import { QuestlineRequest } from '../middlewares/requireQuestlineOwnership';
 import { complete } from '../services/ai';
 import { hasGenApiKey } from '../config/ai';
 import CharacterModel from '../models/characterModel';
+import ItemModel from '../models/itemModel';
 import ProjectModel from '../models/projectModel';
 import { buildReferenceContext } from '../services/generationContext';
 
@@ -223,9 +224,12 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
     name: c.name,
     background: c.lore ?? '',
   }));
-  const rewards = (questline.rewards ?? []).map((r) => ({
-    title: r.title,
-    rarity: r.rarity,
+  const itemDocs = await ItemModel.find({ _id: { $in: questline.itemIds ?? [] } })
+    .select('name rarity')
+    .lean();
+  const rewards = itemDocs.map((i) => ({
+    title: i.name,
+    rarity: i.rarity ?? 'common',
   }));
 
   // KB grounding: the questline's own game, falling back to its project's

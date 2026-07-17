@@ -36,7 +36,21 @@ export interface ExportCharacterInput {
   background?: string;
 }
 
-export function buildExportPayload(questline: IQuestline, characterDocs: ExportCharacterInput[] = []): CanonicalExport {
+export interface ExportRewardInput {
+  _id: { toString(): string };
+  title: string;
+  description?: string;
+  rarity: 'common' | 'rare' | 'epic';
+}
+
+export function buildExportPayload(
+  questline: IQuestline,
+  characterDocs: ExportCharacterInput[] = [],
+  // Rewards live in the standalone Item collection (referenced by
+  // questline.itemIds); the caller resolves the docs and passes them in.
+  // Defaults to legacy embedded rewards for pre-migration fixtures.
+  rewardDocs: ExportRewardInput[] = questline.rewards ?? [],
+): CanonicalExport {
   const seenSlugs = new Set<string>();
 
   // ── Characters: _id → "npc_<slug>" ──────────────────────────────────────
@@ -56,7 +70,7 @@ export function buildExportPayload(questline: IQuestline, characterDocs: ExportC
 
   // ── Rewards: _id → "reward_<slug>" ──────────────────────────────────────
   const rewardIdMap = new Map<string, string>();
-  const rewards: CanonicalReward[] = questline.rewards.map((r) => {
+  const rewards: CanonicalReward[] = rewardDocs.map((r) => {
     const slug = uniqueSlug(`reward_${slugify(r.title)}`, seenSlugs);
     rewardIdMap.set(r._id.toString(), slug);
     return {

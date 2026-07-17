@@ -6,6 +6,7 @@ import { config } from "./config/config";
 import authRouter from "./routes/authRoute";
 import projectRouter from "./routes/projectRoute";
 import characterRouter from "./routes/characterRoute";
+import itemRouter from "./routes/itemRoute";
 import questlineRouter from "./routes/questlineRoute";
 import questGenerationRouter from "./routes/questGenerationRoute";
 import spriteRouter from "./routes/spriteRoute";
@@ -21,6 +22,7 @@ import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import { seedThemes } from "./models/seedThemes";
 import { seedBuiltInExportTemplates } from "./models/exportTemplateModel";
 import { ensureDefaultProjects } from "./controllers/projectController";
+import { migrateEmbeddedRewardsToItems } from "./services/itemService";
 import cors from "cors";
 import "./config/passport";
 import { authenticate } from "./middlewares/authMiddleware";
@@ -44,6 +46,7 @@ app.use('/auth', authRouter);
 app.use(authenticate);
 app.use('/projects', projectRouter);
 app.use('/characters', characterRouter);
+app.use('/items', itemRouter);
 app.use('/questlines', questlineRouter);
 app.use('/quests', questGenerationRouter);
 app.use('/sprites', spriteRouter);
@@ -80,6 +83,7 @@ const initApp = () => {
                         seedThemes().catch((err) => console.error('[seed] themes failed:', err));
                         seedBuiltInExportTemplates().catch((err) => console.error('[seed] exportTemplates failed:', err));
                         ensureDefaultProjects().catch((err) => console.error('[seed] defaultProjects failed:', err));
+                        migrateEmbeddedRewardsToItems().catch((err) => console.error('[migrate] rewards→items failed:', err));
                     }
                     resolve(app);
                 })

@@ -69,15 +69,18 @@ export interface IObjective {
   description: string;
 }
 
+// LEGACY: embedded reward copies. Superseded by questline.itemIds referencing
+// the standalone Item collection (same pattern as characterIds → Character).
+// Kept only so pre-migration documents load; migrateEmbeddedRewardsToItems()
+// empties this array at startup.
 export interface IReward {
   _id: mongoose.Types.ObjectId;
   title: string;
   description: string;
   rarity: 'common' | 'rare' | 'epic';
   imageUrl?: string;
-  // KB provenance ("{gameId}:{entityName}") when this reward is an existing
-  // item from the game's knowledge base. '' = invented by the AI.
   kbRef: string;
+  itemId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +104,9 @@ export interface IQuestline extends Document {
   // gameId when empty. '' = inherit.
   gameId: string;
   characterIds: string[];
+  // References into the standalone Item collection (node.rewardIds hold the
+  // same Item ids) — mirrors characterIds → Character.
+  itemIds: string[];
   nodes: IQuestNode[];
   edges: IQuestEdge[];
   variants: IQuestlineVariant[];
@@ -156,6 +162,7 @@ const RewardSchema = new Schema<IReward>({
   rarity:      { type: String, enum: ['common', 'rare', 'epic'], default: 'common' },
   imageUrl:    { type: String, default: '' },
   kbRef:       { type: String, default: '' },
+  itemId:      { type: String, default: '' },
 });
 
 // ---------------------------------------------------------------------------
@@ -215,6 +222,7 @@ const QuestlineSchema = new Schema<IQuestline>(
     projectId:    { type: String, default: '', index: true },
     gameId:       { type: String, default: '' },
     characterIds: { type: [String], default: [] },
+    itemIds:      { type: [String], default: [] },
     nodes:       { type: [QuestNodeSchema], default: [] },
     edges:       { type: [QuestEdgeSchema], default: [] },
     variants:    { type: [QuestlineVariantSchema], default: [] },
