@@ -1,10 +1,18 @@
 import { Response } from 'express';
 import BaseController from './baseController';
-import CharacterModel, { CharacterKind } from '../models/characterModel';
+import CharacterModel, { CharacterKind, ICharacterRotations, ROTATION_DIRECTIONS } from '../models/characterModel';
 import QuestlineModel from '../models/questlineModel';
 import { resolveProjectId } from '../models/projectModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
+import {
+  startRotationsJob,
+  buildRotationSheet,
+  publishToKb,
+  transformSprite,
+  SpriteTool,
+  StudioError,
+} from '../services/characterStudioService';
 
 const KINDS: CharacterKind[] = ['npc', 'monster'];
 
@@ -29,6 +37,27 @@ async function signPreview(c: PreviewSource): Promise<string> {
     '';
   if (!candidate) return '';
   return isS3Key(candidate) ? getPresignedUrl(candidate) : candidate;
+}
+
+// Presign the 8-direction rotation sprites (design sheet). Empty when none exist.
+async function signRotations(
+  rotations: ICharacterRotations | undefined,
+): Promise<Partial<ICharacterRotations>> {
+  if (!rotations) return {};
+  const signed: Partial<ICharacterRotations> = {};
+  for (const dir of ROTATION_DIRECTIONS) {
+    const key = rotations[dir];
+    if (key) signed[dir] = await getPresignedUrl(key);
+  }
+  return signed;
+}
+
+function handleStudioError(res: Response, error: unknown): boolean {
+  if (error instanceof StudioError) {
+    res.status(error.statusCode).json({ error: error.message });
+    return true;
+  }
+  return false;
 }
 
 class CharacterController extends BaseController {
@@ -101,7 +130,11 @@ class CharacterController extends BaseController {
       if (character.ownerId !== userId) {
         return res.status(403).json({ error: 'Forbidden' });
       }
-      return res.json({ ...character, previewUrl: await signPreview(character) });
+      return res.json({
+        ...character,
+        previewUrl: await signPreview(character),
+        rotationUrls: await signRotations(character.assets?.rotations),
+      });
     } catch (error) {
       this.handleError(res, error);
     }
@@ -234,6 +267,85 @@ class CharacterController extends BaseController {
       res.json({ nodeCount, questlineCount: questlines.length });
     } catch (error) {
       this.handleError(res, error);
+    }
+  }
+
+  // POST /characters/:id/rotations — enqueue PixelLab 8-direction generation
+  // from the character's current sprite (owner only). 202 { jobId }.
+  async rotations(req: AuthRequest, res: Response) {
+    const userId = req.user?._id?.toString();
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    try {
+      res.status(202).json(await startRotationsJob(userId, String(req.params.id)));
+    } catch (error) {
+      if (!handleStudioError(res, error)) this.handleError(res, error);
+    }
+  }
+
+  // POST /characters/:id/rotations/export — compose the 8-direction rotations
+  // into one horizontal spritesheet. Returns the PNG as base64 plus frame
+  // metadata; nothing is written to S3.
+  async rotationsExport(req: AuthRequest, res: Response) {
+    const userId = req.user?._id?.toString();
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    try {
+      const { sheet, metadata } = await buildRotationSheet(userId, String(req.params.id));
+      res.json({ sheetBase64: sheet.toString('base64'), metadata });
+    } catch (error) {
+      if (!handleStudioError(res, error)) this.handleError(res, error);
+    }
+  }
+
+  // POST /characters/:id/publish-kb — { gameId }. Writes the design into the
+  // game's knowledge base as a parser-recognizable entity and links kbRef.
+  async publishKb(req: AuthRequest, res: Response) {
+    const userId = req.user?._id?.toString();
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const { gameId } = req.body as { gameId?: string };
+    if (!gameId) {
+      res.status(400).json({ error: 'gameId is required' });
+      return;
+    }
+    try {
+      const character = await publishToKb(userId, String(req.params.id), gameId);
+      res.json({ ...character.toObject(), previewUrl: await signPreview(character) });
+    } catch (error) {
+      if (!handleStudioError(res, error)) this.handleError(res, error);
+    }
+  }
+
+  // POST /characters/:id/sprite/transform — { tool, targetSize? }. Runs an image
+  // tool (resize / remove-bg / pixel-snap) on the current sprite; the result
+  // becomes the new canonical sprite.
+  async spriteTransform(req: AuthRequest, res: Response) {
+    const userId = req.user?._id?.toString();
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const { tool, targetSize } = req.body as { tool?: string; targetSize?: number };
+    if (tool !== 'resize' && tool !== 'remove-bg' && tool !== 'pixel-snap') {
+      res.status(400).json({ error: 'tool must be resize, remove-bg or pixel-snap' });
+      return;
+    }
+    try {
+      const character = await transformSprite(userId, String(req.params.id), tool as SpriteTool, { targetSize });
+      res.json({
+        ...character.toObject(),
+        previewUrl: await signPreview(character),
+        rotationUrls: await signRotations(character.assets?.rotations),
+      });
+    } catch (error) {
+      if (!handleStudioError(res, error)) this.handleError(res, error);
     }
   }
 

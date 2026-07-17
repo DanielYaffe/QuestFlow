@@ -11,6 +11,15 @@ export type CharacterKind = 'npc' | 'monster';
 
 export const MAX_SPRITE_CANDIDATES = 20;
 
+// PixelLab generate-8-rotations output order (compass, starting south, CCW).
+export const ROTATION_DIRECTIONS = [
+  'south', 'south-west', 'west', 'north-west',
+  'north', 'north-east', 'east', 'south-east',
+] as const;
+export type RotationDirection = typeof ROTATION_DIRECTIONS[number];
+
+export type ICharacterRotations = Record<RotationDirection, string>; // S3 keys, '' = missing
+
 // Candidate-grid asset model. Sprite iteration appends raw candidates (oldest
 // pruned past MAX_SPRITE_CANDIDATES); the user promotes one to canonical
 // (snappedSpriteS3Key). Exports are produced on-demand, never persisted.
@@ -19,6 +28,7 @@ export interface ICharacterAssets {
   snappedSpriteS3Key: string;      // user-picked canonical sprite
   spritesheetS3Key: string;        // animation sheet (PixelLab output)
   spritesheetJsonS3Key: string;    // Aseprite frame-tag JSON
+  rotations?: ICharacterRotations; // 8-direction sprites (PixelLab output)
   targetSizeOverride?: number;     // overrides style.targetSize when snapping
 }
 
@@ -50,6 +60,10 @@ export interface ICharacter extends Document {
   // from a knowledge-base entity — generation reuses the existing doc instead
   // of duplicating it. '' = not KB-linked.
   kbRef: string;
+  // KB document id when this character was published to a knowledge base from
+  // the design studio — republishing edits that doc instead of creating a new
+  // one. '' = never published.
+  kbDocId: string;
   // NPC-only
   portraitUrl: string;
   dialogueTraits: string[];
@@ -60,12 +74,27 @@ export interface ICharacter extends Document {
   updatedAt: Date;
 }
 
+const RotationsSchema = new Schema<ICharacterRotations>(
+  {
+    'south':      { type: String, default: '' },
+    'south-west': { type: String, default: '' },
+    'west':       { type: String, default: '' },
+    'north-west': { type: String, default: '' },
+    'north':      { type: String, default: '' },
+    'north-east': { type: String, default: '' },
+    'east':       { type: String, default: '' },
+    'south-east': { type: String, default: '' },
+  },
+  { _id: false },
+);
+
 const AssetsSchema = new Schema<ICharacterAssets>(
   {
     rawSpriteCandidates:  { type: [String], default: [] },
     snappedSpriteS3Key:   { type: String, default: '' },
     spritesheetS3Key:     { type: String, default: '' },
     spritesheetJsonS3Key: { type: String, default: '' },
+    rotations:            { type: RotationsSchema },
     targetSizeOverride:   { type: Number },
   },
   { _id: false },
@@ -139,6 +168,7 @@ const CharacterSchema = new Schema<ICharacter>(
     lore:           { type: String, default: '' },
     tags:           { type: [String], default: [] },
     kbRef:          { type: String, default: '', index: true },
+    kbDocId:        { type: String, default: '' },
     portraitUrl:    { type: String, default: '' },
     dialogueTraits: { type: [String], default: [] },
     speciesData:    { type: SpeciesDataSchema, default: () => ({}) },

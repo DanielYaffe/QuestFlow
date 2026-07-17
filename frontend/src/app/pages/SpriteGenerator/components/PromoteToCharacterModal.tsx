@@ -53,8 +53,8 @@ export function PromoteToCharacterModal({ sprite, onClose }: PromoteToCharacterM
       });
       toast.success('Promoted to Character', {
         action: {
-          label: 'View',
-          onClick: () => navigate(`/projects/${created.projectId}/characters`),
+          label: 'Open in Studio',
+          onClick: () => navigate(`/studio/${created._id}`),
         },
       });
       onClose();
@@ -66,20 +66,20 @@ export function PromoteToCharacterModal({ sprite, onClose }: PromoteToCharacterM
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-steel-850 border border-steel-600 rounded-md max-w-md w-full p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <UserPlus className="w-4 h-4 text-purple-400" />
-            <h2 className="text-white font-semibold text-base">Promote to Character</h2>
+            <UserPlus className="w-4 h-4 text-pulse" />
+            <h2 className="text-steel-100 font-semibold text-base">Promote to Character</h2>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="text-steel-400 hover:text-steel-100 transition-colors"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="w-16 h-16 rounded-lg bg-zinc-800 overflow-hidden flex items-center justify-center shrink-0">
+          <div className="w-16 h-16 rounded-lg bg-steel-800 overflow-hidden flex items-center justify-center shrink-0">
             <img src={sprite.imageUrl} alt={sprite.userPrompt} className="w-full h-full object-contain" />
           </div>
-          <p className="text-zinc-400 text-xs leading-relaxed">{sprite.userPrompt}</p>
+          <p className="text-steel-400 text-xs leading-relaxed">{sprite.userPrompt}</p>
         </div>
 
         {!sprite.imageKey && (
@@ -94,7 +94,7 @@ export function PromoteToCharacterModal({ sprite, onClose }: PromoteToCharacterM
                 key={k}
                 onClick={() => setKind(k)}
                 className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${
-                  kind === k ? 'border-purple-500 bg-purple-600/10 text-purple-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                  kind === k ? 'border-pulse bg-steel-800 text-pulse' : 'border-steel-600 text-steel-400 hover:border-steel-500'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -105,24 +105,24 @@ export function PromoteToCharacterModal({ sprite, onClose }: PromoteToCharacterM
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-zinc-400 text-xs uppercase tracking-wide">Name</label>
+          <label className="text-steel-400 text-xs uppercase tracking-wide">Name</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-            className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+            className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 focus:outline-none focus:border-pulse"
           />
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-zinc-400 text-xs uppercase tracking-wide">Project</label>
+          <label className="text-steel-400 text-xs uppercase tracking-wide">Project</label>
           {loading ? (
-            <div className="flex items-center gap-2 text-zinc-500 text-sm py-2"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>
+            <div className="flex items-center gap-2 text-steel-400 text-sm py-2"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>
           ) : (
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+              className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 focus:outline-none focus:border-pulse"
             >
               {projects.map((p) => (
                 <option key={p._id} value={p._id}>{p.name}</option>
@@ -132,11 +132,11 @@ export function PromoteToCharacterModal({ sprite, onClose }: PromoteToCharacterM
         </div>
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition-colors">Cancel</button>
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg text-sm transition-colors">Cancel</button>
           <button
             onClick={submit}
             disabled={!name.trim() || !projectId || saving || !sprite.imageKey}
-            className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2.5 bg-volt hover:brightness-95 disabled:bg-steel-700 disabled:text-steel-400 text-steel-950 font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
             Promote

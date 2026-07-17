@@ -8,6 +8,7 @@ import api from './axiosInstance';
 export type Character = {
   id: string;
   name: string;
+  kind?: 'npc' | 'monster';
   appearance: string;
   background: string;
   imageUrl?: string;
@@ -30,6 +31,8 @@ export type Reward = {
   imageUrl?: string;
   // "{gameId}:{entityName}" when the reward is an existing KB item; '' otherwise.
   kbRef?: string;
+  // Linked studio Item design; its sprite backs imageUrl when set. '' = none.
+  itemId?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -66,6 +69,14 @@ export async function updateCharacterImage(
   imageUrl: string,
 ): Promise<void> {
   await api.put(`/questlines/${questlineId}/characters/${characterId}`, { imageUrl });
+}
+
+export async function createReward(
+  questlineId: string,
+  input: { title: string; description?: string; rarity?: Reward['rarity']; itemId?: string },
+): Promise<Reward> {
+  const { data } = await api.post<Reward & { _id?: string }>(`/questlines/${questlineId}/rewards`, input);
+  return { ...data, id: data._id ?? data.id };
 }
 
 export async function updateReward(

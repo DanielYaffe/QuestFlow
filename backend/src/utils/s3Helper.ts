@@ -50,6 +50,25 @@ export const uploadBufferToS3 = async (
   return fileName; // return the key, not a URL — use getPresignedUrl to access
 };
 
+export const downloadBufferFromS3 = async (
+  filePath: string,
+  bucketName?: string,
+): Promise<Buffer> => {
+  const bucket = bucketName || BUCKET_NAME;
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key:    filePath,
+  });
+
+  const response = await s3Client.send(command);
+  if (!response.Body) {
+    throw new Error(`S3 object has no body: ${filePath}`);
+  }
+  const bytes = await response.Body.transformToByteArray();
+  return Buffer.from(bytes);
+};
+
 export const deleteFileFromS3 = async (
   filePath: string,
   bucketName?: string,

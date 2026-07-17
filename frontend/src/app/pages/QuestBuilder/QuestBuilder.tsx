@@ -5,7 +5,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   Panel,
   type Edge,
   type Connection,
@@ -21,7 +20,7 @@ import '@xyflow/react/dist/style.css';
 import { Loader2, Crosshair } from 'lucide-react';
 import { QuestNode } from './components/QuestNode';
 import { QuestBuilderHeader } from './components/QuestBuilderHeader';
-import { ProjectSidebar } from './components/ProjectSidebar';
+import { BuilderDock } from './components/BuilderDock';
 import { AISidebar } from '../../components/shared/AISidebar';
 import { NodeEditSidebar, NodeSnapshot } from './components/NodeEditSidebar';
 import { getLayoutedElements } from '../../utils/layoutUtils';
@@ -48,11 +47,11 @@ const nodeTypes = {
 function FitViewButton() {
   const { fitView } = useReactFlow();
   return (
-    <Panel position="bottom-right" style={{ marginBottom: '120px' }}>
+    <Panel position="top-right">
       <button
         onClick={() => fitView({ padding: 0.15, duration: 400 })}
         title="Center view"
-        className="w-8 h-8 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors shadow-md"
+        className="w-8 h-8 flex items-center justify-center bg-steel-800 border border-steel-600 rounded-md text-steel-200 hover:bg-steel-700 hover:text-steel-100 transition-colors shadow-md cursor-pointer"
       >
         <Crosshair className="w-4 h-4" />
       </button>
@@ -496,10 +495,10 @@ export function QuestBuilder() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center bg-zinc-950">
+      <div className="h-full flex items-center justify-center bg-steel-950">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-          <p className="text-zinc-400 text-sm">Loading questline...</p>
+          <Loader2 className="w-8 h-8 text-pulse animate-spin" />
+          <p className="text-steel-400 text-sm">Loading questline...</p>
         </div>
       </div>
     );
@@ -507,10 +506,10 @@ export function QuestBuilder() {
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center bg-zinc-950">
-        <div className="bg-zinc-900 border border-red-800 rounded-xl px-8 py-6 text-center max-w-sm">
+      <div className="h-full flex items-center justify-center bg-steel-950">
+        <div className="bg-steel-850 border border-red-800 rounded-md px-8 py-6 text-center max-w-sm">
           <p className="text-red-400 mb-2">Failed to load questline</p>
-          <p className="text-zinc-500 text-sm">{error}</p>
+          <p className="text-steel-400 text-sm">{error}</p>
         </div>
       </div>
     );
@@ -534,13 +533,6 @@ export function QuestBuilder() {
 
       {/* Canvas */}
       <div className="flex-1 relative">
-        <ProjectSidebar
-          questlineId={questlineId}
-          isOpen={isLeftSidebarOpen}
-          onQuestClick={focusNode}
-          onCharacterDeleted={removeCharacterFromGraph}
-          onRewardDeleted={removeRewardFromGraph}
-        />
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -551,46 +543,30 @@ export function QuestBuilder() {
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
-          className="bg-zinc-900"
+          className="bg-steel-850"
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} color="#52525b" gap={20} size={1.5} />
-          <Controls className="!bg-zinc-800 !border-zinc-700 [&_button]:!bg-zinc-800 [&_button]:!border-zinc-700 [&_button]:!text-zinc-300 hover:[&_button]:!bg-zinc-700" />
-          <MiniMap
-            className="!bg-zinc-900 !border-zinc-800"
-            nodeColor={(node) => {
-              const variant = (node.data as QuestNodeData).variant;
-              const colors = { story: '#7c3aed', combat: '#ef4444', dialogue: '#3b82f6', treasure: '#f59e0b' };
-              return colors[variant || 'story'];
-            }}
-            maskColor="rgba(0, 0, 0, 0.6)"
-          />
+          <Background variant={BackgroundVariant.Dots} color="#2a323b" gap={20} size={1.5} />
+          <Controls className="!bg-steel-800 !border-steel-600 [&_button]:!bg-steel-800 [&_button]:!border-steel-600 [&_button]:!text-steel-200 hover:[&_button]:!bg-steel-700" />
           <FitViewButton />
           <AutoLayoutTrigger trigger={layoutTrigger} />
           <FocusNodeController target={focusTarget} />
         </ReactFlow>
 
-        <div className="absolute top-4 left-4 bg-zinc-900/90 backdrop-blur-sm border border-zinc-800 rounded-lg px-4 py-3 z-10">
-          <p className="text-zinc-400 text-sm">Click a node to edit • Hover for + buttons • Drag to connect paths</p>
+        <div className="absolute top-4 left-4 bg-steel-850/90 backdrop-blur-sm border border-steel-700 rounded-lg px-4 py-3 z-10">
+          <p className="text-steel-400 text-sm">Click a node to edit • Hover for + buttons • Drag to connect paths</p>
         </div>
 
-        <div className="absolute bottom-4 left-4 bg-zinc-900/90 backdrop-blur-sm border border-zinc-800 rounded-lg p-4 z-10">
-          <h3 className="text-white text-sm mb-2">Node Types</h3>
-          <div className="space-y-2">
-            {[
-              { color: 'bg-purple-500', label: 'Story' },
-              { color: 'bg-red-500', label: 'Combat' },
-              { color: 'bg-blue-500', label: 'Dialogue' },
-              { color: 'bg-amber-500', label: 'Treasure' },
-            ].map(({ color, label }) => (
-              <div key={label} className="flex items-center gap-2">
-                <div className={`w-3 h-3 ${color} rounded-full`} />
-                <span className="text-zinc-400 text-xs">{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
+
+      {/* Bottom dock: quests / characters / mobs / items */}
+      <BuilderDock
+        questlineId={questlineId}
+        isOpen={isLeftSidebarOpen}
+        onQuestClick={focusNode}
+        onCharacterDeleted={removeCharacterFromGraph}
+        onRewardDeleted={removeRewardFromGraph}
+      />
 
       {/* Create-node sidebar (+ button flow) or AI chat sidebar */}
       <AISidebar

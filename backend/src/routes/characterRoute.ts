@@ -141,6 +141,12 @@ characterRouter.post('/', characterController.create.bind(characterController));
  */
 characterRouter.put('/:id', characterController.put.bind(characterController));
 
+// Design-studio operations
+characterRouter.post('/:id/rotations', characterController.rotations.bind(characterController));
+characterRouter.post('/:id/rotations/export', characterController.rotationsExport.bind(characterController));
+characterRouter.post('/:id/publish-kb', characterController.publishKb.bind(characterController));
+characterRouter.post('/:id/sprite/transform', characterController.spriteTransform.bind(characterController));
+
 /**
  * @swagger
  * /characters/{id}:

@@ -15,6 +15,22 @@ interface ComfyUIHistoryEntry {
 type WorkflowNode = { inputs: Record<string, unknown>; class_type: string; _meta?: unknown };
 type Workflow = Record<string, WorkflowNode>;
 
+// ComfyUI-Easy-Use background removal — the class the CB pixel workflow has
+// always used. image_output 'Hide' hands the cut-out downstream so the
+// regular SaveImage node stays the single save path.
+function buildRembgNode(imagesInput: unknown): WorkflowNode {
+  return {
+    inputs: {
+      images: imagesInput,
+      rem_mode: 'RMBG-1.4',
+      image_output: 'Hide',
+      save_prefix: 'questflow_rmbg',
+    },
+    class_type: 'easy imageRemBg',
+    _meta: { title: 'Easy Image Remove Background' },
+  };
+}
+
 function patchWorkflow(
   template: Record<string, unknown>,
   composed: ComposedImagePrompt,
@@ -51,15 +67,24 @@ function patchWorkflow(
     });
   }
 
-  // Inject fallback SaveImage for workflows whose primary save node may produce empty outputs
+  // Per-style background removal: splice a rembg node between the SaveImage
+  // node and whatever feeds it, so any preset gets the same pipeline the CB
+  // pixel style uses
+  if (composed.removeBackground && patchMap.saveImageNode) {
+    const saveNode = w[patchMap.saveImageNode];
+    w['98'] = buildRembgNode(saveNode.inputs['images']);
+    saveNode.inputs['images'] = ['98', 0];
+  }
+
+  // Legacy styles only: inject a fallback output for workflows whose primary
+  // save node (baked-in rembg with image_output 'Save') may produce empty outputs
   if (patchMap.fallbackSaveImageSource) {
     w['100'] = {
       inputs: {
-        filename_prefix: 'questflow_fallback',
         images: [patchMap.fallbackSaveImageSource, 0],
       },
-      class_type: 'SaveImage',
-      _meta: { title: 'SaveImage Fallback' },
+      class_type: 'PreviewImage',
+      _meta: { title: 'Preview Fallback' },
     };
   }
 
@@ -125,4 +150,56 @@ export async function generateWithStyle(
   const patched = patchWorkflow(workflowTemplate, composed, patchMap);
   const promptId = await queuePrompt(patched);
   return pollForResult(promptId);
+}
+
+// ---------------------------------------------------------------------------
+// Image-input workflows (studio sprite tools). ComfyUI needs the input image
+// uploaded to its server first; workflows then reference it by filename.
+// ---------------------------------------------------------------------------
+
+interface ComfyUIUploadResponse {
+  name: string;
+  subfolder?: string;
+  type?: string;
+}
+
+async function uploadImageToComfy(buffer: Buffer, filename: string): Promise<string> {
+  const form = new FormData();
+  form.append('image', new Blob([new Uint8Array(buffer)], { type: 'image/png' }), filename);
+  form.append('overwrite', 'true');
+
+  const response = await fetch(`${config.COMFYUI_ENDPOINT}/upload/image`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ComfyUI /upload/image failed (${response.status}): ${text}`);
+  }
+  const data = (await response.json()) as ComfyUIUploadResponse;
+  return data.name;
+}
+
+function buildRembgWorkflow(uploadedFilename: string): Workflow {
+  return {
+    '1': {
+      inputs: { image: uploadedFilename, upload: 'image' },
+      class_type: 'LoadImage',
+      _meta: { title: 'Load Input' },
+    },
+    '2': buildRembgNode(['1', 0]),
+    '3': {
+      inputs: { images: ['2', 0] },
+      class_type: 'PreviewImage',
+      _meta: { title: 'Preview Output' },
+    },
+  };
+}
+
+/** Remove an image's background on the local ComfyUI instance. */
+export async function removeBackgroundWithComfy(buffer: Buffer): Promise<Buffer> {
+  const filename = `questflow_rembg_input_${Date.now()}.png`;
+  const uploaded = await uploadImageToComfy(buffer, filename);
+  const promptId = await queuePrompt(buildRembgWorkflow(uploaded));
+  return pollForResult(promptId, 60_000);
 }

@@ -17,6 +17,10 @@ import { KbDocumentEditor } from './pages/Games/KbDocumentEditor';
 import { KbPlayground } from './pages/Games/KbPlayground';
 import { Characters } from './pages/Project/Characters';
 import { Items } from './pages/Project/Items';
+import { Studio } from './pages/Studio/Studio';
+import { DesignSheet } from './pages/Studio/DesignSheet';
+import { SpriteViewer } from './pages/Studio/SpriteViewer';
+import { ItemSheet } from './pages/Studio/ItemSheet';
 import { QuestBuilder } from './pages/QuestBuilder/QuestBuilder';
 import { QuestBuilderLanding } from './pages/QuestBuilder/QuestBuilderLanding';
 import { QuestCreate } from './pages/QuestCreate/QuestCreate';
@@ -48,6 +52,11 @@ export default function App() {
                   <Route path="/games/:gameId/docs/new" element={<KbDocumentEditor />} />
                   <Route path="/games/:gameId/docs/:docId" element={<KbDocumentEditor />} />
                   <Route path="/games/:gameId/playground" element={<KbPlayground />} />
+                  <Route path="/studio" element={<Studio />} />
+                  <Route path="/studio/items/:itemId" element={<ItemSheet />} />
+                  <Route path="/studio/items/:itemId/sprites" element={<SpriteViewer />} />
+                  <Route path="/studio/:characterId" element={<DesignSheet />} />
+                  <Route path="/studio/:characterId/sprites" element={<SpriteViewer />} />
                   <Route path="/quest-builder" element={<QuestBuilderLanding />} />
                   <Route path="/quest-builder/:questlineId" element={<QuestBuilder />} />
                   <Route path="/create" element={<QuestCreate />} />

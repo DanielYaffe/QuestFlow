@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Sparkles, Wand2, ChevronDown, ChevronUp,
-  Download, Copy, Check, AlertCircle, Loader2, X, ZoomIn, HelpCircle, UserPlus,
+  Download, Copy, Check, AlertCircle, Loader2, X, ZoomIn, HelpCircle, UserPlus, Film,
 } from 'lucide-react';
 import { generateSprite, getSprites, getStyles, SpriteRecord, SpriteStyle } from '../../api/spriteApi';
 import { useSpriteJobs } from '../../context/SpriteJobContext';
@@ -39,14 +39,14 @@ function StylePicker({ styles, selectedId, onSelect }: StylePickerProps) {
         <button
           key={s.id}
           onClick={() => onSelect(s.id)}
-          className={`flex flex-col gap-2 p-3 rounded-xl border text-left transition-all ${
+          className={`flex flex-col gap-2 p-3 rounded-md border text-left transition-all ${
             selectedId === s.id
               ? 'border-blue-500 bg-blue-600/10 ring-1 ring-blue-500/40'
-              : 'border-zinc-700 bg-zinc-800/60 hover:border-zinc-600 hover:bg-zinc-800'
+              : 'border-steel-600 bg-steel-800/60 hover:border-steel-500 hover:bg-steel-800'
           }`}
         >
           <div
-            className="w-full aspect-square rounded-lg bg-zinc-900 flex items-center justify-center overflow-hidden"
+            className="w-full aspect-square rounded-lg bg-steel-850 flex items-center justify-center overflow-hidden"
             style={CHECKER_SM}
           >
             <img
@@ -60,7 +60,7 @@ function StylePicker({ styles, selectedId, onSelect }: StylePickerProps) {
             <p className={`text-xs font-medium leading-tight ${selectedId === s.id ? 'text-blue-300' : 'text-white'}`}>
               {s.name}
             </p>
-            <p className="text-zinc-500 text-xs mt-0.5 leading-snug line-clamp-2">{s.description}</p>
+            <p className="text-steel-400 text-xs mt-0.5 leading-snug line-clamp-2">{s.description}</p>
           </div>
         </button>
       ))}
@@ -85,25 +85,25 @@ function StyleInfoModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 flex flex-col gap-4"
+        className="bg-steel-850 border border-steel-600 rounded-md max-w-md w-full p-6 flex flex-col gap-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-white font-semibold text-base">What's a Style?</h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors">
+          <h2 className="text-steel-100 font-semibold text-base">What's a Style?</h2>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center bg-steel-800 hover:bg-steel-700 text-steel-400 hover:text-steel-100 rounded-lg transition-colors">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-        <p className="text-zinc-400 text-sm leading-relaxed">
-          A <strong className="text-white">Style</strong> is a complete art direction recipe — it controls the checkpoint model, art approach, color treatment, and output size. You pick the <em>subject</em>; the Style decides <em>how it looks</em>.
+        <p className="text-steel-400 text-sm leading-relaxed">
+          A <strong className="text-steel-100">Style</strong> is a complete art direction recipe — it controls the checkpoint model, art approach, color treatment, and output size. You pick the <em>subject</em>; the Style decides <em>how it looks</em>.
         </p>
-        <ul className="flex flex-col gap-2 text-sm text-zinc-400">
+        <ul className="flex flex-col gap-2 text-sm text-steel-400">
           <li className="flex gap-2"><span className="text-blue-400 shrink-0">→</span> <span><strong className="text-white">Cassette Beasts</strong> — retro 64×64 pixel-art creature sprites</span></li>
           <li className="flex gap-2"><span className="text-blue-400 shrink-0">→</span> <span><strong className="text-white">Anime Monster</strong> — stylised Pokémon-style illustration</span></li>
           <li className="flex gap-2"><span className="text-blue-400 shrink-0">→</span> <span><strong className="text-white">Dark Fantasy</strong> — gritty realistic creature design</span></li>
           <li className="flex gap-2"><span className="text-blue-400 shrink-0">→</span> <span><strong className="text-white">No Style</strong> — raw SDXL, useful for prompt experiments</span></li>
         </ul>
-        <p className="text-zinc-500 text-xs">
+        <p className="text-steel-400 text-xs">
           Styles are curated and updated with the app. Adding a new Style requires a code change — there's no upload UI by design.
         </p>
       </div>
@@ -122,9 +122,10 @@ interface LightboxProps {
   onDownload: (url: string, name: string) => void;
   onCopy: (text: string) => void;
   onPromote: () => void;
+  onAnimate: () => void;
 }
 
-function Lightbox({ sprite, styleName, onClose, onDownload, onCopy, onPromote }: LightboxProps) {
+function Lightbox({ sprite, styleName, onClose, onDownload, onCopy, onPromote, onAnimate }: LightboxProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -145,13 +146,13 @@ function Lightbox({ sprite, styleName, onClose, onDownload, onCopy, onPromote }:
       onClick={onClose}
     >
       <div
-        className="relative bg-zinc-900 border border-zinc-700 rounded-2xl max-w-2xl w-full shadow-2xl flex flex-col"
+        className="relative bg-steel-850 border border-steel-600 rounded-md max-w-2xl w-full shadow-2xl flex flex-col"
         style={{ maxHeight: 'calc(100vh - 2rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
+          className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center bg-steel-800 hover:bg-steel-700 text-steel-400 hover:text-steel-100 rounded-lg transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
@@ -165,33 +166,33 @@ function Lightbox({ sprite, styleName, onClose, onDownload, onCopy, onPromote }:
           />
         </div>
 
-        <div className="overflow-y-auto flex flex-col gap-4 p-5 border-t border-zinc-800">
+        <div className="overflow-y-auto flex flex-col gap-4 p-5 border-t border-steel-700">
           <div>
-            <p className="text-zinc-500 text-xs mb-1">Subject</p>
-            <p className="text-white text-sm">{sprite.userPrompt}</p>
+            <p className="text-steel-400 text-xs mb-1">Subject</p>
+            <p className="text-steel-100 text-sm">{sprite.userPrompt}</p>
           </div>
 
           {styleName && (
             <div>
-              <p className="text-zinc-500 text-xs mb-1">Style</p>
+              <p className="text-steel-400 text-xs mb-1">Style</p>
               <span className="px-2 py-0.5 bg-blue-600/20 border border-blue-600/30 text-blue-300 text-xs rounded-full">{styleName}</span>
             </div>
           )}
 
           <div>
-            <p className="text-zinc-500 text-xs mb-1">Composed positive prompt</p>
-            <p className="text-zinc-400 text-xs leading-relaxed bg-zinc-800 rounded-lg px-3 py-2 font-mono">
+            <p className="text-steel-400 text-xs mb-1">Composed positive prompt</p>
+            <p className="text-steel-400 text-xs leading-relaxed bg-steel-800 rounded-lg px-3 py-2 font-mono">
               {sprite.positivePrompt}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 pt-1 sticky bottom-0 bg-zinc-900 pb-1">
+          <div className="flex items-center gap-2 pt-1 sticky bottom-0 bg-steel-850 pb-1">
             <button
               onClick={handleCopy}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg transition-all duration-200 ${
                 copied
                   ? 'bg-green-600/20 border border-green-600/40 text-green-400'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                  : 'bg-steel-800 hover:bg-steel-700 text-steel-200'
               }`}
             >
               <span className={`transition-transform duration-200 ${copied ? 'scale-110' : 'scale-100'}`}>
@@ -200,8 +201,15 @@ function Lightbox({ sprite, styleName, onClose, onDownload, onCopy, onPromote }:
               {copied ? 'Copied!' : 'Copy prompt'}
             </button>
             <button
+              onClick={onAnimate}
+              className="flex items-center gap-1.5 px-3 py-2 bg-steel-800 border border-volt/40 hover:bg-steel-700 text-volt text-xs rounded-lg transition-colors ml-auto"
+            >
+              <Film className="w-3 h-3" />
+              Animate
+            </button>
+            <button
               onClick={onPromote}
-              className="flex items-center gap-1.5 px-3 py-2 bg-purple-600/20 border border-purple-600/40 hover:bg-purple-600/30 text-purple-300 text-xs rounded-lg transition-colors ml-auto"
+              className="flex items-center gap-1.5 px-3 py-2 bg-steel-800 border border-pulse/40 hover:bg-steel-700 text-pulse text-xs rounded-lg transition-colors"
             >
               <UserPlus className="w-3 h-3" />
               Promote to Character
@@ -343,6 +351,7 @@ export function SpriteGenerator() {
           sprite={lightboxSprite}
           styleName={styleNameFor(lightboxSprite.styleId)}
           onClose={() => setLightboxSprite(null)}
+          onAnimate={() => { window.location.hash = `/sprite-animator?spriteId=${lightboxSprite._id}`; }}
           onDownload={handleDownload}
           onCopy={handleCopy}
           onPromote={() => setPromoteSprite(lightboxSprite)}
@@ -356,7 +365,7 @@ export function SpriteGenerator() {
         />
       )}
 
-      <div className="h-full overflow-y-auto bg-zinc-950">
+      <div className="h-full overflow-y-auto bg-steel-950">
         <div className="max-w-6xl mx-auto px-8 py-8 flex flex-col gap-6">
 
           {/* Header */}
@@ -365,25 +374,25 @@ export function SpriteGenerator() {
               <Wand2 className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <h1 className="text-white font-semibold text-lg leading-none">Sprite Generator</h1>
-              <p className="text-zinc-500 text-xs mt-0.5">Generate game-ready sprites with AI</p>
+              <h1 className="text-steel-100 font-semibold text-lg leading-none">Sprite Generator</h1>
+              <p className="text-steel-400 text-xs mt-0.5">Generate game-ready sprites with AI</p>
             </div>
           </div>
 
           {/* Style picker */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4">
+          <div className="bg-steel-850 border border-steel-700 rounded-md p-6 flex flex-col gap-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-white text-sm font-medium">Style</h2>
+              <h2 className="text-steel-100 text-sm font-medium">Style</h2>
               <button
                 onClick={() => setShowStyleInfo(true)}
-                className="flex items-center gap-1 text-zinc-500 hover:text-zinc-300 text-xs transition-colors"
+                className="flex items-center gap-1 text-steel-400 hover:text-steel-200 text-xs transition-colors"
               >
                 <HelpCircle className="w-3.5 h-3.5" />
                 What's a Style?
               </button>
             </div>
             {stylesLoading ? (
-              <div className="flex items-center gap-2 text-zinc-500 text-sm py-4">
+              <div className="flex items-center gap-2 text-steel-400 text-sm py-4">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Loading styles…
               </div>
@@ -397,18 +406,18 @@ export function SpriteGenerator() {
           </div>
 
           {/* Subject input + generate */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4">
-            <div className="flex flex-col gap-2 bg-zinc-800/60 border border-zinc-700 rounded-xl px-4 pt-3 pb-3">
+          <div className="bg-steel-850 border border-steel-700 rounded-md p-6 flex flex-col gap-4">
+            <div className="flex flex-col gap-2 bg-steel-800/60 border border-steel-600 rounded-md px-4 pt-3 pb-3">
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 bg-steel-850 border border-steel-600 rounded-lg px-3 py-1.5 shrink-0">
                   <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="text-white text-xs font-medium">Subject</span>
+                  <span className="text-steel-100 text-xs font-medium">Subject</span>
                 </div>
                 <div className="flex-1" />
                 <button
                   onClick={handleGenerate}
                   disabled={!subject.trim() || isGenerating}
-                  className="shrink-0 px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
+                  className="shrink-0 px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-steel-700 disabled:text-steel-400 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
                 >
                   {isGenerating ? (
                     <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
@@ -423,18 +432,18 @@ export function SpriteGenerator() {
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGenerate(); }}
                 placeholder={`Describe the creature — e.g. "a fire dragon with horns and lava-cracked skin". Don't describe the art style; the selected Style handles that.`}
                 rows={3}
-                className="w-full bg-transparent text-white text-sm placeholder:text-zinc-500 focus:outline-none resize-none overflow-y-auto leading-relaxed"
+                className="w-full bg-transparent text-steel-100 text-sm placeholder:text-steel-400 focus:outline-none resize-none overflow-y-auto leading-relaxed"
               />
             </div>
 
             {/* Quick prompts */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-zinc-500 text-xs">Quick:</span>
+              <span className="text-steel-400 text-xs">Quick:</span>
               {QUICK_PROMPTS.map((qp) => (
                 <button
                   key={qp}
                   onClick={() => setSubject(qp)}
-                  className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-full transition-colors border border-zinc-700"
+                  className="px-3 py-1 bg-steel-800 hover:bg-steel-700 text-steel-200 text-xs rounded-full transition-colors border border-steel-600"
                 >
                   {qp}
                 </button>
@@ -445,7 +454,7 @@ export function SpriteGenerator() {
             <div>
               <button
                 onClick={() => setShowNegative((v) => !v)}
-                className="flex items-center gap-2 text-zinc-500 hover:text-zinc-300 text-xs transition-colors"
+                className="flex items-center gap-2 text-steel-400 hover:text-steel-200 text-xs transition-colors"
               >
                 {showNegative ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 Things to avoid (optional)
@@ -456,7 +465,7 @@ export function SpriteGenerator() {
                   onChange={(e) => setNegativePrompt(e.target.value)}
                   placeholder={`Words describing what to avoid — added on top of the style's defaults. e.g. "wings, fins"`}
                   rows={2}
-                  className="mt-2 w-full bg-zinc-800/60 border border-zinc-700 text-white text-sm placeholder:text-zinc-500 rounded-lg px-3 py-2 focus:outline-none focus:border-zinc-500 resize-none"
+                  className="mt-2 w-full bg-steel-800/60 border border-steel-600 text-steel-100 text-sm placeholder:text-steel-400 rounded-lg px-3 py-2 focus:outline-none focus:border-steel-400 resize-none"
                 />
               )}
             </div>
@@ -464,16 +473,16 @@ export function SpriteGenerator() {
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-3 bg-red-950/40 border border-red-800/50 rounded-xl px-4 py-3 text-red-400 text-sm">
+            <div className="flex items-center gap-3 bg-red-950/40 border border-red-800/50 rounded-md px-4 py-3 text-red-400 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
 
           {/* Preview */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800">
-              <h3 className="text-white text-sm font-medium">Preview</h3>
+          <div className="bg-steel-850 border border-steel-700 rounded-md overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-steel-700">
+              <h3 className="text-steel-100 text-sm font-medium">Preview</h3>
               {current && (
                 <div className="flex items-center gap-2">
                   <button
@@ -485,7 +494,7 @@ export function SpriteGenerator() {
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-all duration-200 ${
                       previewCopied
                         ? 'bg-green-600/20 border border-green-600/40 text-green-400'
-                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                        : 'bg-steel-800 hover:bg-steel-700 text-steel-200'
                     }`}
                     title="Copy composed positive prompt"
                   >
@@ -505,17 +514,17 @@ export function SpriteGenerator() {
               )}
             </div>
 
-            <div className="bg-zinc-950/60 overflow-y-auto flex items-center justify-center" style={{ maxHeight: '420px', minHeight: '300px' }}>
+            <div className="bg-steel-950/60 overflow-y-auto flex items-center justify-center" style={{ maxHeight: '420px', minHeight: '300px' }}>
               {isGenerating ? (
                 <div className="text-center">
                   <Loader2 className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-4" />
-                  <p className="text-zinc-400 text-sm">Generating your sprite…</p>
-                  <p className="text-zinc-600 text-xs mt-1">Background removal + pixel snap run automatically</p>
+                  <p className="text-steel-400 text-sm">Generating your sprite…</p>
+                  <p className="text-steel-500 text-xs mt-1">Background removal + pixel snap run automatically</p>
                 </div>
               ) : current ? (
                 <div className="flex flex-col items-center gap-4 max-w-sm w-full">
                   <div
-                    className="relative group rounded-xl overflow-hidden border border-zinc-700 cursor-zoom-in"
+                    className="relative group rounded-md overflow-hidden border border-steel-600 cursor-zoom-in"
                     style={CHECKER_STYLE}
                     onClick={() => setLightboxSprite(current)}
                   >
@@ -525,16 +534,16 @@ export function SpriteGenerator() {
                       className="max-w-full max-h-80 object-contain"
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                      <ZoomIn className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <ZoomIn className="w-8 h-8 text-steel-100 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                   </div>
-                  <p className="text-zinc-500 text-xs text-center line-clamp-2">{current.userPrompt}</p>
+                  <p className="text-steel-400 text-xs text-center line-clamp-2">{current.userPrompt}</p>
                 </div>
               ) : (
                 <div className="text-center">
-                  <Sparkles className="w-14 h-14 text-zinc-700 mx-auto mb-4" />
-                  <p className="text-zinc-500 text-sm">Your generated sprite will appear here</p>
-                  <p className="text-zinc-600 text-xs mt-1">Pick a style, describe your subject, and click Generate</p>
+                  <Sparkles className="w-14 h-14 text-steel-700 mx-auto mb-4" />
+                  <p className="text-steel-400 text-sm">Your generated sprite will appear here</p>
+                  <p className="text-steel-500 text-xs mt-1">Pick a style, describe your subject, and click Generate</p>
                 </div>
               )}
             </div>
@@ -542,26 +551,26 @@ export function SpriteGenerator() {
 
           {/* Gallery */}
           <div>
-            <h3 className="text-white text-sm font-medium mb-3">
+            <h3 className="text-steel-100 text-sm font-medium mb-3">
               Your Sprites
               {!loadingHistory && sprites.length > 0 && (
-                <span className="ml-2 text-zinc-500 font-normal">({sprites.length})</span>
+                <span className="ml-2 text-steel-400 font-normal">({sprites.length})</span>
               )}
             </h3>
 
             {loadingHistory ? (
-              <div className="flex items-center gap-2 text-zinc-500 text-sm">
+              <div className="flex items-center gap-2 text-steel-400 text-sm">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Loading…
               </div>
             ) : sprites.length === 0 ? (
-              <p className="text-zinc-600 text-sm">No sprites generated yet — create your first one above.</p>
+              <p className="text-steel-500 text-sm">No sprites generated yet — create your first one above.</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {sprites.map((sprite) => (
                   <div
                     key={sprite._id}
-                    className="group bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl overflow-hidden cursor-pointer transition-colors"
+                    className="group bg-steel-850 border border-steel-700 hover:border-steel-500 rounded-md overflow-hidden cursor-pointer transition-colors"
                     onClick={() => { setCurrent(sprite); setLightboxSprite(sprite); }}
                   >
                     <div className="aspect-square flex items-center justify-center p-2 relative" style={CHECKER_SM}>
@@ -571,20 +580,30 @@ export function SpriteGenerator() {
                         className="w-full h-full object-contain"
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-                        <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <ZoomIn className="w-5 h-5 text-steel-100 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
-                    <div className="px-2.5 py-2 border-t border-zinc-800">
-                      <p className="text-zinc-400 text-xs line-clamp-2 group-hover:text-zinc-300 transition-colors">
+                    <div className="px-2.5 py-2 border-t border-steel-700">
+                      <p className="text-steel-400 text-xs line-clamp-2 group-hover:text-steel-200 transition-colors">
                         {sprite.userPrompt}
                       </p>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDownload(sprite.imageUrl, sprite.userPrompt); }}
-                        className="mt-1.5 w-full flex items-center justify-center gap-1 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs rounded transition-colors"
-                      >
-                        <Download className="w-3 h-3" />
-                        Save
-                      </button>
+                      <div className="mt-1.5 flex gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDownload(sprite.imageUrl, sprite.userPrompt); }}
+                          className="flex-1 flex items-center justify-center gap-1 py-1 bg-steel-800 hover:bg-steel-700 text-steel-400 hover:text-steel-100 text-xs rounded transition-colors cursor-pointer"
+                        >
+                          <Download className="w-3 h-3" />
+                          Save
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); window.location.hash = `/sprite-animator?spriteId=${sprite._id}`; }}
+                          className="flex-1 flex items-center justify-center gap-1 py-1 bg-steel-800 hover:bg-steel-700 text-volt/80 hover:text-volt text-xs rounded transition-colors cursor-pointer"
+                          title="Animate this sprite"
+                        >
+                          <Film className="w-3 h-3" />
+                          Animate
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

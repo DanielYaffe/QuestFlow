@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { config } from './config/config';
 import './workers/spriteWorker';
 import './workers/kbWorker';
+import './workers/animationWorker';
 import { kbQueue, KB_RECONCILE_JOB } from './queues/kbQueue';
 
 // Repeatable reconciler: sweeps stuck 'pending' KB docs and purges orphaned

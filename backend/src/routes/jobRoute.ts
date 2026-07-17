@@ -29,7 +29,7 @@ jobRouter.get('/:queue/:jobId/stream', async (req: AuthRequest, res: Response) =
   const queueName = String(req.params.queue);
   const jobId = String(req.params.jobId);
 
-  const allowedQueues = ['sprite-generation', 'monster-generation', 'quest-generation'];
+  const allowedQueues = ['sprite-generation', 'monster-generation', 'quest-generation', 'animation-generation'];
   if (!allowedQueues.includes(queueName)) {
     res.status(400).json({ error: `Unknown queue: ${queueName}` });
     return;

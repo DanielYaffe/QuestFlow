@@ -54,6 +54,9 @@ const envSchema = z.object({
     // --- Qdrant vector store ---
     QDRANT_URL: z.string().default('http://localhost:6333'),
     QDRANT_API_KEY: z.string().default(''),
+    // --- PixelLab (sprite animation / rotations) ---
+    PIXELLAB_API_KEY: z.string().default(''),
+    PIXELLAB_API_URL: z.string().default('https://api.pixellab.ai/v2'),
 });
 
 const parsed = envSchema.safeParse(process.env);

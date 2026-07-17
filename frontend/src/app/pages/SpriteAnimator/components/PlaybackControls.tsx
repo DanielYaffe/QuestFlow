@@ -1,89 +1,74 @@
 import React from 'react';
-import { PlayCircle, Pause, SkipBack, SkipForward, Plus } from 'lucide-react';
-
-interface Frame {
-  id: number;
-  name: string;
-}
+import { Play, Pause, SkipBack, SkipForward, Repeat } from 'lucide-react';
 
 interface PlaybackControlsProps {
   isPlaying: boolean;
   fps: number;
-  currentFrame: number;
-  frames: Frame[];
+  loop: boolean;
+  disabled: boolean;
   onTogglePlay: () => void;
-  onFrameSelect: (index: number) => void;
+  onStep: (direction: -1 | 1) => void;
   onFpsChange: (fps: number) => void;
+  onLoopToggle: () => void;
 }
 
 export function PlaybackControls({
-  isPlaying,
-  fps,
-  currentFrame,
-  frames,
-  onTogglePlay,
-  onFrameSelect,
-  onFpsChange,
+  isPlaying, fps, loop, disabled, onTogglePlay, onStep, onFpsChange, onLoopToggle,
 }: PlaybackControlsProps) {
   return (
-    <>
-      {/* Playback Controls */}
-      <div className="bg-zinc-900 border-t border-zinc-800 p-6">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <button className="p-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors">
-              <SkipBack className="w-5 h-5" />
-            </button>
-            <button
-              onClick={onTogglePlay}
-              className="p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-            >
-              {isPlaying ? <Pause className="w-6 h-6" /> : <PlayCircle className="w-6 h-6" />}
-            </button>
-            <button className="p-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors">
-              <SkipForward className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <span className="text-zinc-400 text-sm">FPS:</span>
-            <input
-              type="range"
-              min="1"
-              max="60"
-              value={fps}
-              onChange={(e) => onFpsChange(Number(e.target.value))}
-              className="flex-1"
-            />
-            <span className="text-white text-sm w-12 text-right">{fps}</span>
-          </div>
-        </div>
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onStep(-1)}
+          disabled={disabled}
+          className="w-8 h-8 flex items-center justify-center rounded-md text-steel-400 hover:text-steel-100 hover:bg-steel-800 disabled:opacity-40 transition-colors cursor-pointer"
+          title="Previous frame"
+        >
+          <SkipBack className="w-4 h-4" />
+        </button>
+        <button
+          onClick={onTogglePlay}
+          disabled={disabled}
+          className="w-9 h-9 flex items-center justify-center rounded-md bg-volt hover:brightness-95 text-steel-950 disabled:opacity-40 transition-[filter] cursor-pointer"
+          title={isPlaying ? 'Pause' : 'Play'}
+        >
+          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+        </button>
+        <button
+          onClick={() => onStep(1)}
+          disabled={disabled}
+          className="w-8 h-8 flex items-center justify-center rounded-md text-steel-400 hover:text-steel-100 hover:bg-steel-800 disabled:opacity-40 transition-colors cursor-pointer"
+          title="Next frame"
+        >
+          <SkipForward className="w-4 h-4" />
+        </button>
       </div>
 
-      {/* Timeline */}
-      <div className="bg-zinc-900 border-t border-zinc-800 p-4 overflow-x-auto">
-        <div className="flex gap-2 min-w-max">
-          {frames.map((frame, index) => (
-            <div
-              key={frame.id}
-              onClick={() => onFrameSelect(index)}
-              className={`w-24 h-24 rounded-lg border-2 cursor-pointer transition-all ${
-                currentFrame === index
-                  ? 'border-green-500 bg-green-500/10'
-                  : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
-              }`}
-            >
-              <div className="w-full h-full flex flex-col items-center justify-center">
-                <div className="w-12 h-12 bg-zinc-700 rounded mb-1" />
-                <span className="text-zinc-500 text-xs">{frame.name}</span>
-              </div>
-            </div>
-          ))}
-          <button className="w-24 h-24 rounded-lg border-2 border-dashed border-zinc-700 hover:border-zinc-600 transition-colors flex items-center justify-center text-zinc-600 hover:text-zinc-500">
-            <Plus className="w-6 h-6" />
-          </button>
-        </div>
+      <div className="flex items-center gap-2">
+        <span className="text-steel-400 text-[11px] uppercase tracking-wider font-semibold">FPS</span>
+        <input
+          type="range"
+          min={1}
+          max={24}
+          value={fps}
+          disabled={disabled}
+          onChange={(e) => onFpsChange(Number(e.target.value))}
+          className="w-28 accent-pulse"
+        />
+        <span className="text-steel-200 text-xs tabular-nums w-6">{fps}</span>
       </div>
-    </>
+
+      <button
+        onClick={onLoopToggle}
+        disabled={disabled}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors cursor-pointer disabled:opacity-40 ${
+          loop ? 'bg-steel-800 text-pulse' : 'text-steel-400 hover:text-steel-100 hover:bg-steel-800'
+        }`}
+        title="Toggle looping"
+      >
+        <Repeat className="w-3.5 h-3.5" />
+        Loop
+      </button>
+    </div>
   );
 }
