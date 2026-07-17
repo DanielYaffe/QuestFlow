@@ -7,10 +7,10 @@ import React from 'react';
  */
 export const CHECKER_STYLE: React.CSSProperties = {
   backgroundImage:
-    'linear-gradient(45deg, #3f3f46 25%, transparent 25%), linear-gradient(-45deg, #3f3f46 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #3f3f46 75%), linear-gradient(-45deg, transparent 75%, #3f3f46 75%)',
+    'linear-gradient(45deg, #2a323b 25%, transparent 25%), linear-gradient(-45deg, #2a323b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #2a323b 75%), linear-gradient(-45deg, transparent 75%, #2a323b 75%)',
   backgroundSize: '16px 16px',
   backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
-  backgroundColor: '#27272a',
+  backgroundColor: '#191e24',
 };
 
 /** Smaller-scale variant for thumbnails and grid cards. */

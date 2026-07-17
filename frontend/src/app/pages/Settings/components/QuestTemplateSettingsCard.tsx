@@ -143,40 +143,40 @@ export function QuestTemplateSettingsCard() {
   };
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-6">
+    <div className="bg-steel-850 border border-steel-700 rounded-md p-6 space-y-6">
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-          <FileCode2 className="w-5 h-5 text-purple-300" />
+        <div className="w-10 h-10 rounded-lg bg-steel-800 border border-pulse/20 flex items-center justify-center">
+          <FileCode2 className="w-5 h-5 text-pulse" />
         </div>
         <div>
-          <h2 className="text-white font-semibold">Quest Templates</h2>
-          <p className="text-zinc-400 text-sm">Upload one-file quest templates for node exports</p>
+          <h2 className="text-steel-100 font-semibold">Quest Templates</h2>
+          <p className="text-steel-400 text-sm">Upload one-file quest templates for node exports</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <label className="block text-zinc-400 text-sm mb-1">Template Name</label>
+          <label className="block text-steel-400 text-sm mb-1">Template Name</label>
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+            className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
           />
         </div>
         <div>
-          <label className="block text-zinc-400 text-sm mb-1">Description</label>
+          <label className="block text-steel-400 text-sm mb-1">Description</label>
           <input
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+            className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
           />
         </div>
         <div>
-          <label className="block text-zinc-400 text-sm mb-1">Input Format</label>
+          <label className="block text-steel-400 text-sm mb-1">Input Format</label>
           <select
             value={inputFormat}
             onChange={(event) => setInputFormat(event.target.value as TemplateFormat)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+            className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
           >
             <option value="json">JSON</option>
             <option value="yaml">YAML</option>
@@ -184,11 +184,11 @@ export function QuestTemplateSettingsCard() {
           </select>
         </div>
         <div>
-          <label className="block text-zinc-400 text-sm mb-1">Default Output</label>
+          <label className="block text-steel-400 text-sm mb-1">Default Output</label>
           <select
             value={outputFormat}
             onChange={(event) => setOutputFormat(event.target.value as TemplateFormat)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+            className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
           >
             <option value="yaml">YAML</option>
             <option value="json">JSON</option>
@@ -198,12 +198,12 @@ export function QuestTemplateSettingsCard() {
       </div>
 
       <div>
-        <label className="block text-zinc-400 text-sm mb-1">Template</label>
+        <label className="block text-steel-400 text-sm mb-1">Template</label>
         <textarea
           value={rawTemplate}
           onChange={(event) => setRawTemplate(event.target.value)}
           rows={12}
-          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 font-mono text-xs focus:outline-none focus:border-purple-500"
+          className="w-full bg-steel-950 border border-steel-600 rounded-lg px-3 py-2 text-steel-200 font-mono text-xs focus:outline-none focus:border-pulse"
         />
       </div>
 
@@ -211,7 +211,7 @@ export function QuestTemplateSettingsCard() {
         <button
           onClick={handleSave}
           disabled={isSaving || !name.trim() || !rawTemplate.trim()}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed text-steel-950 font-semibold rounded-lg text-sm transition-colors"
         >
           {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {editingId ? 'Update Template' : 'Save Template'}
@@ -219,7 +219,7 @@ export function QuestTemplateSettingsCard() {
         {editingId && (
           <button
             onClick={resetForm}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg text-sm transition-colors"
           >
             <X className="w-4 h-4" />
             Cancel Edit
@@ -227,35 +227,35 @@ export function QuestTemplateSettingsCard() {
         )}
       </div>
 
-      <div className="border-t border-zinc-800 pt-5">
+      <div className="border-t border-steel-700 pt-5">
         <div className="flex items-center gap-2 mb-3">
-          <Plus className="w-4 h-4 text-zinc-500" />
-          <h3 className="text-sm font-medium text-zinc-300">Saved Templates</h3>
+          <Plus className="w-4 h-4 text-steel-400" />
+          <h3 className="text-sm font-medium text-steel-200">Saved Templates</h3>
         </div>
         {isLoading ? (
-          <div className="flex items-center gap-2 text-zinc-500 text-sm">
+          <div className="flex items-center gap-2 text-steel-400 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
             Loading templates...
           </div>
         ) : sortedTemplates.length === 0 ? (
-          <p className="text-zinc-500 text-sm">No templates saved yet.</p>
+          <p className="text-steel-400 text-sm">No templates saved yet.</p>
         ) : (
           <div className="space-y-2">
             {sortedTemplates.map((template) => (
-              <div key={template._id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+              <div key={template._id} className="rounded-lg border border-steel-700 bg-steel-950/60 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-white text-sm font-medium">{template.name}</p>
-                      {template.isBuiltIn && <span className="text-[10px] uppercase tracking-wide text-purple-300 border border-purple-500/40 rounded px-1.5 py-0.5">Built-in</span>}
+                      <p className="text-steel-100 text-sm font-medium">{template.name}</p>
+                      {template.isBuiltIn && <span className="text-[10px] uppercase tracking-wide text-pulse border border-steel-600 rounded px-1.5 py-0.5">Built-in</span>}
                     </div>
-                    <p className="text-zinc-500 text-xs mt-1">{template.description || `${template.acceptedInputFormat.toUpperCase()} template`}</p>
-                    <p className="text-zinc-600 text-xs mt-1">
+                    <p className="text-steel-400 text-xs mt-1">{template.description || `${template.acceptedInputFormat.toUpperCase()} template`}</p>
+                    <p className="text-steel-500 text-xs mt-1">
                       Analysis: {template.analysisStatus ?? 'fallback'}
                     </p>
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {detectedGroups(template).map((group) => (
-                        <span key={group} className="text-xs text-zinc-300 bg-zinc-800 border border-zinc-700 rounded-full px-2 py-0.5">
+                        <span key={group} className="text-xs text-steel-200 bg-steel-800 border border-steel-600 rounded-full px-2 py-0.5">
                           {group}
                         </span>
                       ))}
@@ -265,7 +265,7 @@ export function QuestTemplateSettingsCard() {
                     <div className="flex items-center gap-1">
                     <button
                       onClick={() => handleEdit(template)}
-                      className="p-2 text-zinc-500 hover:text-purple-300 hover:bg-purple-950/30 rounded-lg transition-colors"
+                      className="p-2 text-steel-400 hover:text-pulse hover:bg-steel-800 rounded-lg transition-colors"
                       title="Edit template"
                     >
                       <Edit3 className="w-4 h-4" />
@@ -273,14 +273,14 @@ export function QuestTemplateSettingsCard() {
                     <button
                       onClick={() => handleAnalyze(template)}
                       disabled={analyzingId === template._id}
-                      className="p-2 text-zinc-500 hover:text-blue-300 hover:bg-blue-950/30 rounded-lg transition-colors disabled:opacity-50"
+                      className="p-2 text-steel-400 hover:text-blue-300 hover:bg-blue-950/30 rounded-lg transition-colors disabled:opacity-50"
                       title="Re-analyze template"
                     >
                       {analyzingId === template._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
                     </button>
                     <button
                       onClick={() => handleDelete(template)}
-                      className="p-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg transition-colors"
+                      className="p-2 text-steel-400 hover:text-red-300 hover:bg-red-950/30 rounded-lg transition-colors"
                       title="Delete template"
                     >
                       <Trash2 className="w-4 h-4" />

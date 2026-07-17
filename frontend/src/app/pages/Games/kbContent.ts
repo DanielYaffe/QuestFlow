@@ -17,14 +17,16 @@ export const TYPE_LABELS: Record<KbType, string> = {
   general: 'General',
 };
 
+// Flat Cyber chips: steel ground, one hue per category (matches the dashboard
+// KB shelf colors).
 export const TYPE_BADGES: Record<KbType, string> = {
-  monsters: 'bg-red-500/15 text-red-300',
-  characters: 'bg-blue-500/15 text-blue-300',
-  maps: 'bg-sky-500/15 text-sky-300',
-  items: 'bg-amber-500/15 text-amber-300',
-  quests: 'bg-emerald-500/15 text-emerald-300',
-  lore: 'bg-violet-500/15 text-violet-300',
-  general: 'bg-purple-500/15 text-purple-300',
+  monsters: 'bg-steel-800 text-[#e5484d]',
+  characters: 'bg-steel-800 text-pulse',
+  maps: 'bg-steel-800 text-[#7dd39a]',
+  items: 'bg-steel-800 text-volt',
+  quests: 'bg-steel-800 text-[#f0954f]',
+  lore: 'bg-steel-800 text-[#6ea8ff]',
+  general: 'bg-steel-800 text-steel-400',
 };
 
 // Formats the entity parser understands (monsters/characters/maps/items/quests

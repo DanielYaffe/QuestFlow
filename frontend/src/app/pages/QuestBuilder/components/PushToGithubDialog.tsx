@@ -69,9 +69,9 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-md w-full">
+      <DialogContent className="bg-steel-850 border-steel-700 text-steel-100 max-w-md w-full">
         <DialogHeader>
-          <DialogTitle className="text-white text-lg flex items-center gap-2">
+          <DialogTitle className="text-steel-100 text-lg flex items-center gap-2">
             <Github className="w-5 h-5" />
             Push to GitHub
           </DialogTitle>
@@ -80,53 +80,53 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-zinc-400 text-sm mb-1">Owner</label>
+              <label className="block text-steel-400 text-sm mb-1">Owner</label>
               <input
                 type="text"
                 placeholder="my-org"
                 {...register('repoOwner', { required: true })}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 text-sm"
+                className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
             <div>
-              <label className="block text-zinc-400 text-sm mb-1">Repository</label>
+              <label className="block text-steel-400 text-sm mb-1">Repository</label>
               <input
                 type="text"
                 placeholder="my-game"
                 {...register('repoName', { required: true })}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 text-sm"
+                className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-zinc-400 text-sm mb-1">Branch</label>
+              <label className="block text-steel-400 text-sm mb-1">Branch</label>
               <input
                 type="text"
                 placeholder="main"
                 {...register('branch')}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 text-sm"
+                className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
             <div>
-              <label className="block text-zinc-400 text-sm mb-1">File Path</label>
+              <label className="block text-steel-400 text-sm mb-1">File Path</label>
               <input
                 type="text"
                 placeholder="Assets/Quests"
                 {...register('filePath')}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 text-sm"
+                className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-zinc-400 text-sm mb-1">Commit Message</label>
+            <label className="block text-steel-400 text-sm mb-1">Commit Message</label>
             <input
               type="text"
               placeholder="Update quest"
               {...register('commitMessage')}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 text-sm"
+              className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
             />
           </div>
 
@@ -134,14 +134,14 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors text-sm"
+              className="px-4 py-2 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg transition-colors text-sm"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 disabled:opacity-50 text-steel-950 font-semibold rounded-lg transition-colors text-sm"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Github className="w-4 h-4" />}
               {isSubmitting ? 'Pushing...' : 'Push'}

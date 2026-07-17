@@ -37,10 +37,10 @@ export const BASE_VARIANT_SEEDS = [
     key: 'story',
     label: 'Story',
     iconKey: 'scroll',
-    borderColor: 'border-purple-500',
-    bgColor: 'bg-purple-500/10',
-    iconColor: 'text-purple-400',
-    shadowColor: 'shadow-purple-500/50',
+    borderColor: 'border-cyan-500',
+    bgColor: 'bg-cyan-500/10',
+    iconColor: 'text-cyan-400',
+    shadowColor: 'shadow-cyan-500/50',
     isBase: true,
   },
   {
@@ -77,9 +77,12 @@ export const BASE_VARIANT_SEEDS = [
 
 export async function seedBaseVariants(): Promise<void> {
   for (const seed of BASE_VARIANT_SEEDS) {
+    // $set (not $setOnInsert) so existing databases pick up palette changes to
+    // the shipped base variants — e.g. the 2026 UI renovation moved story from
+    // purple to cyan. AI-created variants (isBase: false) are never touched.
     await NodeVariantConfigModel.updateOne(
       { key: seed.key },
-      { $setOnInsert: seed },
+      { $set: seed },
       { upsert: true },
     );
   }

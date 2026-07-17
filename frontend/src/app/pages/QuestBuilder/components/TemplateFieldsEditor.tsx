@@ -235,12 +235,12 @@ export function TemplateFieldsEditor({
   const renderScalarEditor = (value: unknown, onChange: (next: unknown) => void, placeholder = 'Value') => {
     if (typeof value === 'boolean') {
       return (
-        <label className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300">
+        <label className="flex items-center gap-2 bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-sm text-steel-200">
           <input
             type="checkbox"
             checked={value}
             onChange={(e) => onChange(e.target.checked)}
-            className="accent-purple-600"
+            className="accent-pulse"
           />
           Enabled
         </label>
@@ -252,7 +252,7 @@ export function TemplateFieldsEditor({
         value={String(value ?? '')}
         onChange={(e) => onChange(typeof value === 'number' ? Number(e.target.value) || 0 : e.target.value)}
         placeholder={placeholder}
-        className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+        className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
       />
     );
   };
@@ -270,9 +270,9 @@ export function TemplateFieldsEditor({
       const addGroup = (operator: string) => onChange([...value, { [operator]: [] }]);
       return (
         <div className="space-y-2">
-          {value.length === 0 && <p className="text-xs text-zinc-600 italic">No values yet</p>}
+          {value.length === 0 && <p className="text-xs text-steel-500 italic">No values yet</p>}
           {value.map((item, index) => (
-            <div key={`${trail}.${index}`} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-2">
+            <div key={`${trail}.${index}`} className="rounded-lg border border-steel-700 bg-steel-950/50 p-2">
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   {renderRecursiveEditor(item, (next) => onChange(value.map((row, rowIndex) => rowIndex === index ? next : row)), `${trail}.${index}`, depth + 1, groupKeys)}
@@ -280,7 +280,7 @@ export function TemplateFieldsEditor({
                 <button
                   type="button"
                   onClick={() => onChange(value.filter((_, rowIndex) => rowIndex !== index))}
-                  className="px-2 py-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg"
+                  className="px-2 py-2 text-steel-400 hover:text-red-300 hover:bg-red-950/30 rounded-lg"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -288,9 +288,9 @@ export function TemplateFieldsEditor({
             </div>
           ))}
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={addValue} className="text-xs text-purple-300 hover:text-purple-200">Add value</button>
+            <button type="button" onClick={addValue} className="text-xs text-pulse hover:text-pulse">Add value</button>
             {availableGroupKeys.map((key) => (
-              <button key={key} type="button" onClick={() => addGroup(key)} className="text-xs text-purple-300 hover:text-purple-200">
+              <button key={key} type="button" onClick={() => addGroup(key)} className="text-xs text-pulse hover:text-pulse">
                 Add {key} group
               </button>
             ))}
@@ -316,18 +316,18 @@ export function TemplateFieldsEditor({
         onChange(next);
       };
       return (
-        <div className={`space-y-3 ${depth > 0 ? 'border-l border-zinc-800 pl-3' : ''}`}>
-          {entries.length === 0 && <p className="text-xs text-zinc-600 italic">No properties yet</p>}
+        <div className={`space-y-3 ${depth > 0 ? 'border-l border-steel-700 pl-3' : ''}`}>
+          {entries.length === 0 && <p className="text-xs text-steel-500 italic">No properties yet</p>}
           {entries.map(([key, child]) => (
             <div key={`${trail}.${key}`} className="space-y-2">
               <div className="flex items-center gap-2">
                 {conditionGroup ? (
-                  <span className="text-[10px] uppercase tracking-wide text-zinc-500 w-20">{key}</span>
+                  <span className="text-[10px] uppercase tracking-wide text-steel-400 w-20">{key}</span>
                 ) : (
                   <input
                     value={key}
                     onChange={(e) => updateKey(key, e.target.value)}
-                    className="w-32 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500"
+                    className="w-32 bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-xs focus:outline-none focus:border-pulse"
                   />
                 )}
                 {!conditionGroup && (
@@ -347,7 +347,7 @@ export function TemplateFieldsEditor({
             <button
               type="button"
               onClick={() => onChange({ ...value, field: '' })}
-              className="text-xs text-purple-300 hover:text-purple-200"
+              className="text-xs text-pulse hover:text-pulse"
             >
               Add property
             </button>
@@ -374,31 +374,31 @@ export function TemplateFieldsEditor({
       };
       return (
         <div className="space-y-3">
-          {pages.length === 0 && <p className="text-xs text-zinc-600 italic">No dialog pages yet</p>}
+          {pages.length === 0 && <p className="text-xs text-steel-500 italic">No dialog pages yet</p>}
           {pages.map((page, index) => (
-            <div key={`${page.id}-${index}`} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 space-y-3">
+            <div key={`${page.id}-${index}`} className="rounded-lg border border-steel-700 bg-steel-950/60 p-3 space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                <input value={page.id} onChange={(e) => updatePage(index, { id: e.target.value })} placeholder="Page ID" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
-                <input type="number" value={page.npcId || ''} onChange={(e) => updatePage(index, { npcId: Number(e.target.value) || 0 })} placeholder="NPC ID" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                <input value={page.id} onChange={(e) => updatePage(index, { id: e.target.value })} placeholder="Page ID" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
+                <input type="number" value={page.npcId || ''} onChange={(e) => updatePage(index, { npcId: Number(e.target.value) || 0 })} placeholder="NPC ID" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
               </div>
               <div className="grid grid-cols-4 gap-2">
-                <select value={page.type ?? 'ok'} onChange={(e) => updatePage(index, { type: e.target.value as QuestDialogPage['type'] })} className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500">
+                <select value={page.type ?? 'ok'} onChange={(e) => updatePage(index, { type: e.target.value as QuestDialogPage['type'] })} className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse">
                   <option value="ok">OK</option>
                   <option value="next">Next</option>
                   <option value="nextPrev">Next/Prev</option>
                   <option value="yesNo">Yes/No</option>
                 </select>
-                <input value={page.next ?? ''} onChange={(e) => updatePage(index, { next: e.target.value || undefined })} placeholder="Next" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
-                <input value={page.prev ?? ''} onChange={(e) => updatePage(index, { prev: e.target.value || undefined })} placeholder="Prev" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
-                <input value={page.yes ?? ''} onChange={(e) => updatePage(index, { yes: e.target.value || undefined })} placeholder="Yes" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
-                <input value={page.no ?? ''} onChange={(e) => updatePage(index, { no: e.target.value || undefined })} placeholder="No" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                <input value={page.next ?? ''} onChange={(e) => updatePage(index, { next: e.target.value || undefined })} placeholder="Next" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
+                <input value={page.prev ?? ''} onChange={(e) => updatePage(index, { prev: e.target.value || undefined })} placeholder="Prev" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
+                <input value={page.yes ?? ''} onChange={(e) => updatePage(index, { yes: e.target.value || undefined })} placeholder="Yes" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
+                <input value={page.no ?? ''} onChange={(e) => updatePage(index, { no: e.target.value || undefined })} placeholder="No" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
               </div>
-              <textarea value={page.prompt} onChange={(e) => updatePage(index, { prompt: e.target.value })} rows={3} placeholder="Dialog prompt" className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500 resize-y" />
+              <textarea value={page.prompt} onChange={(e) => updatePage(index, { prompt: e.target.value })} rows={3} placeholder="Dialog prompt" className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse resize-y" />
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-3">
                   {(['accept', 'complete', 'end'] as const).map((flag) => (
-                    <label key={flag} className="flex items-center gap-1.5 text-xs text-zinc-400 capitalize">
-                      <input type="checkbox" checked={Boolean(page[flag])} onChange={(e) => updatePage(index, { [flag]: e.target.checked })} className="accent-purple-600" />
+                    <label key={flag} className="flex items-center gap-1.5 text-xs text-steel-400 capitalize">
+                      <input type="checkbox" checked={Boolean(page[flag])} onChange={(e) => updatePage(index, { [flag]: e.target.checked })} className="accent-pulse" />
                       {flag}
                     </label>
                   ))}
@@ -412,7 +412,7 @@ export function TemplateFieldsEditor({
           <button
             type="button"
             onClick={() => updateTemplateValue(path, [...pages, { id: `page_${pages.length + 1}`, npcId: 0, type: 'ok', prompt: '' }])}
-            className="text-xs text-purple-300 hover:text-purple-200"
+            className="text-xs text-pulse hover:text-pulse"
           >
             Add dialog page
           </button>
@@ -421,27 +421,27 @@ export function TemplateFieldsEditor({
     }
     if (field.kind === 'boolean' || field.control === 'checkbox') {
       return (
-        <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
-          <input type="checkbox" checked={Boolean(current)} onChange={(e) => updateTemplateFieldValue(field, e.target.checked)} className="accent-purple-600" />
+        <label className="inline-flex items-center gap-2 text-sm text-steel-200">
+          <input type="checkbox" checked={Boolean(current)} onChange={(e) => updateTemplateFieldValue(field, e.target.checked)} className="accent-pulse" />
           Enabled
         </label>
       );
     }
     if (field.kind === 'number' || field.control === 'number') {
-      return <input type="number" value={typeof current === 'number' ? current : Number(current) || 0} onChange={(e) => updateTemplateFieldValue(field, Number(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />;
+      return <input type="number" value={typeof current === 'number' ? current : Number(current) || 0} onChange={(e) => updateTemplateFieldValue(field, Number(e.target.value) || 0)} className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />;
     }
     if (field.control === 'date') {
-      return <input type="date" value={typeof current === 'string' ? current : ''} onChange={(e) => updateTemplateFieldValue(field, e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />;
+      return <input type="date" value={typeof current === 'string' ? current : ''} onChange={(e) => updateTemplateFieldValue(field, e.target.value)} className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />;
     }
     if (field.kind === 'array' && field.itemSchema?.length) {
       const rows = Array.isArray(current) ? current as Record<string, unknown>[] : [];
       return (
         <div className="space-y-2">
           <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${field.itemSchema.length}, minmax(0, 1fr)) auto` }}>
-            {field.itemSchema.map((itemField) => <span key={itemField.path} className="text-[10px] uppercase tracking-wide text-zinc-500">{itemField.label}</span>)}
+            {field.itemSchema.map((itemField) => <span key={itemField.path} className="text-[10px] uppercase tracking-wide text-steel-400">{itemField.label}</span>)}
             <span />
           </div>
-          {rows.length === 0 && <p className="text-xs text-zinc-600 italic">No rows yet</p>}
+          {rows.length === 0 && <p className="text-xs text-steel-500 italic">No rows yet</p>}
           {rows.map((row, rowIndex) => (
             <div key={rowIndex} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${field.itemSchema!.length}, minmax(0, 1fr)) auto` }}>
               {field.itemSchema!.map((itemField) => (
@@ -454,10 +454,10 @@ export function TemplateFieldsEditor({
                     const value = itemField.valueType === 'number' ? Number(e.target.value) || 0 : e.target.value;
                     updateArrayField(path, rows.map((item, index) => index === rowIndex ? { ...item, [itemField.path]: value } : item));
                   }}
-                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                  className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
                 />
               ))}
-              <button type="button" onClick={() => updateArrayField(path, rows.filter((_, index) => index !== rowIndex))} className="px-3 py-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg">
+              <button type="button" onClick={() => updateArrayField(path, rows.filter((_, index) => index !== rowIndex))} className="px-3 py-2 text-steel-400 hover:text-red-300 hover:bg-red-950/30 rounded-lg">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -465,7 +465,7 @@ export function TemplateFieldsEditor({
           <button
             type="button"
             onClick={() => updateArrayField(path, [...rows, Object.fromEntries(field.itemSchema!.map((itemField) => [itemField.path, itemField.valueType === 'number' ? 0 : '']))])}
-            className="text-xs text-purple-300 hover:text-purple-200"
+            className="text-xs text-pulse hover:text-pulse"
           >
             Add row
           </button>
@@ -483,39 +483,39 @@ export function TemplateFieldsEditor({
 
       return (
         <div className="space-y-2">
-          {rows.length === 0 && <p className="text-xs text-zinc-600 italic">No values yet</p>}
+          {rows.length === 0 && <p className="text-xs text-steel-500 italic">No values yet</p>}
           {rows.map((item, rowIndex) => (
             <div key={rowIndex} className="grid gap-2" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}>
               {valueType === 'boolean' ? (
-                <label className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300">
-                  <input type="checkbox" checked={Boolean(item)} onChange={(e) => setRow(rowIndex, e.target.checked)} className="accent-purple-600" />
+                <label className="flex items-center gap-2 bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-sm text-steel-200">
+                  <input type="checkbox" checked={Boolean(item)} onChange={(e) => setRow(rowIndex, e.target.checked)} className="accent-pulse" />
                   Enabled
                 </label>
               ) : (
-                <input type={valueType === 'number' ? 'number' : 'text'} value={String(item)} onChange={(e) => setRow(rowIndex, valueType === 'number' ? Number(e.target.value) || 0 : e.target.value)} placeholder="Value" className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                <input type={valueType === 'number' ? 'number' : 'text'} value={String(item)} onChange={(e) => setRow(rowIndex, valueType === 'number' ? Number(e.target.value) || 0 : e.target.value)} placeholder="Value" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
               )}
-              <button type="button" onClick={() => updateScalarRows(rows.filter((_, index) => index !== rowIndex))} className="px-3 py-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg">
+              <button type="button" onClick={() => updateScalarRows(rows.filter((_, index) => index !== rowIndex))} className="px-3 py-2 text-steel-400 hover:text-red-300 hover:bg-red-950/30 rounded-lg">
                 <X className="w-4 h-4" />
               </button>
             </div>
           ))}
-          <button type="button" onClick={() => updateScalarRows([...rows, emptyValue])} className="text-xs text-purple-300 hover:text-purple-200">
+          <button type="button" onClick={() => updateScalarRows([...rows, emptyValue])} className="text-xs text-pulse hover:text-pulse">
             Add value
           </button>
         </div>
       );
     }
     if (field.kind === 'array' || field.kind === 'object' || field.control === 'json' || field.control === 'rows') {
-      return <textarea value={formatComplexValue(current, field.kind)} onChange={(e) => updateTemplateFieldValue(field, parseComplexValue(e.target.value))} rows={4} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-purple-500 resize-y" />;
+      return <textarea value={formatComplexValue(current, field.kind)} onChange={(e) => updateTemplateFieldValue(field, parseComplexValue(e.target.value))} rows={4} className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm font-mono focus:outline-none focus:border-pulse resize-y" />;
     }
-    return <input value={String(current ?? '')} onChange={(e) => updateTemplateFieldValue(field, e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />;
+    return <input value={String(current ?? '')} onChange={(e) => updateTemplateFieldValue(field, e.target.value)} className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />;
   };
 
   return (
-    <div className="border-t border-zinc-800 pt-5 space-y-4">
+    <div className="border-t border-steel-700 pt-5 space-y-4">
       <div>
-        <h3 className="text-white text-sm font-semibold">Template Fields</h3>
-        <p className="text-zinc-500 text-xs mt-1">
+        <h3 className="text-steel-100 text-sm font-semibold">Template Fields</h3>
+        <p className="text-steel-400 text-xs mt-1">
           Editing values for {template?.name}. These values override template placeholders in export.
         </p>
       </div>
@@ -527,11 +527,11 @@ export function TemplateFieldsEditor({
             : templateValues[field.path] ?? getSchemaDefaultValue(field);
           return (
             <div key={field.path}>
-              <label className="text-zinc-400 text-xs uppercase tracking-wide mb-1 block">
+              <label className="text-steel-400 text-xs uppercase tracking-wide mb-1 block">
                 {field.label}
-                <span className="ml-2 normal-case text-zinc-600">{field.templatePath ?? field.path}</span>
+                <span className="ml-2 normal-case text-steel-500">{field.templatePath ?? field.path}</span>
               </label>
-              {field.description && <p className="text-zinc-600 text-xs mb-2">{field.description}</p>}
+              {field.description && <p className="text-steel-500 text-xs mb-2">{field.description}</p>}
               {renderTemplateFieldInput(field, current)}
             </div>
           );

@@ -155,15 +155,15 @@ export function GameDetail() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-zinc-950">
-        <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+      <div className="h-full flex items-center justify-center bg-steel-950">
+        <Loader2 className="w-6 h-6 text-pulse animate-spin" />
       </div>
     );
   }
   if (!game) return null;
 
   return (
-    <div className="h-full overflow-y-auto bg-zinc-950">
+    <div className="h-full overflow-y-auto bg-steel-950">
       <ConfirmModal
         isOpen={pendingDelete !== null}
         title="Delete document?"
@@ -179,31 +179,31 @@ export function GameDetail() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/games')}
-            className="w-8 h-8 flex items-center justify-center bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-colors"
+            className="w-8 h-8 flex items-center justify-center bg-steel-850 hover:bg-steel-800 border border-steel-700 text-steel-400 hover:text-steel-100 rounded-md transition-colors cursor-pointer"
             title="Back to games"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div className="w-9 h-9 rounded-lg bg-purple-600/20 flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-purple-400" />
+          <div className="w-9 h-9 rounded-md bg-steel-800 flex items-center justify-center">
+            <BookOpen className="w-5 h-5 text-pulse" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-white font-semibold text-lg leading-none truncate">{game.name}</h1>
-            <p className="text-zinc-500 text-xs mt-0.5 truncate">
+            <h1 className="text-steel-100 font-semibold text-lg leading-none truncate">{game.name}</h1>
+            <p className="text-steel-400 text-xs mt-0.5 truncate">
               {game.description || 'Knowledge base'}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <button
               onClick={() => navigate(`/games/${gameId}/playground`)}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-sm rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-steel-850 hover:bg-steel-800 border border-steel-700 text-steel-200 hover:text-steel-100 text-sm rounded-md transition-colors cursor-pointer"
             >
-              <FlaskConical className="w-4 h-4 text-purple-400" />
+              <FlaskConical className="w-4 h-4 text-pulse" />
               Playground
             </button>
             <button
               onClick={() => navigate(`/games/${gameId}/docs/new`)}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 text-steel-950 text-sm font-semibold rounded-md transition-[filter] cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               Add Document
@@ -213,14 +213,14 @@ export function GameDetail() {
 
         {/* Documents */}
         <section className="flex flex-col gap-3">
-          <h2 className="text-zinc-400 text-xs font-medium uppercase tracking-wider">
+          <h2 className="text-steel-400 text-xs font-medium uppercase tracking-wider">
             Documents ({docs.length})
           </h2>
           {docs.length === 0 ? (
-            <div className="bg-zinc-900 border border-dashed border-zinc-800 rounded-xl py-14 flex flex-col items-center text-center">
-              <FileText className="w-8 h-8 text-zinc-700 mb-3" />
-              <p className="text-zinc-400 text-sm mb-1">No documents yet</p>
-              <p className="text-zinc-600 text-xs max-w-xs">
+            <div className="bg-steel-850 border border-dashed border-steel-700 rounded-md py-14 flex flex-col items-center text-center">
+              <FileText className="w-8 h-8 text-steel-600 mb-3" />
+              <p className="text-steel-400 text-sm mb-1">No documents yet</p>
+              <p className="text-steel-500 text-xs max-w-xs">
                 Add your monsters, characters, maps, items, quests or world lore. Everything gets indexed
                 for semantic search so generation can reference your real game content.
               </p>
@@ -230,17 +230,17 @@ export function GameDetail() {
               {docs.map((doc) => (
                 <div
                   key={doc._id}
-                  className="group bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl px-4 py-3 flex items-center gap-3 transition-colors"
+                  className="group bg-steel-850 border border-steel-700 hover:border-steel-500 rounded-md px-4 py-3 flex items-center gap-3 transition-colors"
                 >
-                  <FileText className="w-4 h-4 text-zinc-500 shrink-0" />
+                  <FileText className="w-4 h-4 text-steel-400 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium truncate">{doc.title}</span>
+                      <span className="text-steel-100 text-sm font-medium truncate">{doc.title}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${TYPE_BADGES[doc.type]}`}>
                         {doc.type}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-zinc-500 text-xs">
+                    <div className="flex items-center gap-3 mt-0.5 text-steel-400 text-xs">
                       <StatusBadge doc={doc} />
                       {doc.status === 'ready' && <IngestSummary doc={doc} />}
                       {doc.status === 'failed' && doc.statusError && (
@@ -255,7 +255,7 @@ export function GameDetail() {
                     {doc.status === 'failed' && (
                       <button
                         onClick={() => handleRetry(doc)}
-                        className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-amber-600/80 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                        className="w-7 h-7 flex items-center justify-center bg-steel-800 hover:bg-amber-600/80 text-steel-400 hover:text-white rounded-md transition-colors cursor-pointer"
                         title="Retry indexing"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
@@ -263,14 +263,14 @@ export function GameDetail() {
                     )}
                     <button
                       onClick={() => navigate(`/games/${gameId}/docs/${doc._id}`)}
-                      className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                      className="w-7 h-7 flex items-center justify-center bg-steel-800 hover:bg-steel-700 text-steel-400 hover:text-steel-100 rounded-md transition-colors cursor-pointer"
                       title="Edit"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setPendingDelete(doc)}
-                      className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-red-600/80 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                      className="w-7 h-7 flex items-center justify-center bg-steel-800 hover:bg-red-600/80 text-steel-400 hover:text-white rounded-md transition-colors cursor-pointer"
                       title="Delete"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

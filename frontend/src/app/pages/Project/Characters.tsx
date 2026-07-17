@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Plus, Search, LayoutGrid, List, Loader2, X,
-  Skull, User, Trash2, Unlink, Workflow,
+  Skull, User, Trash2, Unlink, Workflow, Palette,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -51,10 +51,10 @@ function CreateCharacterModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-steel-850 border border-steel-600 rounded-md max-w-md w-full p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-white font-semibold text-base">New Character</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+          <h2 className="text-steel-100 font-semibold text-base">New Character</h2>
+          <button onClick={onClose} className="text-steel-400 hover:text-steel-100 transition-colors"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -65,7 +65,7 @@ function CreateCharacterModal({
                 key={k}
                 onClick={() => setKind(k)}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all ${
-                  kind === k ? 'border-purple-500 bg-purple-600/10 text-purple-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                  kind === k ? 'border-pulse bg-steel-800 text-pulse' : 'border-steel-600 text-steel-400 hover:border-steel-500'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -76,43 +76,43 @@ function CreateCharacterModal({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-zinc-400 text-xs uppercase tracking-wide">Name</label>
+          <label className="text-steel-400 text-xs uppercase tracking-wide">Name</label>
           <input
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
             placeholder="e.g. Grok the Vault-Keeper"
-            className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500"
+            className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse"
           />
         </div>
         <div className="flex flex-col gap-2">
-          <label className="text-zinc-400 text-xs uppercase tracking-wide">Appearance (optional)</label>
+          <label className="text-steel-400 text-xs uppercase tracking-wide">Appearance (optional)</label>
           <textarea
             value={appearance}
             onChange={(e) => setAppearance(e.target.value)}
             rows={2}
             placeholder="A concrete visual description — used as the sprite subject"
-            className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 resize-none"
+            className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse resize-none"
           />
         </div>
         <div className="flex flex-col gap-2">
-          <label className="text-zinc-400 text-xs uppercase tracking-wide">Lore (optional)</label>
+          <label className="text-steel-400 text-xs uppercase tracking-wide">Lore (optional)</label>
           <textarea
             value={lore}
             onChange={(e) => setLore(e.target.value)}
             rows={3}
             placeholder="Background and motivation"
-            className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 resize-none"
+            className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse resize-none"
           />
         </div>
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition-colors">Cancel</button>
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg text-sm transition-colors">Cancel</button>
           <button
             onClick={submit}
             disabled={!name.trim() || saving}
-            className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2.5 bg-volt hover:brightness-95 disabled:bg-steel-700 disabled:text-steel-400 text-steel-950 font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             Create
@@ -161,60 +161,60 @@ function CharacterDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-lg w-full flex flex-col max-h-[calc(100vh-2rem)]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+      <div className="bg-steel-850 border border-steel-600 rounded-md max-w-lg w-full flex flex-col max-h-[calc(100vh-2rem)]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-steel-700">
           <div className="flex items-center gap-2">
             {character.kind === 'monster' ? <Skull className="w-4 h-4 text-rose-400" /> : <User className="w-4 h-4 text-blue-400" />}
-            <h2 className="text-white font-semibold text-base">Character</h2>
+            <h2 className="text-steel-100 font-semibold text-base">Character</h2>
             {character.kbRef && <GroundedBadge entityName={character.kbRef} />}
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-steel-400 hover:text-steel-100 transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="overflow-y-auto px-6 py-5 flex flex-col gap-4">
           {character.previewUrl && (
             <div className="w-full flex justify-center">
-              <img src={character.previewUrl} alt={character.name} className="max-h-48 object-contain rounded-lg border border-zinc-700" />
+              <img src={character.previewUrl} alt={character.name} className="max-h-48 object-contain rounded-lg border border-steel-600" />
             </div>
           )}
           <div className="flex flex-col gap-2">
-            <label className="text-zinc-400 text-xs uppercase tracking-wide">Name</label>
+            <label className="text-steel-400 text-xs uppercase tracking-wide">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+              className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 focus:outline-none focus:border-pulse"
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-zinc-400 text-xs uppercase tracking-wide">Appearance</label>
+            <label className="text-steel-400 text-xs uppercase tracking-wide">Appearance</label>
             <textarea
               value={appearance}
               onChange={(e) => setAppearance(e.target.value)}
               rows={3}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 resize-none"
+              className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 focus:outline-none focus:border-pulse resize-none"
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-zinc-400 text-xs uppercase tracking-wide">Lore</label>
+            <label className="text-steel-400 text-xs uppercase tracking-wide">Lore</label>
             <textarea
               value={lore}
               onChange={(e) => setLore(e.target.value)}
               rows={4}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 resize-none"
+              className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2.5 text-sm text-steel-100 focus:outline-none focus:border-pulse resize-none"
             />
           </div>
           {(character.usedIn?.length ?? 0) > 0 && (
             <div className="flex flex-col gap-2">
-              <label className="text-zinc-400 text-xs uppercase tracking-wide">Used in</label>
+              <label className="text-steel-400 text-xs uppercase tracking-wide">Used in</label>
               <div className="flex flex-wrap gap-2">
                 {(character.usedIn ?? []).map((u) => (
                   <button
                     key={u.questlineId}
                     onClick={() => navigate(`/quest-builder/${u.questlineId}`)}
                     title="Open in Quest Builder"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white rounded-lg text-xs transition-colors"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-steel-800 hover:bg-steel-700 border border-steel-600 text-steel-200 hover:text-steel-100 rounded-lg text-xs transition-colors"
                   >
-                    <Workflow className="w-3.5 h-3.5 text-purple-400" />
+                    <Workflow className="w-3.5 h-3.5 text-pulse" />
                     {u.title}
                   </button>
                 ))}
@@ -223,20 +223,28 @@ function CharacterDetailModal({
           )}
         </div>
 
-        <div className="flex items-center gap-2 px-6 py-4 border-t border-zinc-800">
+        <div className="flex items-center gap-2 px-6 py-4 border-t border-steel-700">
           <button
             onClick={onDeleteRequest}
-            className="flex items-center gap-1.5 px-3 py-2.5 bg-zinc-800 hover:bg-red-600/80 text-zinc-400 hover:text-white rounded-lg text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-steel-800 hover:bg-red-600/80 text-steel-400 hover:text-white rounded-lg text-sm transition-colors"
           >
             <Trash2 className="w-4 h-4" />
             Delete
           </button>
+          <button
+            onClick={() => navigate(`/studio/${character._id}`)}
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-steel-800 hover:bg-steel-700 border border-steel-600 text-steel-200 hover:text-steel-100 rounded-lg text-sm transition-colors"
+            title="Sprite, rotations, animations and stats"
+          >
+            <Palette className="w-4 h-4 text-pulse" />
+            Open in Studio
+          </button>
           <div className="flex-1" />
-          <button onClick={onClose} className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition-colors">Close</button>
+          <button onClick={onClose} className="px-4 py-2.5 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg text-sm transition-colors">Close</button>
           <button
             onClick={save}
             disabled={!dirty || !name.trim() || saving}
-            className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            className="px-5 py-2.5 bg-volt hover:brightness-95 disabled:bg-steel-700 disabled:text-steel-400 text-steel-950 font-semibold rounded-lg text-sm transition-colors flex items-center gap-2"
           >
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
             Save
@@ -364,7 +372,7 @@ export function Characters() {
   ];
 
   return (
-    <div className="h-full overflow-y-auto bg-zinc-950">
+    <div className="h-full overflow-y-auto bg-steel-950">
       {showCreate && (
         <CreateCharacterModal
           projectId={projectId}
@@ -396,16 +404,16 @@ export function Characters() {
         <div>
           <button
             onClick={() => navigate(`/projects/${projectId}`)}
-            className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 text-xs transition-colors mb-4"
+            className="flex items-center gap-1.5 text-steel-400 hover:text-steel-200 text-xs transition-colors mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to project
           </button>
           <div className="flex items-center justify-between">
-            <h1 className="text-white font-semibold text-lg">Characters</h1>
+            <h1 className="text-steel-100 font-semibold text-lg">Characters</h1>
             <button
               onClick={() => { setCreateInitialKind('npc'); setShowCreate(true); }}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 text-steel-950 font-semibold text-sm rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4" />
               New Character
@@ -415,13 +423,13 @@ export function Characters() {
 
         {/* Controls */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-steel-850 border border-steel-700 rounded-lg p-1">
             {TABS.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setFilter(t.key)}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  filter === t.key ? 'bg-purple-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                  filter === t.key ? 'bg-volt text-steel-950 font-semibold' : 'text-steel-400 hover:text-steel-200'
                 }`}
               >
                 {t.label} <span className="opacity-60">{counts[t.key]}</span>
@@ -429,21 +437,21 @@ export function Characters() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 flex-1 min-w-[180px]">
-            <Search className="w-4 h-4 text-zinc-500" />
+          <div className="flex items-center gap-2 bg-steel-850 border border-steel-700 rounded-lg px-3 py-2 flex-1 min-w-[180px]">
+            <Search className="w-4 h-4 text-steel-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by name, tag or questline…"
-              className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 focus:outline-none"
+              className="flex-1 bg-transparent text-sm text-steel-100 placeholder-steel-500 focus:outline-none"
             />
           </div>
 
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-            <button onClick={() => setView('grid')} className={`p-1.5 rounded-md transition-colors ${view === 'grid' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
+          <div className="flex items-center gap-1 bg-steel-850 border border-steel-700 rounded-lg p-1">
+            <button onClick={() => setView('grid')} className={`p-1.5 rounded-md transition-colors ${view === 'grid' ? 'bg-steel-700 text-steel-100' : 'text-steel-400 hover:text-steel-200'}`}>
               <LayoutGrid className="w-4 h-4" />
             </button>
-            <button onClick={() => setView('list')} className={`p-1.5 rounded-md transition-colors ${view === 'list' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
+            <button onClick={() => setView('list')} className={`p-1.5 rounded-md transition-colors ${view === 'list' ? 'bg-steel-700 text-steel-100' : 'text-steel-400 hover:text-steel-200'}`}>
               <List className="w-4 h-4" />
             </button>
           </div>
@@ -452,10 +460,10 @@ export function Characters() {
         {/* Results */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+            <Loader2 className="w-6 h-6 text-pulse animate-spin" />
           </div>
         ) : visible.length === 0 ? (
-          <div className="text-center py-16 text-zinc-500 bg-zinc-900/40 border border-zinc-800 border-dashed rounded-xl">
+          <div className="text-center py-16 text-steel-400 bg-steel-850/40 border border-steel-700 border-dashed rounded-md">
             <p className="text-sm">No characters match.</p>
           </div>
         ) : view === 'grid' ? (
@@ -464,12 +472,12 @@ export function Characters() {
               <button
                 key={c._id}
                 onClick={() => setSelected(c)}
-                className="group bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl overflow-hidden text-left transition-colors"
+                className="group bg-steel-850 border border-steel-700 hover:border-steel-500 rounded-md overflow-hidden text-left transition-colors"
               >
-                <div className="aspect-square bg-zinc-800/60 flex items-center justify-center relative">
+                <div className="aspect-square bg-steel-800/60 flex items-center justify-center relative">
                   {c.previewUrl
                     ? <img src={c.previewUrl} alt={c.name} className="w-full h-full object-contain p-2" />
-                    : (c.kind === 'monster' ? <Skull className="w-10 h-10 text-zinc-600" /> : <User className="w-10 h-10 text-zinc-600" />)}
+                    : (c.kind === 'monster' ? <Skull className="w-10 h-10 text-steel-500" /> : <User className="w-10 h-10 text-steel-500" />)}
                   {c.isOrphan && (
                     <span className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] rounded-full" title="Not used by any questline">
                       <Unlink className="w-2.5 h-2.5" />
@@ -481,10 +489,10 @@ export function Characters() {
                     </span>
                   )}
                 </div>
-                <div className="px-3 py-2 border-t border-zinc-800">
-                  <p className="text-white text-xs font-medium truncate group-hover:text-purple-400 transition-colors">{c.name}</p>
+                <div className="px-3 py-2 border-t border-steel-700">
+                  <p className="text-steel-100 text-xs font-medium truncate group-hover:text-pulse transition-colors">{c.name}</p>
                   <p
-                    className="text-zinc-500 text-[11px] truncate"
+                    className="text-steel-400 text-[11px] truncate"
                     title={(c.usedIn ?? []).map((u) => u.title).join(', ') || undefined}
                   >
                     <span className="capitalize">{c.kind}</span>
@@ -502,17 +510,17 @@ export function Characters() {
               <button
                 key={c._id}
                 onClick={() => setSelected(c)}
-                className="group flex items-center gap-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-lg px-3 py-2.5 text-left transition-colors"
+                className="group flex items-center gap-3 bg-steel-850 border border-steel-700 hover:border-steel-500 rounded-lg px-3 py-2.5 text-left transition-colors"
               >
-                <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-steel-800 flex items-center justify-center overflow-hidden shrink-0">
                   {c.previewUrl
                     ? <img src={c.previewUrl} alt={c.name} className="w-full h-full object-contain" />
-                    : (c.kind === 'monster' ? <Skull className="w-5 h-5 text-zinc-600" /> : <User className="w-5 h-5 text-zinc-600" />)}
+                    : (c.kind === 'monster' ? <Skull className="w-5 h-5 text-steel-500" /> : <User className="w-5 h-5 text-steel-500" />)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate group-hover:text-purple-400 transition-colors">{c.name}</p>
+                  <p className="text-steel-100 text-sm font-medium truncate group-hover:text-pulse transition-colors">{c.name}</p>
                   <p
-                    className="text-zinc-500 text-xs truncate"
+                    className="text-steel-400 text-xs truncate"
                     title={(c.usedIn ?? []).map((u) => u.title).join(', ') || undefined}
                   >
                     <span className="capitalize">{c.kind}</span>

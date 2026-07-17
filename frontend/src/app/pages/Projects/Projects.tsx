@@ -17,19 +17,13 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-const CARD_GRADIENTS = [
-  'bg-gradient-to-br from-purple-600 to-blue-600',
-  'bg-gradient-to-br from-emerald-600 to-teal-700',
-  'bg-gradient-to-br from-amber-600 to-orange-600',
-  'bg-gradient-to-br from-pink-600 to-rose-700',
-  'bg-gradient-to-br from-indigo-600 to-purple-700',
-  'bg-gradient-to-br from-blue-600 to-cyan-600',
-];
+// Flat accent rotation for project card icons (Cyber style — no gradients).
+const CARD_ACCENTS = ['#57c7d4', '#f5d90a', '#7dd39a', '#f0954f', '#6ea8ff', '#e5484d'];
 
 // Projects browser — a grid of project cards that drills into a per-project
 // dashboard (questlines + characters, incl. orphans). Project management
 // (create / rename / duplicate / delete) is driven through ProjectContext so
-// the grid stays in sync with the global active-project switcher in the TopNav.
+// the grid stays in sync with the global active-project switcher in the SideNav.
 export function Projects() {
   const navigate = useNavigate();
   const { projects, loading, createProject, renameProject, duplicateProject, deleteProject } = useProject();
@@ -87,7 +81,7 @@ export function Projects() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-zinc-950">
+    <div className="h-full overflow-y-auto bg-steel-950">
       <ProjectFormDialog
         isOpen={createOpen}
         mode="create"
@@ -114,17 +108,17 @@ export function Projects() {
       <main className="max-w-7xl mx-auto px-8 py-10 flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-purple-600/20 flex items-center justify-center">
-              <FolderOpen className="w-5 h-5 text-purple-400" />
+            <div className="w-9 h-9 rounded-lg bg-steel-800 flex items-center justify-center">
+              <FolderOpen className="w-5 h-5 text-pulse" />
             </div>
             <div>
-              <h1 className="text-white font-semibold text-lg leading-none">Projects</h1>
-              <p className="text-zinc-500 text-xs mt-0.5">Organise your questlines, sprites and characters</p>
+              <h1 className="text-steel-100 font-semibold text-lg leading-none">Projects</h1>
+              <p className="text-steel-400 text-xs mt-0.5">Organise your questlines, sprites and characters</p>
             </div>
           </div>
           <button
             onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 text-steel-950 font-semibold text-sm rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             New Project
@@ -133,7 +127,7 @@ export function Projects() {
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+            <Loader2 className="w-6 h-6 text-pulse animate-spin" />
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
@@ -143,16 +137,18 @@ export function Projects() {
                 <div
                   key={p._id}
                   onClick={() => navigate(`/projects/${p._id}`)}
-                  className="group bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 hover:shadow-lg hover:shadow-black/30 transition-all cursor-pointer relative"
+                  className="group bg-steel-850 border border-steel-700 rounded-md overflow-hidden hover:border-steel-500 hover:shadow-lg hover:shadow-black/30 transition-all cursor-pointer relative"
                 >
-                  <div className={`h-24 ${CARD_GRADIENTS[i % CARD_GRADIENTS.length]} flex items-center justify-center`}>
-                    {p.isInbox ? <Inbox className="w-8 h-8 text-white/80" /> : <FolderOpen className="w-8 h-8 text-white/80" />}
+                  <div className="h-24 bg-steel-900 border-b border-steel-700 flex items-center justify-center">
+                    {p.isInbox
+                      ? <Inbox className="w-8 h-8" style={{ color: CARD_ACCENTS[i % CARD_ACCENTS.length] }} />
+                      : <FolderOpen className="w-8 h-8" style={{ color: CARD_ACCENTS[i % CARD_ACCENTS.length] }} />}
                   </div>
                   <div className="p-4">
-                    <h3 className="text-white text-sm font-medium mb-2 group-hover:text-purple-400 transition-colors truncate">
+                    <h3 className="text-steel-100 text-sm font-medium mb-2 group-hover:text-pulse transition-colors truncate">
                       {p.name}
                     </h3>
-                    <div className="flex items-center gap-3 text-zinc-500 text-xs">
+                    <div className="flex items-center gap-3 text-steel-400 text-xs">
                       <span className="flex items-center gap-1"><Workflow className="w-3 h-3" />{p.questlineCount ?? 0}</span>
                       <span className="flex items-center gap-1"><Users className="w-3 h-3" />{p.characterCount ?? 0}</span>
                       <span className="ml-auto">{timeAgo(p.updatedAt)}</span>
@@ -164,7 +160,7 @@ export function Projects() {
                     {!p.isInbox && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditing({ id: p._id, name: p.name }); }}
-                        className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-zinc-700 text-white/70 hover:text-white rounded-lg transition-colors"
+                        className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-steel-700 text-white/70 hover:text-white rounded-lg transition-colors"
                         title="Rename"
                       >
                         <Pencil className="w-3.5 h-3.5" />
@@ -173,7 +169,7 @@ export function Projects() {
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDuplicate(p._id); }}
                       disabled={busy}
-                      className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-zinc-700 text-white/70 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+                      className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-steel-700 text-white/70 hover:text-white rounded-lg transition-colors disabled:opacity-50"
                       title="Duplicate"
                     >
                       {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}

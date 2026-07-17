@@ -28,10 +28,10 @@ export function WizardStepIndicator({ currentStep }: WizardStepIndicatorProps) {
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
                   isComplete
-                    ? 'bg-purple-600 text-white'
+                    ? 'bg-volt text-steel-950 font-semibold'
                     : isActive
-                    ? 'bg-purple-600 text-white ring-4 ring-purple-500/20'
-                    : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                    ? 'bg-volt text-steel-950 font-semibold ring-4 ring-pulse/20'
+                    : 'bg-steel-800 text-steel-400 border border-steel-600'
                 }`}
               >
                 {isComplete ? <Check className="w-4 h-4" /> : step.number}
@@ -39,7 +39,7 @@ export function WizardStepIndicator({ currentStep }: WizardStepIndicatorProps) {
               {/* Label */}
               <span
                 className={`text-xs whitespace-nowrap ${
-                  isActive ? 'text-purple-400 font-medium' : isComplete ? 'text-zinc-400' : 'text-zinc-600'
+                  isActive ? 'text-pulse font-medium' : isComplete ? 'text-steel-400' : 'text-steel-500'
                 }`}
               >
                 {step.label}
@@ -50,7 +50,7 @@ export function WizardStepIndicator({ currentStep }: WizardStepIndicatorProps) {
             {index < STEPS.length - 1 && (
               <div
                 className={`h-px w-14 mb-5 mx-1 transition-colors ${
-                  step.number < currentStep ? 'bg-purple-600' : 'bg-zinc-700'
+                  step.number < currentStep ? 'bg-volt' : 'bg-steel-700'
                 }`}
               />
             )}

@@ -226,12 +226,12 @@ export function QuestCreate() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-zinc-950">
+    <div className="h-full overflow-y-auto bg-steel-950">
       <QuestLoadingScreen visible={state.isLoadingObjectives} mode="objectives" />
       <QuestLoadingScreen visible={state.isLoadingCharacters} mode="characters" />
       <div className="max-w-3xl mx-auto px-6 py-16 min-h-full flex flex-col">
         {state.error && (
-          <div className="mb-6 px-4 py-3 bg-red-900/30 border border-red-700/50 rounded-xl text-red-400 text-sm">
+          <div className="mb-6 px-4 py-3 bg-red-900/30 border border-red-700/50 rounded-md text-red-400 text-sm">
             {state.error}
           </div>
         )}

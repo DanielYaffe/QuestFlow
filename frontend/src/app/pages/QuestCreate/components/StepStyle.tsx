@@ -8,7 +8,7 @@ const categoryBadge: Record<SpriteStyle['category'], { label: string; color: str
   pixel:       { label: 'Pixel Art',  color: 'bg-emerald-600 text-white' },
   illustrated: { label: 'Illustrated', color: 'bg-blue-600 text-white' },
   realistic:   { label: 'Realistic',   color: 'bg-amber-500 text-white' },
-  raw:         { label: 'Raw SDXL',    color: 'bg-zinc-600 text-white' },
+  raw:         { label: 'Raw SDXL',    color: 'bg-steel-500 text-steel-100' },
 };
 
 interface StepStyleProps {
@@ -34,8 +34,8 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
       <WizardStepIndicator currentStep={3} />
 
       <div className="text-center flex flex-col gap-2">
-        <h2 className="text-3xl font-bold text-white">Choose your visual style</h2>
-        <p className="text-zinc-400">This sets the art direction for your sprites and characters</p>
+        <h2 className="text-3xl font-bold text-steel-100">Choose your visual style</h2>
+        <p className="text-steel-400">This sets the art direction for your sprites and characters</p>
       </div>
 
       {loading ? (
@@ -52,10 +52,10 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
                 <button
                   key={style.id}
                   onClick={() => onSelect(style.id)}
-                  className={`flex flex-col gap-2 p-3 rounded-xl border text-left transition-all ${
+                  className={`flex flex-col gap-2 p-3 rounded-md border text-left transition-all ${
                     isSelected
                       ? 'border-blue-500 bg-blue-600/10 ring-1 ring-blue-500/40'
-                      : 'border-zinc-700 bg-zinc-800/60 hover:border-zinc-600 hover:bg-zinc-800'
+                      : 'border-steel-600 bg-steel-800/60 hover:border-steel-500 hover:bg-steel-800'
                   }`}
                 >
                   {/* Thumbnail */}
@@ -71,13 +71,13 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                     ) : (
-                      <ImageOff className="w-8 h-8 text-zinc-600" />
+                      <ImageOff className="w-8 h-8 text-steel-500" />
                     )}
 
                     {/* Selected check */}
                     {isSelected && (
                       <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center shadow-lg">
-                        <Check className="w-3.5 h-3.5 text-white" />
+                        <Check className="w-3.5 h-3.5 text-steel-100" />
                       </div>
                     )}
 
@@ -92,7 +92,7 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
                     <p className={`text-sm font-medium leading-tight ${isSelected ? 'text-blue-300' : 'text-white'}`}>
                       {style.name}
                     </p>
-                    <p className="text-xs text-zinc-500 mt-0.5 leading-snug line-clamp-2">{style.description}</p>
+                    <p className="text-xs text-steel-400 mt-0.5 leading-snug line-clamp-2">{style.description}</p>
                   </div>
                 </button>
               );
@@ -101,20 +101,20 @@ export function StepStyle({ selectedStyleId, onSelect, onBack, onSubmit }: StepS
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
+      <div className="flex items-center justify-between pt-2 border-t border-steel-700">
         <button
           onClick={onBack}
-          className="px-5 py-2.5 rounded-xl text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+          className="px-5 py-2.5 rounded-md text-sm text-steel-400 hover:text-steel-100 hover:bg-steel-800 transition-colors"
         >
           Back
         </button>
         <button
           onClick={onSubmit}
           disabled={!selectedStyleId}
-          className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-all ${
+          className={`px-6 py-2.5 rounded-md text-sm font-medium transition-all ${
             selectedStyleId
               ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25'
-              : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              : 'bg-steel-800 text-steel-400 cursor-not-allowed'
           }`}
         >
           Continue →

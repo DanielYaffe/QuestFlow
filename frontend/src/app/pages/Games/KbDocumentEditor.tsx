@@ -106,8 +106,8 @@ export function KbDocumentEditor() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-zinc-950">
-        <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+      <div className="h-full flex items-center justify-center bg-steel-950">
+        <Loader2 className="w-6 h-6 text-pulse animate-spin" />
       </div>
     );
   }
@@ -121,25 +121,25 @@ export function KbDocumentEditor() {
     : 0;
 
   return (
-    <div className="h-full overflow-y-auto bg-zinc-950">
+    <div className="h-full overflow-y-auto bg-steel-950">
       <main className="max-w-6xl mx-auto px-8 py-8 flex flex-col gap-6">
         {/* Header */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(`/games/${gameId}`)}
-            className="w-8 h-8 flex items-center justify-center bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-colors shrink-0"
+            className="w-8 h-8 flex items-center justify-center bg-steel-850 hover:bg-steel-800 border border-steel-700 text-steel-400 hover:text-steel-100 rounded-md transition-colors shrink-0 cursor-pointer"
             title="Back to game"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div className="w-9 h-9 rounded-lg bg-purple-600/20 flex items-center justify-center shrink-0">
-            {isEdit ? <FileText className="w-5 h-5 text-purple-400" /> : <FilePlus2 className="w-5 h-5 text-purple-400" />}
+          <div className="w-9 h-9 rounded-md bg-steel-800 flex items-center justify-center shrink-0">
+            {isEdit ? <FileText className="w-5 h-5 text-pulse" /> : <FilePlus2 className="w-5 h-5 text-pulse" />}
           </div>
           <div className="min-w-0">
-            <h1 className="text-white font-semibold text-lg leading-none truncate">
+            <h1 className="text-steel-100 font-semibold text-lg leading-none truncate">
               {isEdit ? 'Edit Document' : 'Add Document'}
             </h1>
-            <p className="text-zinc-500 text-xs mt-1 truncate">
+            <p className="text-steel-400 text-xs mt-1 truncate">
               {isEdit
                 ? 'Changing the content re-indexes the document in the background.'
                 : 'Indexing runs in the background — the document is searchable once it turns Ready.'}
@@ -155,15 +155,15 @@ export function KbDocumentEditor() {
 
           {/* Category picker */}
           <div className="ml-auto flex items-center gap-3 shrink-0">
-            <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+            <div className="flex gap-1 bg-steel-850 border border-steel-700 rounded-md p-1">
               {KB_TYPES.map((t) => (
                 <button
                   key={t}
                   type="button"
                   disabled={isEdit}
                   onClick={() => setType(t)}
-                  className={`px-2.5 py-1 rounded-md text-xs transition-colors disabled:opacity-60 ${
-                    type === t ? 'bg-purple-600 text-white' : 'text-zinc-400 hover:text-white'
+                  className={`px-2.5 py-1 rounded text-xs transition-colors disabled:opacity-60 cursor-pointer ${
+                    type === t ? 'bg-volt text-steel-950 font-semibold' : 'text-steel-400 hover:text-steel-100'
                   }`}
                 >
                   {TYPE_LABELS[t]}
@@ -173,7 +173,7 @@ export function KbDocumentEditor() {
             <button
               onClick={handleSave}
               disabled={submitting || !title.trim() || !text.trim()}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 disabled:opacity-50 text-steel-950 text-sm font-semibold rounded-md transition-[filter] cursor-pointer"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {isEdit ? 'Save' : 'Add to knowledge base'}
@@ -190,16 +190,16 @@ export function KbDocumentEditor() {
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
-              className={`flex items-center justify-center gap-3 border border-dashed rounded-xl py-6 cursor-pointer transition-colors ${
+              className={`flex items-center justify-center gap-3 border border-dashed rounded-md py-6 cursor-pointer transition-colors ${
                 dragging
-                  ? 'border-purple-500 bg-purple-500/10 text-purple-300'
-                  : 'border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:border-zinc-700 hover:text-zinc-400'
+                  ? 'border-pulse bg-steel-800 text-pulse'
+                  : 'border-steel-700 bg-steel-850/50 text-steel-400 hover:border-steel-500 hover:text-steel-200'
               }`}
             >
               <Upload className="w-5 h-5" />
               <span className="text-sm">
                 {sourceFilename
-                  ? <>Loaded <span className="text-zinc-300">{sourceFilename}</span> — drop another file to replace</>
+                  ? <>Loaded <span className="text-steel-200">{sourceFilename}</span> — drop another file to replace</>
                   : <>Drop a .txt / .md / .json file here, or click to pick — or just write below</>}
               </span>
               <input
@@ -216,21 +216,21 @@ export function KbDocumentEditor() {
             </div>
 
             <div>
-              <label className="block text-zinc-400 text-sm mb-1">Title</label>
+              <label className="block text-steel-400 text-sm mb-1">Title</label>
               <input
                 type="text"
                 autoFocus={!isEdit}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Bestiary — northern foothills"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 text-sm"
+                className="w-full bg-steel-850 border border-steel-700 rounded-md px-3 py-2 text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
 
             <div className="flex flex-col">
               <div className="flex items-center justify-between mb-1">
-                <label className="text-zinc-400 text-sm">Content</label>
-                <span className="text-zinc-600 text-xs">{wordCount.toLocaleString()} words</span>
+                <label className="text-steel-400 text-sm">Content</label>
+                <span className="text-steel-500 text-xs tabular-nums">{wordCount.toLocaleString()} words</span>
               </div>
               <textarea
                 ref={textRef}
@@ -238,61 +238,61 @@ export function KbDocumentEditor() {
                 onChange={(e) => setText(e.target.value)}
                 placeholder={`Paste or write your ${TYPE_LABELS[type].toLowerCase()} content here — it will be indexed for semantic search.`}
                 rows={22}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 text-sm resize-y font-mono leading-relaxed"
+                className="w-full bg-steel-850 border border-steel-700 rounded-md px-3 py-2 text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse text-sm resize-y font-mono leading-relaxed"
               />
             </div>
           </div>
 
           {/* Format help */}
-          <aside className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4 lg:sticky lg:top-6">
+          <aside className="bg-steel-850 border border-steel-700 rounded-md p-5 flex flex-col gap-4 lg:sticky lg:top-6">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-400" />
-              <h2 className="text-white text-sm font-medium">{TYPE_LABELS[type]} — recommended shape</h2>
+              <Sparkles className="w-4 h-4 text-pulse" />
+              <h2 className="text-steel-100 text-sm font-medium">{TYPE_LABELS[type]} — recommended shape</h2>
             </div>
-            <p className="text-zinc-500 text-xs leading-relaxed">{help.blurb}</p>
+            <p className="text-steel-400 text-xs leading-relaxed">{help.blurb}</p>
             <ul className="flex flex-col gap-1.5">
               {help.tips.map((tip) => (
-                <li key={tip} className="text-zinc-400 text-xs leading-relaxed flex gap-2">
-                  <span className="text-purple-400 shrink-0">•</span>
+                <li key={tip} className="text-steel-200 text-xs leading-relaxed flex gap-2">
+                  <span className="text-pulse shrink-0">•</span>
                   {tip}
                 </li>
               ))}
             </ul>
-            <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-zinc-400 text-[11px] leading-relaxed overflow-x-auto whitespace-pre-wrap">
+            <pre className="bg-steel-950 border border-steel-700 rounded-md p-3 text-steel-400 text-[11px] leading-relaxed overflow-x-auto whitespace-pre-wrap">
               {help.template}
             </pre>
             <button
               type="button"
               onClick={insertTemplate}
-              className="self-start px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded-lg transition-colors text-xs"
+              className="self-start px-3 py-1.5 bg-steel-800 hover:bg-steel-700 text-steel-200 hover:text-steel-100 rounded-md transition-colors text-xs cursor-pointer"
             >
               Insert template into content
             </button>
 
             {isFreeformType ? (
-              <p className="text-zinc-600 text-[11px] leading-relaxed">
+              <p className="text-steel-500 text-[11px] leading-relaxed">
                 {TYPE_LABELS[type]} is always indexed as plain text — no entity parsing. To get
                 individually recognized, linkable entities (grounded quest references), put them
                 in the Monsters, Characters, Maps, Items or Quests category instead.
               </p>
             ) : (
-              <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4">
-                <h3 className="text-zinc-300 text-xs font-medium">Formats that become entities</h3>
-                <p className="text-zinc-500 text-[11px] leading-relaxed">
+              <div className="flex flex-col gap-2 border-t border-steel-700 pt-4">
+                <h3 className="text-steel-200 text-xs font-medium">Formats that become entities</h3>
+                <p className="text-steel-400 text-[11px] leading-relaxed">
                   Documents in this category are parsed into one entry per entity (name via
-                  <span className="text-zinc-400"> name / title / id</span>, or the map key / heading).
+                  <span className="text-steel-200"> name / title / id</span>, or the map key / heading).
                   Recognized entities are individually searchable and can be linked into quests
                   as grounded references.
                 </p>
                 <ul className="flex flex-col gap-1.5">
                   {ACCEPTED_FORMATS.map((f) => (
                     <li key={f.label} className="text-[11px] leading-relaxed">
-                      <span className="text-zinc-400">{f.label}</span>
-                      <pre className="text-zinc-600 whitespace-pre-wrap font-mono mt-0.5">{f.example}</pre>
+                      <span className="text-steel-200">{f.label}</span>
+                      <pre className="text-steel-500 whitespace-pre-wrap font-mono mt-0.5">{f.example}</pre>
                     </li>
                   ))}
                 </ul>
-                <p className="text-zinc-600 text-[11px] leading-relaxed">
+                <p className="text-steel-500 text-[11px] leading-relaxed">
                   Anything else is still indexed as plain text — searchable, but not as individual
                   entities. After indexing, the document list shows how many entities were recognized.
                 </p>

@@ -44,10 +44,10 @@ const DEFAULT_CONFIG: ResolvedVariantConfig = {
   label: 'Unknown',
   iconKey: 'star',
   icon: Star,
-  borderColor: 'border-zinc-500',
-  bgColor: 'bg-zinc-500/10',
-  iconColor: 'text-zinc-400',
-  shadowColor: 'shadow-zinc-500/50',
+  borderColor: 'border-steel-400',
+  bgColor: 'bg-steel-400/10',
+  iconColor: 'text-steel-400',
+  shadowColor: 'shadow-steel-400/50',
   isBase: false,
 };
 

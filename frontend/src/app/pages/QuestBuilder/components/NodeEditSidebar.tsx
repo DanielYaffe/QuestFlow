@@ -132,7 +132,7 @@ function InlineTokens({ tokens, side }: { tokens: WordToken[]; side: 'old' | 'ne
       {tokens.map((tok, i) => {
         const isChanged = (side === 'old' && tok.type === 'removed') || (side === 'new' && tok.type === 'added');
         return isChanged
-          ? <span key={i} className="underline decoration-dotted decoration-zinc-400 underline-offset-2">{tok.text}</span>
+          ? <span key={i} className="underline decoration-dotted decoration-steel-400 underline-offset-2">{tok.text}</span>
           : <span key={i}>{tok.text}</span>;
       })}
     </>
@@ -156,21 +156,21 @@ function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew
   const pairs = isVariant ? [] : buildLinePairs(oldVal, newVal);
 
   return (
-    <div className={`rounded-lg border overflow-hidden transition-opacity ${changed ? 'border-zinc-700' : 'border-zinc-800 opacity-50'}`}>
-      <div className="flex items-center justify-between px-4 py-2 bg-zinc-800/60 border-b border-zinc-700/60">
-        <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">{label}</span>
+    <div className={`rounded-lg border overflow-hidden transition-opacity ${changed ? 'border-steel-600' : 'border-steel-700 opacity-50'}`}>
+      <div className="flex items-center justify-between px-4 py-2 bg-steel-800/60 border-b border-steel-600/60">
+        <span className="text-xs font-semibold text-steel-200 uppercase tracking-wider">{label}</span>
         {changed
-          ? <span className="text-xs text-purple-400 font-medium">Modified</span>
-          : <span className="text-xs text-zinc-600">Unchanged</span>}
+          ? <span className="text-xs text-pulse font-medium">Modified</span>
+          : <span className="text-xs text-steel-500">Unchanged</span>}
       </div>
-      <div className="grid grid-cols-2 divide-x divide-zinc-700/60 bg-zinc-900/60">
+      <div className="grid grid-cols-2 divide-x divide-steel-700/60 bg-steel-850/60">
         <div className="flex flex-col min-h-0">
-          <div className="px-3 py-1.5 border-b border-zinc-700/40 bg-zinc-800/30">
-            <span className="text-xs font-medium text-zinc-400">Before</span>
+          <div className="px-3 py-1.5 border-b border-steel-600/40 bg-steel-800/30">
+            <span className="text-xs font-medium text-steel-400">Before</span>
           </div>
-          <div className="p-3 overflow-y-auto text-sm text-zinc-300 leading-relaxed" style={{ maxHeight: 160 }}>
+          <div className="p-3 overflow-y-auto text-sm text-steel-200 leading-relaxed" style={{ maxHeight: 160 }}>
             {isVariant ? (
-              <span className={`capitalize font-medium ${getVariantColor?.(variantOld!) ?? 'text-zinc-400'}`}>{variantOld}</span>
+              <span className={`capitalize font-medium ${getVariantColor?.(variantOld!) ?? 'text-steel-400'}`}>{variantOld}</span>
             ) : (
               <span className="whitespace-pre-wrap break-words font-mono text-xs">
                 {pairs.map((pair, i) => {
@@ -188,12 +188,12 @@ function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew
           </div>
         </div>
         <div className="flex flex-col min-h-0">
-          <div className="px-3 py-1.5 border-b border-zinc-700/40 bg-zinc-800/30">
-            <span className="text-xs font-medium text-zinc-400">After</span>
+          <div className="px-3 py-1.5 border-b border-steel-600/40 bg-steel-800/30">
+            <span className="text-xs font-medium text-steel-400">After</span>
           </div>
-          <div className="p-3 overflow-y-auto text-sm text-zinc-300 leading-relaxed" style={{ maxHeight: 160 }}>
+          <div className="p-3 overflow-y-auto text-sm text-steel-200 leading-relaxed" style={{ maxHeight: 160 }}>
             {isVariant ? (
-              <span className={`capitalize font-medium ${getVariantColor?.(variantNew!) ?? 'text-zinc-400'}`}>{variantNew}</span>
+              <span className={`capitalize font-medium ${getVariantColor?.(variantNew!) ?? 'text-steel-400'}`}>{variantNew}</span>
             ) : (
               <span className="whitespace-pre-wrap break-words font-mono text-xs">
                 {pairs.map((pair, i) => {
@@ -227,24 +227,24 @@ function IdListDiff({ label, oldIds, newIds, getName, changed }: {
   changed: boolean;
 }) {
   return (
-    <div className={`rounded-lg border overflow-hidden transition-opacity ${changed ? 'border-zinc-700' : 'border-zinc-800 opacity-50'}`}>
-      <div className="flex items-center justify-between px-4 py-2 bg-zinc-800/60 border-b border-zinc-700/60">
-        <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">{label}</span>
+    <div className={`rounded-lg border overflow-hidden transition-opacity ${changed ? 'border-steel-600' : 'border-steel-700 opacity-50'}`}>
+      <div className="flex items-center justify-between px-4 py-2 bg-steel-800/60 border-b border-steel-600/60">
+        <span className="text-xs font-semibold text-steel-200 uppercase tracking-wider">{label}</span>
         {changed
-          ? <span className="text-xs text-purple-400 font-medium">Modified</span>
-          : <span className="text-xs text-zinc-600">Unchanged</span>}
+          ? <span className="text-xs text-pulse font-medium">Modified</span>
+          : <span className="text-xs text-steel-500">Unchanged</span>}
       </div>
-      <div className="grid grid-cols-2 divide-x divide-zinc-700/60 bg-zinc-900/60">
+      <div className="grid grid-cols-2 divide-x divide-steel-700/60 bg-steel-850/60">
         {[{ ids: oldIds, side: 'Before' }, { ids: newIds, side: 'After' }].map(({ ids, side }) => (
           <div key={side} className="flex flex-col min-h-0">
-            <div className="px-3 py-1.5 border-b border-zinc-700/40 bg-zinc-800/30">
-              <span className="text-xs font-medium text-zinc-400">{side}</span>
+            <div className="px-3 py-1.5 border-b border-steel-600/40 bg-steel-800/30">
+              <span className="text-xs font-medium text-steel-400">{side}</span>
             </div>
             <div className="p-3 flex flex-wrap gap-1.5 min-h-[40px]">
               {ids.length === 0
-                ? <span className="text-xs text-zinc-600 italic">None</span>
+                ? <span className="text-xs text-steel-500 italic">None</span>
                 : ids.map((id) => (
-                    <span key={id} className="text-xs bg-zinc-800 text-zinc-300 border border-zinc-700 px-2 py-0.5 rounded-full">
+                    <span key={id} className="text-xs bg-steel-800 text-steel-200 border border-steel-600 px-2 py-0.5 rounded-full">
                       {getName(id)}
                     </span>
                   ))}
@@ -276,7 +276,7 @@ function TagPicker<T>({ label, icon: Icon, items, selectedIds, getId, getName, o
 
   return (
     <div>
-      <label className="text-zinc-400 text-xs uppercase tracking-wide mb-2 flex items-center gap-1.5">
+      <label className="text-steel-400 text-xs uppercase tracking-wide mb-2 flex items-center gap-1.5">
         <Icon className="w-3.5 h-3.5" />
         {label}
       </label>
@@ -291,13 +291,13 @@ function TagPicker<T>({ label, icon: Icon, items, selectedIds, getId, getName, o
             return (
               <span
                 key={id}
-                className="inline-flex items-center gap-1 text-xs bg-purple-500/10 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full"
+                className="inline-flex items-center gap-1 text-xs bg-steel-800 text-pulse border border-steel-600 px-2 py-0.5 rounded-full"
               >
                 {name}
                 <button
                   type="button"
                   onClick={() => onToggle(id)}
-                  className="ml-0.5 hover:text-white transition-colors"
+                  className="ml-0.5 hover:text-steel-100 transition-colors"
                 >
                   <X className="w-2.5 h-2.5" />
                 </button>
@@ -312,23 +312,23 @@ function TagPicker<T>({ label, icon: Icon, items, selectedIds, getId, getName, o
         type="button"
         onClick={() => !loading && setOpen((v) => !v)}
         disabled={loading}
-        className="w-full flex items-center justify-between px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:border-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-wait"
+        className="w-full flex items-center justify-between px-3 py-2.5 bg-steel-800 border border-steel-600 rounded-lg text-sm text-steel-200 hover:border-steel-500 transition-colors disabled:opacity-50 disabled:cursor-wait"
       >
-        <span className="text-zinc-500">
+        <span className="text-steel-400">
           {loading
             ? 'Loading...'
             : selectedIds.length > 0
               ? `${selectedIds.length} selected`
               : `Select ${label.toLowerCase()}...`}
         </span>
-        {open ? <ChevronUp className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
+        {open ? <ChevronUp className="w-4 h-4 text-steel-400" /> : <ChevronDown className="w-4 h-4 text-steel-400" />}
       </button>
 
       {/* Dropdown list */}
       {open && !loading && (
-        <div className="mt-1 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
+        <div className="mt-1 bg-steel-800 border border-steel-600 rounded-lg overflow-hidden shadow-xl">
           {items.length === 0 ? (
-            <div className="px-3 py-3 text-xs text-zinc-500 italic">No items available</div>
+            <div className="px-3 py-3 text-xs text-steel-400 italic">No items available</div>
           ) : (
             items.map((item) => {
               const id = getId(item);
@@ -338,14 +338,14 @@ function TagPicker<T>({ label, icon: Icon, items, selectedIds, getId, getName, o
                   key={id}
                   type="button"
                   onClick={() => onToggle(id)}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-zinc-700 transition-colors text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-steel-700 transition-colors text-left"
                 >
                   <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                    selected ? 'bg-purple-600 border-purple-600' : 'border-zinc-600'
+                    selected ? 'bg-volt border-pulse' : 'border-steel-500'
                   }`}>
-                    {selected && <Check className="w-2.5 h-2.5 text-white" />}
+                    {selected && <Check className="w-2.5 h-2.5 text-steel-100" />}
                   </div>
-                  <span className={selected ? 'text-white' : 'text-zinc-300'}>{getName(item)}</span>
+                  <span className={selected ? 'text-steel-100' : 'text-steel-200'}>{getName(item)}</span>
                 </button>
               );
             })
@@ -518,28 +518,28 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 220 }}
             style={{ width }}
-            className="fixed right-0 top-0 h-full bg-zinc-900 border-l border-zinc-800 z-50 flex flex-col"
+            className="fixed right-0 top-0 h-full bg-steel-850 border-l border-steel-700 z-50 flex flex-col"
           >
             {/* Resize handle */}
             <div
               onMouseDown={onMouseDown}
-              className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize group hover:bg-purple-500/40 transition-colors z-10 flex items-center justify-center"
+              className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize group hover:brightness-95/40 transition-colors z-10 flex items-center justify-center"
               title="Drag to resize"
             >
-              <GripVertical className="w-3 h-3 text-zinc-600 group-hover:text-purple-400 transition-colors opacity-0 group-hover:opacity-100" />
+              <GripVertical className="w-3 h-3 text-steel-500 group-hover:text-pulse transition-colors opacity-0 group-hover:opacity-100" />
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 flex-shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-steel-700 flex-shrink-0">
               <div className="flex items-center gap-2">
                 {phase === 'edit'
-                  ? <Pencil className="w-4 h-4 text-purple-400" />
-                  : <GitCompare className="w-4 h-4 text-purple-400" />}
-                <h2 className="text-white font-semibold text-base">
+                  ? <Pencil className="w-4 h-4 text-pulse" />
+                  : <GitCompare className="w-4 h-4 text-pulse" />}
+                <h2 className="text-steel-100 font-semibold text-base">
                   {phase === 'edit' ? 'Edit Node' : 'Story Modification Preview'}
                 </h2>
               </div>
-              <button onClick={handleClose} className="text-zinc-500 hover:text-white transition-colors">
+              <button onClick={handleClose} className="text-steel-400 hover:text-steel-100 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -549,30 +549,30 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
               <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
                 {/* Title */}
                 <div>
-                  <label className="text-zinc-400 text-xs uppercase tracking-wide mb-2 block">Title</label>
+                  <label className="text-steel-400 text-xs uppercase tracking-wide mb-2 block">Title</label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full bg-zinc-800 text-white px-4 py-3 rounded-lg border border-zinc-700 focus:border-purple-500 focus:outline-none"
+                    className="w-full bg-steel-800 text-steel-100 px-4 py-3 rounded-lg border border-steel-600 focus:border-pulse focus:outline-none"
                     autoFocus
                   />
                 </div>
 
                 {/* Body */}
                 <div className="flex flex-col">
-                  <label className="text-zinc-400 text-xs uppercase tracking-wide mb-2 block">Description</label>
+                  <label className="text-steel-400 text-xs uppercase tracking-wide mb-2 block">Description</label>
                   <textarea
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
                     rows={5}
-                    className="w-full bg-zinc-800 text-white px-4 py-3 rounded-lg border border-zinc-700 focus:border-purple-500 focus:outline-none resize-none"
+                    className="w-full bg-steel-800 text-steel-100 px-4 py-3 rounded-lg border border-steel-600 focus:border-pulse focus:outline-none resize-none"
                   />
                 </div>
 
                 {/* Variant */}
                 <div>
-                  <label className="text-zinc-400 text-xs uppercase tracking-wide mb-3 block">Node Type</label>
+                  <label className="text-steel-400 text-xs uppercase tracking-wide mb-3 block">Node Type</label>
                   <div className="grid grid-cols-2 gap-2">
                     {configs.map((opt) => {
                       const Icon = opt.icon;
@@ -584,7 +584,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                           className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center gap-2 ${
                             variant === opt.key
                               ? activeColor
-                              : 'border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
+                              : 'border-steel-600 text-steel-400 hover:border-steel-500 hover:text-steel-200'
                           }`}
                         >
                           <Icon className="w-4 h-4" />
@@ -596,7 +596,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                 </div>
 
                 {/* Divider */}
-                <div className="border-t border-zinc-800" />
+                <div className="border-t border-steel-700" />
 
                 {/* NPC Picker — non-combat variants */}
                 {!isCombatVariant && (
@@ -655,51 +655,51 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                 )}
 
                 {templateFieldSchema.length === 0 && (
-                <div className="border-t border-zinc-800 pt-5 space-y-4">
+                <div className="border-t border-steel-700 pt-5 space-y-4">
                   <div>
-                    <h3 className="text-white text-sm font-semibold">Quest Export Fields</h3>
-                    <p className="text-zinc-500 text-xs mt-1">Each node exports as one quest file.</p>
+                    <h3 className="text-steel-100 text-sm font-semibold">Quest Export Fields</h3>
+                    <p className="text-steel-400 text-xs mt-1">Each node exports as one quest file.</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-zinc-400 text-xs uppercase tracking-wide mb-1 block">Quest ID</label>
+                      <label className="text-steel-400 text-xs uppercase tracking-wide mb-1 block">Quest ID</label>
                       <input
                         type="number"
                         value={exportFields.questId ?? ''}
                         onChange={(e) => setExportFields((prev) => ({ ...prev, questId: e.target.value ? Number(e.target.value) : undefined }))}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                        className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
                       />
                     </div>
                     <div>
-                      <label className="text-zinc-400 text-xs uppercase tracking-wide mb-1 block">Prerequisites</label>
+                      <label className="text-steel-400 text-xs uppercase tracking-wide mb-1 block">Prerequisites</label>
                       <input
                         value={exportFields.preQuest.join(', ')}
                         onChange={(e) => setExportFields((prev) => ({
                           ...prev,
                           preQuest: e.target.value.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v)),
                         }))}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                        className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
                       />
                     </div>
                   </div>
 
                   <div className="flex gap-4">
-                    <label className="flex items-center gap-2 text-sm text-zinc-300">
+                    <label className="flex items-center gap-2 text-sm text-steel-200">
                       <input
                         type="checkbox"
                         checked={exportFields.silent}
                         onChange={(e) => setExportFields((prev) => ({ ...prev, silent: e.target.checked }))}
-                        className="accent-purple-600"
+                        className="accent-pulse"
                       />
                       Silent
                     </label>
-                    <label className="flex items-center gap-2 text-sm text-zinc-300">
+                    <label className="flex items-center gap-2 text-sm text-steel-200">
                       <input
                         type="checkbox"
                         checked={exportFields.daily}
                         onChange={(e) => setExportFields((prev) => ({ ...prev, daily: e.target.checked }))}
-                        className="accent-purple-600"
+                        className="accent-pulse"
                       />
                       Daily
                     </label>
@@ -714,7 +714,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                     return (
                       <div key={section.key} className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <label className="text-zinc-400 text-xs uppercase tracking-wide">{section.label}</label>
+                          <label className="text-steel-400 text-xs uppercase tracking-wide">{section.label}</label>
                           <button
                             type="button"
                             onClick={() => setExportFields((prev) => ({
@@ -724,13 +724,13 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                                 section.key === 'toCollect' ? { itemId: 0, amount: 1 } : { id: 0, amount: 1 },
                               ],
                             }))}
-                            className="text-xs text-purple-300 hover:text-purple-200"
+                            className="text-xs text-pulse hover:text-pulse"
                           >
                             Add row
                           </button>
                         </div>
                         {rows.length === 0 ? (
-                          <p className="text-xs text-zinc-600 italic">No rows yet</p>
+                          <p className="text-xs text-steel-500 italic">No rows yet</p>
                         ) : rows.map((row, index) => {
                           const currentId = 'itemId' in row ? row.itemId : row.id;
                           return (
@@ -748,7 +748,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                                       : { ...item, id: Number(e.target.value) || 0 };
                                   }),
                                 }))}
-                                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                                className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
                               />
                               <input
                                 type="number"
@@ -758,7 +758,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                                   ...prev,
                                   [section.key]: prev[section.key].map((item, itemIndex) => itemIndex === index ? { ...item, amount: Number(e.target.value) || 0 } : item),
                                 }))}
-                                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                                className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
                               />
                               <button
                                 type="button"
@@ -766,7 +766,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                                   ...prev,
                                   [section.key]: prev[section.key].filter((_, itemIndex) => itemIndex !== index),
                                 }))}
-                                className="px-3 py-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg"
+                                className="px-3 py-2 text-steel-400 hover:text-red-300 hover:bg-red-950/30 rounded-lg"
                               >
                                 <X className="w-4 h-4" />
                               </button>
@@ -780,17 +780,17 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                 )}
 
                 {/* Actions */}
-                <div className="pt-2 border-t border-zinc-800 flex gap-3">
+                <div className="pt-2 border-t border-steel-700 flex gap-3">
                   <button
                     onClick={handleClose}
-                    className="flex-1 px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors"
+                    className="flex-1 px-4 py-3 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => setPhase('diff')}
                     disabled={!hasChanges}
-                    className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 bg-volt hover:brightness-95 disabled:bg-steel-700 disabled:text-steel-400 text-steel-950 font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <GitCompare className="w-4 h-4" />
                     Review Changes
@@ -802,7 +802,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
             {/* ── Diff phase ── */}
             {phase === 'diff' && (
               <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
-                <p className="text-zinc-500 text-sm">
+                <p className="text-steel-400 text-sm">
                   Compare the original and modified versions of your node below.
                 </p>
 
@@ -858,17 +858,17 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                   changed={!arraysEqual([...rewardIds].sort(), [...(node.rewardIds ?? [])].sort())}
                 />
 
-                <div className="pt-2 border-t border-zinc-800 flex gap-3 mt-auto">
+                <div className="pt-2 border-t border-steel-700 flex gap-3 mt-auto">
                   <button
                     onClick={() => setPhase('edit')}
-                    className="flex-1 px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <ArrowLeft className="w-4 h-4" />
                     Back
                   </button>
                   <button
                     onClick={handleApply}
-                    className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 bg-volt hover:brightness-95 text-steel-950 font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <Check className="w-4 h-4" />
                     Apply Changes

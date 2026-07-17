@@ -42,22 +42,22 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-steel-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Sword className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 bg-volt rounded-lg flex items-center justify-center">
+            <Sword className="w-5 h-5 text-steel-950" />
           </div>
-          <span className="text-2xl font-bold text-white tracking-tight">QuestFlow</span>
+          <span className="text-2xl font-bold text-steel-100 tracking-tight">QuestFlow</span>
         </div>
 
         {/* Card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 shadow-xl">
-          <h1 className="text-xl font-semibold text-white mb-1">
+        <div className="bg-steel-850 border border-steel-700 rounded-md p-8 shadow-xl">
+          <h1 className="text-xl font-semibold text-steel-100 mb-1">
             {mode === 'login' ? 'Welcome back' : 'Create account'}
           </h1>
-          <p className="text-sm text-zinc-400 mb-6">
+          <p className="text-sm text-steel-400 mb-6">
             {mode === 'login'
               ? 'Sign in to continue building your quests'
               : 'Get started with QuestFlow for free'}
@@ -67,22 +67,22 @@ export function Login() {
           <button
             type="button"
             onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm font-medium rounded-lg px-4 py-2.5 transition-colors mb-4"
+            className="w-full flex items-center justify-center gap-3 bg-steel-800 hover:bg-steel-700 border border-steel-600 text-steel-100 text-sm font-medium rounded-lg px-4 py-2.5 transition-colors mb-4"
           >
             <GoogleIcon />
             Continue with Google
           </button>
 
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px bg-zinc-800" />
-            <span className="text-xs text-zinc-500">or</span>
-            <div className="flex-1 h-px bg-zinc-800" />
+            <div className="flex-1 h-px bg-steel-800" />
+            <span className="text-xs text-steel-400">or</span>
+            <div className="flex-1 h-px bg-steel-800" />
           </div>
 
           {/* Email / password form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+              <label className="block text-xs font-medium text-steel-400 mb-1.5">
                 Email
               </label>
               <input
@@ -91,12 +91,12 @@ export function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full bg-zinc-800 border border-zinc-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none transition-colors"
+                className="w-full bg-steel-800 border border-steel-600 focus:border-pulse focus:ring-1 focus:ring-pulse rounded-lg px-3 py-2.5 text-sm text-steel-100 placeholder-steel-400 outline-none transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+              <label className="block text-xs font-medium text-steel-400 mb-1.5">
                 Password
               </label>
               <input
@@ -105,7 +105,7 @@ export function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-zinc-800 border border-zinc-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none transition-colors"
+                className="w-full bg-steel-800 border border-steel-600 focus:border-pulse focus:ring-1 focus:ring-pulse rounded-lg px-3 py-2.5 text-sm text-steel-100 placeholder-steel-400 outline-none transition-colors"
               />
             </div>
 
@@ -118,7 +118,7 @@ export function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2.5 transition-colors"
+              className="w-full bg-volt hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed text-steel-950 font-semibold text-sm rounded-lg px-4 py-2.5 transition-[filter]"
             >
               {loading
                 ? mode === 'login' ? 'Signing in…' : 'Creating account…'
@@ -127,12 +127,12 @@ export function Login() {
           </form>
 
           {/* Mode toggle */}
-          <p className="text-center text-sm text-zinc-400 mt-6">
+          <p className="text-center text-sm text-steel-400 mt-6">
             {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
             <button
               type="button"
               onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
-              className="text-purple-400 hover:text-purple-300 font-medium transition-colors"
+              className="text-pulse hover:text-pulse font-medium transition-colors"
             >
               {mode === 'login' ? 'Sign up' : 'Sign in'}
             </button>
