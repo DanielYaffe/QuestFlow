@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { AuthRequest } from "../middlewares/authMiddleware";
 import User from "../models/userModel";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -162,9 +163,29 @@ const logout = async (req: Request, res: Response) => {
     }
 };
 
+const me = async (req: AuthRequest, res: Response) => {
+    if (!req.user) {
+        return sendError(401, "Unauthorized", res);
+    }
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return sendError(401, "Unauthorized", res);
+        }
+        res.status(200).json({
+            _id: user._id.toString(),
+            email: user.email,
+            role: req.user.role,
+        });
+    } catch {
+        return sendError(500, "Internal server error", res);
+    }
+};
+
 export default {
     register,
     login,
     refreshToken,
-    logout
+    logout,
+    me
 };

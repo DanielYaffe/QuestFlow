@@ -1,5 +1,8 @@
 import { IStyleLora } from '../../models/spriteStyleModel';
 
+// Appended only when the style removes the background — a flat uniform bg
+// gives RMBG a clean cut. Styles that keep their background (e.g. dark
+// fantasy scenes) must not be forced onto flat blue.
 export const BACKGROUND_PHRASE = ', solid flat blue background';
 
 export interface ResolvedStyle {
@@ -8,6 +11,7 @@ export interface ResolvedStyle {
   promptPrefix: string;
   negativePrompt: string;
   defaultDimensions: { width: number; height: number };
+  removeBackground?: boolean;
   targetSize?: number;
   sampler: {
     steps: number;
@@ -24,6 +28,7 @@ export interface ComposedImagePrompt {
   loras: Array<{ filename: string; strength: number; strengthClip: number; triggerWord?: string }>;
   sampler: ResolvedStyle['sampler'];
   dimensions: { width: number; height: number };
+  removeBackground: boolean;
   targetSize?: number;
 }
 
@@ -43,7 +48,7 @@ export function composeImagePrompt(opts: {
   const prefixParts = [triggers, style.promptPrefix].filter(Boolean);
   const positive =
     [...prefixParts, opts.userSubject].join(' ').replace(/\s+/g, ' ').trimEnd() +
-    BACKGROUND_PHRASE;
+    (style.removeBackground ? BACKGROUND_PHRASE : '');
 
   const negative = opts.extraNegative
     ? `${style.negativePrompt}, ${opts.extraNegative}`
@@ -61,6 +66,7 @@ export function composeImagePrompt(opts: {
     })),
     sampler:    style.sampler,
     dimensions: opts.dimensionsOverride ?? style.defaultDimensions,
+    removeBackground: style.removeBackground ?? false,
     targetSize: style.targetSize,
   };
 }

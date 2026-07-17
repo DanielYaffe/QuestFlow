@@ -8,12 +8,18 @@ export interface IGitSettings {
   defaultFilePath?: string;
 }
 
+export type UserRole = 'user' | 'admin';
+
 export interface IUser extends Document {
   email: string;
   password?: string;
   googleId?: string;
   refreshTokens: string[];
   gitSettings: IGitSettings;
+  role: UserRole;
+  // True once the ADMIN_EMAILS bootstrap promotion has been applied, so an
+  // admin demoted via the admin page is not silently re-promoted
+  adminBootstrapApplied: boolean;
 }
 
 const GitSettingsSchema = new Schema<IGitSettings>(
@@ -48,6 +54,15 @@ const userSchema = new Schema<IUser>({
     gitSettings: {
         type: GitSettingsSchema,
         default: () => ({}),
+    },
+    role: {
+        type: String,
+        enum: ['user', 'admin'],
+        default: 'user',
+    },
+    adminBootstrapApplied: {
+        type: Boolean,
+        default: false,
     },
 });
 

@@ -28,6 +28,17 @@ const envSchema = z.object({
     FRONTEND_URL: z.string().default('http://localhost:5173'),
     REDIS_URL: z.string().default('redis://localhost:6379'),
     COMFYUI_ENDPOINT: z.string().default('http://127.0.0.1:8188'),
+    // Comma-separated emails promoted to admin ONCE (bootstrap only) — after
+    // that, roles are managed from the admin page (/admin/users)
+    ADMIN_EMAILS: z
+        .string()
+        .default('')
+        .transform((v) =>
+            v
+                .split(',')
+                .map((e) => e.trim().toLowerCase())
+                .filter((e) => e.length > 0),
+        ),
     ENCRYPTION_KEY: z.string().length(64).default('0'.repeat(64)),
     // --- AI generation (provider-swappable via OpenAI-compatible endpoints) ---
     AI_PROVIDER: z.enum(['gemini', 'openai', 'anthropic', 'groq', 'ollama']).default('gemini'),

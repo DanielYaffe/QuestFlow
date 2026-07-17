@@ -15,6 +15,9 @@ export interface IWorkflowPatchMap {
   seedNodes: string[];
   loraNode?: string;
   samplerParamsNode?: string;
+  // SaveImage node — required for the per-style removeBackground injection
+  // (a rembg node is spliced in front of it at patch time)
+  saveImageNode?: string;
   fallbackSaveImageSource?: string;
 }
 
@@ -30,15 +33,23 @@ export interface ISpriteStyle extends Document {
   promptPrefix: string;
   negativePrompt: string;
   defaultDimensions: { width: number; height: number };
+  // Post-processing: splice a rembg node before the SaveImage at generation time
+  removeBackground: boolean;
+  // Post-processing: pixel-snap + downscale the output to this size (worker-side)
   targetSize?: number;
+  // sampler/scheduler names are whatever the ComfyUI build supports — the
+  // admin UI populates options from /object_info rather than a fixed enum
   sampler: {
     steps: number;
     cfg: number;
-    sampler: 'euler' | 'dpmpp_2m' | 'dpmpp_sde' | 'lcm';
-    scheduler: 'simple' | 'karras' | 'normal' | 'sgm_uniform';
+    sampler: string;
+    scheduler: string;
   };
   workflowTemplate: Record<string, unknown>;
   workflowPatchMap: IWorkflowPatchMap;
+  // Which workflow preset the template was created from (absent on seeded or
+  // raw-JSON styles) — display/provenance only, the template is the truth
+  presetId?: string;
   isDefault: boolean;
   isActive: boolean;
   sortOrder: number;
@@ -65,6 +76,7 @@ const WorkflowPatchMapSchema = new Schema<IWorkflowPatchMap>(
     seedNodes:               { type: [String], required: true },
     loraNode:                { type: String },
     samplerParamsNode:       { type: String },
+    saveImageNode:           { type: String },
     fallbackSaveImageSource: { type: String },
   },
   { _id: false },
@@ -86,15 +98,17 @@ const SpriteStyleSchema = new Schema<ISpriteStyle>(
       width:  { type: Number, default: 1024 },
       height: { type: Number, default: 1024 },
     },
+    removeBackground: { type: Boolean, default: false },
     targetSize:  { type: Number },
     sampler: {
       steps:     { type: Number, default: 20 },
       cfg:       { type: Number, default: 7 },
-      sampler:   { type: String, enum: ['euler', 'dpmpp_2m', 'dpmpp_sde', 'lcm'], default: 'dpmpp_2m' },
-      scheduler: { type: String, enum: ['simple', 'karras', 'normal', 'sgm_uniform'], default: 'karras' },
+      sampler:   { type: String, default: 'dpmpp_2m' },
+      scheduler: { type: String, default: 'karras' },
     },
     workflowTemplate: { type: Schema.Types.Mixed, required: true },
     workflowPatchMap: { type: WorkflowPatchMapSchema, required: true },
+    presetId:         { type: String },
     isDefault:  { type: Boolean, default: false },
     isActive:   { type: Boolean, default: true },
     sortOrder:  { type: Number, default: 0 },

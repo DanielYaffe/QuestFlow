@@ -23,6 +23,8 @@ import { QuestCreate } from './pages/QuestCreate/QuestCreate';
 import { SpriteGenerator } from './pages/SpriteGenerator/SpriteGenerator';
 import { SpriteAnimator } from './pages/SpriteAnimator/SpriteAnimator';
 import { Settings } from './pages/Settings/Settings';
+import { AdminRoute } from './components/AdminRoute';
+import { AdminPage } from './pages/Admin/AdminPage';
 
 export default function App() {
   return (
@@ -52,6 +54,9 @@ export default function App() {
                   <Route path="/sprite-generator" element={<SpriteGenerator />} />
                   <Route path="/sprite-animator" element={<SpriteAnimator />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route element={<AdminRoute />}>
+                    <Route path="/admin" element={<AdminPage />} />
+                  </Route>
                 </Route>
               </Route>
             </Routes>

@@ -3,6 +3,11 @@ import ThemeConfigModel from './themeConfigModel';
 import CheckpointModel from './checkpointModel';
 import LoraModel from './loraModel';
 import SpriteStyleModel from './spriteStyleModel';
+import {
+  WORKFLOW_PIXEL_DMD2_LORA,
+  WORKFLOW_ANIME_HIRES,
+  WORKFLOW_SDXL_STANDARD,
+} from '../config/workflowPresets';
 
 const GAME_THEMES = [
   {
@@ -129,55 +134,12 @@ const LORAS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Workflow templates (ComfyUI API format)
+// Workflow templates — shared with the admin style presets (config/workflowPresets)
 // ---------------------------------------------------------------------------
 
-// CB pixel art — Power LoRA + DMD2 (4-step) + rmbg node
-const WORKFLOW_CB_PIXEL = {
-  '1': { inputs: { ckpt_name: 'pixelArtDiffusionXL_spriteShaper.safetensors' }, class_type: 'CheckpointLoaderSimple', _meta: { title: 'Load Checkpoint' } },
-  '2': {
-    inputs: {
-      PowerLoraLoaderHeaderWidget: { type: 'PowerLoraLoaderHeaderWidget' },
-      model: ['1', 0], clip: ['1', 1],
-      lora_1: { on: true, lora: 'dmd2_sdxl_4step_lora_fp16.safetensors', strength: 1.0, strengthTwo: 1.0 },
-      '➕ Add Lora': '',
-    },
-    class_type: 'Power Lora Loader (rgthree)',
-    _meta: { title: 'Power Lora Loader (rgthree)' },
-  },
-  '3': { inputs: { text: '', clip: ['2', 1] }, class_type: 'CLIPTextEncode', _meta: { title: 'CLIP Text Encode (Positive)' } },
-  '4': { inputs: { text: '', clip: ['2', 1] }, class_type: 'CLIPTextEncode', _meta: { title: 'CLIP Text Encode (Negative)' } },
-  '5': { inputs: { width: 1024, height: 1024, batch_size: 1 }, class_type: 'EmptyLatentImage', _meta: { title: 'Empty Latent Image' } },
-  '6': { inputs: { seed: 0, steps: 4, cfg: 1.2, sampler_name: 'euler', scheduler: 'simple', denoise: 1, model: ['2', 0], positive: ['3', 0], negative: ['4', 0], latent_image: ['5', 0] }, class_type: 'KSampler', _meta: { title: 'KSampler' } },
-  '7': { inputs: { samples: ['6', 0], vae: ['1', 2] }, class_type: 'VAEDecode', _meta: { title: 'VAE Decode' } },
-  '9': { inputs: { images: ['7', 0], rem_mode: 'RMBG-1.4', image_output: 'Save', save_prefix: 'questflow_rmbg' }, class_type: 'easy imageRemBg', _meta: { title: 'Easy Image Remove Background' } },
-};
-
-// Anime — standard Animagine two-pass hires-fix (no LoRA, no DMD2)
-const WORKFLOW_ANIME = {
-  '1':  { inputs: { ckpt_name: 'animagineXL_v3.safetensors' }, class_type: 'CheckpointLoaderSimple', _meta: { title: 'Load Checkpoint' } },
-  '2':  { inputs: { stop_at_clip_layer: -1, clip: ['1', 1] }, class_type: 'CLIPSetLastLayer', _meta: { title: 'CLIP Set Last Layer' } },
-  '3':  { inputs: { text: '', clip: ['2', 0] }, class_type: 'CLIPTextEncode', _meta: { title: 'CLIP Text Encode (Positive)' } },
-  '4':  { inputs: { text: '', clip: ['2', 0] }, class_type: 'CLIPTextEncode', _meta: { title: 'CLIP Text Encode (Negative)' } },
-  '5':  { inputs: { seed: 0, steps: 28, cfg: 7, sampler_name: 'euler', scheduler: 'normal', denoise: 1.0, model: ['1', 0], positive: ['3', 0], negative: ['4', 0], latent_image: ['6', 0] }, class_type: 'KSampler', _meta: { title: 'KSampler (base)' } },
-  '6':  { inputs: { width: 896, height: 1152, batch_size: 1 }, class_type: 'EmptyLatentImage', _meta: { title: 'Empty Latent Image' } },
-  '7':  { inputs: { samples: ['10', 0], vae: ['12', 0] }, class_type: 'VAEDecode', _meta: { title: 'VAE Decode' } },
-  '8':  { inputs: { filename_prefix: 'questflow_anime', images: ['7', 0] }, class_type: 'SaveImage', _meta: { title: 'Save Image' } },
-  '9':  { inputs: { upscale_method: 'nearest-exact', width: 1344, height: 1728, crop: 'disabled', samples: ['5', 0] }, class_type: 'LatentUpscale', _meta: { title: 'Latent Upscale' } },
-  '10': { inputs: { seed: 0, steps: 15, cfg: 7, sampler_name: 'euler', scheduler: 'normal', denoise: 0.55, model: ['1', 0], positive: ['3', 0], negative: ['4', 0], latent_image: ['9', 0] }, class_type: 'KSampler', _meta: { title: 'KSampler (refine)' } },
-  '12': { inputs: { vae_name: 'sdxlVAE_sdxlVAE.safetensors' }, class_type: 'VAELoader', _meta: { title: 'VAE Loader' } },
-};
-
-// Simple SDXL — standard single-pass, no LoRA, no DMD2 (dark_fantasy + none)
-const WORKFLOW_SIMPLE_SDXL = {
-  '1': { inputs: { ckpt_name: 'sd_xl_base_1.0.safetensors' }, class_type: 'CheckpointLoaderSimple', _meta: { title: 'Load Checkpoint' } },
-  '2': { inputs: { text: '', clip: ['1', 1] }, class_type: 'CLIPTextEncode', _meta: { title: 'CLIP Text Encode (Positive)' } },
-  '3': { inputs: { text: '', clip: ['1', 1] }, class_type: 'CLIPTextEncode', _meta: { title: 'CLIP Text Encode (Negative)' } },
-  '4': { inputs: { width: 1024, height: 1024, batch_size: 1 }, class_type: 'EmptyLatentImage', _meta: { title: 'Empty Latent Image' } },
-  '5': { inputs: { seed: 0, steps: 20, cfg: 7, sampler_name: 'dpmpp_2m', scheduler: 'karras', denoise: 1.0, model: ['1', 0], positive: ['2', 0], negative: ['3', 0], latent_image: ['4', 0] }, class_type: 'KSampler', _meta: { title: 'KSampler' } },
-  '6': { inputs: { samples: ['5', 0], vae: ['1', 2] }, class_type: 'VAEDecode', _meta: { title: 'VAE Decode' } },
-  '7': { inputs: { filename_prefix: 'questflow', images: ['6', 0] }, class_type: 'SaveImage', _meta: { title: 'Save Image' } },
-};
+const WORKFLOW_CB_PIXEL = WORKFLOW_PIXEL_DMD2_LORA;
+const WORKFLOW_ANIME = WORKFLOW_ANIME_HIRES;
+const WORKFLOW_SIMPLE_SDXL = WORKFLOW_SDXL_STANDARD;
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -198,6 +160,7 @@ const SPRITE_STYLES = [
     promptPrefix: 'cbstyle, monster creature, pixel art, clean outline,',
     negativePrompt: 'photo, realistic, 3d render, blurry, low quality, text, watermark, signature, jpeg artifacts',
     defaultDimensions: { width: 1024, height: 1024 },
+    removeBackground: true,
     targetSize: 64,
     sampler: { steps: 4, cfg: 1.2, sampler: 'euler' as const, scheduler: 'simple' as const },
     workflowTemplate: WORKFLOW_CB_PIXEL,
@@ -209,7 +172,7 @@ const SPRITE_STYLES = [
       seedNodes: ['6'],
       loraNode: '2',
       samplerParamsNode: '6',
-      fallbackSaveImageSource: '9',
+      saveImageNode: '8',
     },
     isDefault: false,
     sortOrder: 0,
@@ -236,6 +199,7 @@ const SPRITE_STYLES = [
       negativePromptNode: '4',
       dimensionsNode: '6',
       seedNodes: ['5', '10'],
+      saveImageNode: '8',
       // No loraNode — no LoRA in this workflow
       // No samplerParamsNode — params are baked into the workflow
     },
@@ -263,6 +227,7 @@ const SPRITE_STYLES = [
       dimensionsNode: '4',
       seedNodes: ['5'],
       samplerParamsNode: '5',
+      saveImageNode: '7',
     },
     isDefault: false,
     sortOrder: 2,
@@ -288,6 +253,7 @@ const SPRITE_STYLES = [
       dimensionsNode: '4',
       seedNodes: ['5'],
       samplerParamsNode: '5',
+      saveImageNode: '7',
     },
     isDefault: true,
     sortOrder: 3,
@@ -327,14 +293,23 @@ export async function seedThemes(): Promise<void> {
     );
   }
 
-  // $set so workflow templates + prompts are always kept up to date on restart
+  // $setOnInsert only: styles are admin-managed after first boot — re-seeding
+  // with $set would clobber edits made through the admin styles page
   for (const style of SPRITE_STYLES) {
     await SpriteStyleModel.updateOne(
       { styleId: style.styleId },
-      { $set: style },
+      { $setOnInsert: style },
       { upsert: true },
     );
   }
+
+  // One-off migration: pre-existing cb_pixel docs have rembg baked into their
+  // workflow template — mark them removeBackground so the composer keeps
+  // appending the flat-background phrase that gives RMBG a clean cut
+  await SpriteStyleModel.updateOne(
+    { styleId: 'cb_pixel', removeBackground: { $exists: false } },
+    { $set: { removeBackground: true } },
+  );
 
   console.log('[seed] themes, checkpoints, loras, and styles seeded');
 }
