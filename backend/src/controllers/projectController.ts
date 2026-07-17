@@ -5,6 +5,7 @@ import ProjectModel, { ensureInboxProject } from '../models/projectModel';
 import QuestlineModel from '../models/questlineModel';
 import SpriteModel from '../models/spriteModel';
 import CharacterModel from '../models/characterModel';
+import ItemModel from '../models/itemModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { ownsGame } from '../services/gameService';
 import { getPresignedUrl } from '../utils/s3Helper';
@@ -67,8 +68,9 @@ class ProjectController extends BaseController {
     }
   }
 
-  // GET /projects/:id/rewards — every reward across the project's questlines,
-  // shaped for the project dashboard's Items section (kbRef marks KB-grounded ones).
+  // GET /projects/:id/rewards — the project's Item collection (rewards ARE
+  // items now), shaped for the dashboard/Items page. questlineId/Title point at
+  // the most recently updated questline referencing the item ('' when unused).
   async getRewards(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     try {
@@ -82,23 +84,40 @@ class ProjectController extends BaseController {
         return;
       }
 
-      const questlines = await QuestlineModel.find({ projectId: req.params.id })
-        .select('title rewards')
-        .sort({ updatedAt: -1 })
-        .lean();
+      const [items, questlines] = await Promise.all([
+        ItemModel.find({ projectId: req.params.id }).sort({ updatedAt: -1 }).lean(),
+        QuestlineModel.find({ projectId: req.params.id })
+          .select('title itemIds')
+          .sort({ updatedAt: -1 })
+          .lean(),
+      ]);
+
+      const questlineByItem = new Map<string, { id: string; title: string }>();
+      for (const ql of questlines) {
+        for (const itemId of ql.itemIds ?? []) {
+          if (!questlineByItem.has(itemId)) {
+            questlineByItem.set(itemId, { id: ql._id.toString(), title: ql.title });
+          }
+        }
+      }
+
       const rewards = await Promise.all(
-        questlines.flatMap((ql) =>
-          (ql.rewards ?? []).map(async (r) => ({
-            _id:            r._id.toString(),
-            title:          r.title,
-            description:    r.description ?? '',
-            rarity:         r.rarity ?? 'common',
-            imageUrl:       isS3Key(r.imageUrl ?? '') ? await getPresignedUrl(r.imageUrl as string) : (r.imageUrl ?? ''),
-            kbRef:          r.kbRef ?? '',
-            questlineId:    ql._id.toString(),
-            questlineTitle: ql.title,
-          })),
-        ),
+        items.map(async (i) => {
+          const candidates = i.assets?.rawSpriteCandidates ?? [];
+          const spriteKey = i.assets?.snappedSpriteS3Key || candidates[candidates.length - 1] || '';
+          const usedIn = questlineByItem.get(i._id.toString());
+          return {
+            _id:            i._id.toString(),
+            title:          i.name,
+            description:    i.description ?? '',
+            rarity:         i.rarity ?? 'common',
+            imageUrl:       spriteKey && isS3Key(spriteKey) ? await getPresignedUrl(spriteKey) : '',
+            kbRef:          i.kbRef ?? '',
+            itemId:         i._id.toString(),
+            questlineId:    usedIn?.id ?? '',
+            questlineTitle: usedIn?.title ?? '',
+          };
+        }),
       );
       res.json(rewards);
     } catch (error) {
