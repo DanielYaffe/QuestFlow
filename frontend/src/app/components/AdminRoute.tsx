@@ -5,5 +5,5 @@ import { useMe } from '../hooks/useMe';
 export function AdminRoute() {
   const { isAdmin, loading } = useMe();
   if (loading) return null;
-  return isAdmin ? <Outlet /> : <Navigate to="/" replace />;
+  return isAdmin ? <Outlet /> : <Navigate to="/dashboard" replace />;
 }

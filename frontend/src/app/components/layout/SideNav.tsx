@@ -8,7 +8,7 @@ import { useMe } from '../../hooks/useMe';
 import { ProjectSwitcher } from './ProjectSwitcher';
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Home', icon: Home },
+  { path: '/dashboard', label: 'Home', icon: Home },
   { path: '/projects', label: 'Projects', icon: FolderKanban },
   { path: '/games', label: 'Games & KB', icon: BookOpen },
   { path: '/studio', label: 'Studio', icon: Palette },

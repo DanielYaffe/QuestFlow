@@ -13,7 +13,7 @@ export function AuthCallback() {
 
     if (token && refreshToken) {
       loginWithTokens(token, refreshToken);
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     } else {
       navigate('/login?error=google_failed', { replace: true });
     }

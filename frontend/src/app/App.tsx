@@ -1,8 +1,9 @@
 import React from 'react';
 import { Toaster } from 'sonner';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SpriteJobProvider } from './context/SpriteJobContext';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Landing } from './pages/Landing/Landing';
 import { ProjectProvider } from './context/ProjectContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { MainLayout } from './layouts/MainLayout';
@@ -30,6 +31,12 @@ import { Settings } from './pages/Settings/Settings';
 import { AdminRoute } from './components/AdminRoute';
 import { AdminPage } from './pages/Admin/AdminPage';
 
+/** Public landing at "/"; signed-in users go straight to the app. */
+function RootRoute() {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -38,11 +45,12 @@ export default function App() {
           <Toaster position="bottom-right" theme="dark" richColors />
           <HashRouter>
             <Routes>
+              <Route path="/" element={<RootRoute />} />
               <Route path="/login" element={<Login />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<MainLayout />}>
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/projects" element={<Projects />} />
                   <Route path="/projects/:projectId" element={<ProjectDashboard />} />
                   <Route path="/projects/:projectId/characters" element={<Characters />} />

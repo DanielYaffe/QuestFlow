@@ -1,0 +1,4 @@
+/* Display + HUD faces for the public pages (landing / auth).
+   Chakra Petch: angular, game-HUD display face — used sparingly, uppercase.
+   IBM Plex Mono: editor readouts, labels, status bars. */
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
