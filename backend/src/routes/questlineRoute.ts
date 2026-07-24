@@ -354,6 +354,40 @@ questlineRouter.get('/:id/characters', questlineController.getCharacters.bind(qu
 
 /**
  * @swagger
+ * /questlines/{id}/characters:
+ *   post:
+ *     summary: Attach an existing project character to the questline roster
+ *     tags: [Questlines]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [characterId]
+ *             properties:
+ *               characterId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Character attached to the roster
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Not found
+ */
+questlineRouter.post('/:id/characters', questlineController.addCharacter.bind(questlineController));
+
+/**
+ * @swagger
  * /questlines/{id}/characters/{characterId}:
  *   put:
  *     summary: Update a character (owner only)
@@ -386,6 +420,35 @@ questlineRouter.get('/:id/characters', questlineController.getCharacters.bind(qu
  *         description: Not found
  */
 questlineRouter.put('/:id/characters/:characterId', questlineController.updateCharacter.bind(questlineController));
+
+/**
+ * @swagger
+ * /questlines/{id}/characters/{characterId}:
+ *   delete:
+ *     summary: Detach a character from this questline (keeps the project design)
+ *     tags: [Questlines]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: characterId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Character removed from the questline
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Not found
+ */
+questlineRouter.delete('/:id/characters/:characterId', questlineController.removeCharacter.bind(questlineController));
 
 // ── Rewards ─────────────────────────────────────────────────────────────────
 

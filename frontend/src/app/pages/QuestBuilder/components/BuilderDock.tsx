@@ -8,15 +8,23 @@ import {
   Character,
   QuestSummary,
   Reward,
+  attachCharacter,
   createReward,
+  deleteReward,
+  detachCharacter,
   fetchCharacters,
   fetchQuestSummaries,
   fetchRewards,
+  getRewardUsage,
   updateCharacter,
   updateReward,
 } from '../../../api/projectSidebarApi';
-import { deleteCharacter, getCharacterUsage } from '../../../api/characterApi';
-import { ItemRecord, deleteItem, getItemUsage, listItems } from '../../../api/itemApi';
+import {
+  CharacterKind,
+  CharacterRecord,
+  listCharacters,
+} from '../../../api/characterApi';
+import { ItemRecord, listItems } from '../../../api/itemApi';
 import { useProject } from '../../../context/ProjectContext';
 import { ConfirmModal } from '../../../components/shared/ConfirmModal';
 import { GroundedBadge } from '../../../components/shared/GroundedBadge';
@@ -48,20 +56,39 @@ const rarityText: Record<Reward['rarity'], string> = {
 interface BuilderDockProps {
   questlineId: string;
   isOpen: boolean;
+  // Changes whenever the graph is saved; re-fetches the roster so characters/items
+  // attached to nodes appear in the shelves without a reload.
+  refreshSignal?: number;
   onQuestClick: (nodeId: string) => void;
   onCharacterDeleted?: (id: string) => void;
   onRewardDeleted?: (id: string) => void;
 }
 
+// Persistent grid cell that jumps to the Studio to design a new asset. Lives in
+// every picker so "create a new design" is always one click away.
+function StudioNewCard() {
+  const navigate = useNavigate();
+  return (
+    <button
+      onClick={() => navigate('/studio')}
+      className="aspect-square flex flex-col items-center justify-center gap-1.5 border border-dashed border-steel-600 hover:border-volt rounded-md text-steel-500 hover:text-steel-300 transition-colors cursor-pointer"
+      title="Design a new asset in the Studio"
+    >
+      <Palette className="w-5 h-5" />
+      <span className="text-[10px] text-center leading-tight px-1">Design in Studio</span>
+    </button>
+  );
+}
+
 // --- Link-to-studio-item dialog ------------------------------------------------
 
-function ItemLinkDialog({ isOpen, title, onClose, onPick }: {
+function ItemLinkDialog({ isOpen, title, excludeIds, onClose, onPick }: {
   isOpen: boolean;
   title: string;
+  excludeIds: string[];
   onClose: () => void;
   onPick: (item: ItemRecord) => Promise<void>;
 }) {
-  const navigate = useNavigate();
   const { activeProjectId } = useProject();
   const [items, setItems] = useState<ItemRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -76,6 +103,9 @@ function ItemLinkDialog({ isOpen, title, onClose, onPick }: {
       .finally(() => setLoading(false));
   }, [isOpen, activeProjectId]);
 
+  // Only offer designs not already on this questline's roster.
+  const available = items.filter((i) => !excludeIds.includes(i._id));
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="bg-steel-850 border-steel-700 text-steel-100 max-w-lg w-full">
@@ -87,41 +117,130 @@ function ItemLinkDialog({ isOpen, title, onClose, onPick }: {
         </DialogHeader>
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-pulse animate-spin" /></div>
-        ) : items.length === 0 ? (
-          <p className="text-steel-400 text-sm py-2">
-            No item designs yet — create one in the{' '}
-            <button onClick={() => navigate('/studio')} className="text-pulse hover:underline cursor-pointer">Studio</button>.
-          </p>
         ) : (
-          <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">
-            {items.map((item) => (
-              <button
-                key={item._id}
-                disabled={picking !== null}
-                onClick={async () => {
-                  setPicking(item._id);
-                  try { await onPick(item); onClose(); } finally { setPicking(null); }
-                }}
-                className="relative text-left bg-steel-900 border border-steel-700 hover:border-volt rounded-md overflow-hidden transition-colors cursor-pointer disabled:opacity-60"
-                title={item.name}
-              >
-                <div className="aspect-square flex items-center justify-center p-2" style={CHECKER_SM}>
-                  {item.previewUrl
-                    ? <img src={item.previewUrl} alt={item.name} loading="lazy" className="w-full h-full object-contain" />
-                    : <Gem className="w-6 h-6 text-steel-600" />}
-                </div>
-                <div className="px-2 py-1.5 border-t border-steel-700">
-                  <p className="text-steel-200 text-[11px] truncate">{item.name}</p>
-                  <p className={`text-[10px] capitalize ${rarityText[item.rarity]}`}>{item.rarity}</p>
-                </div>
-                {picking === item._id && (
-                  <span className="absolute inset-0 bg-steel-950/60 flex items-center justify-center">
-                    <Loader2 className="w-4 h-4 text-pulse animate-spin" />
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+          <>
+            {available.length === 0 && (
+              <p className="text-steel-400 text-sm pt-1">
+                {items.length === 0
+                  ? 'No item designs yet.'
+                  : 'Every item design is already on this questline.'}
+              </p>
+            )}
+            <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">
+              {available.map((item) => (
+                <button
+                  key={item._id}
+                  disabled={picking !== null}
+                  onClick={async () => {
+                    setPicking(item._id);
+                    try { await onPick(item); onClose(); } finally { setPicking(null); }
+                  }}
+                  className="relative text-left bg-steel-900 border border-steel-700 hover:border-volt rounded-md overflow-hidden transition-colors cursor-pointer disabled:opacity-60"
+                  title={item.name}
+                >
+                  <div className="aspect-square flex items-center justify-center p-2" style={CHECKER_SM}>
+                    {item.previewUrl
+                      ? <img src={item.previewUrl} alt={item.name} loading="lazy" className="w-full h-full object-contain" />
+                      : <Gem className="w-6 h-6 text-steel-600" />}
+                  </div>
+                  <div className="px-2 py-1.5 border-t border-steel-700">
+                    <p className="text-steel-200 text-[11px] truncate">{item.name}</p>
+                    <p className={`text-[10px] capitalize ${rarityText[item.rarity]}`}>{item.rarity}</p>
+                  </div>
+                  {picking === item._id && (
+                    <span className="absolute inset-0 bg-steel-950/60 flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 text-pulse animate-spin" />
+                    </span>
+                  )}
+                </button>
+              ))}
+              <StudioNewCard />
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Link-to-studio-character dialog -------------------------------------------
+
+function CharacterLinkDialog({ isOpen, kind, excludeIds, onClose, onPick }: {
+  isOpen: boolean;
+  kind: CharacterKind;
+  excludeIds: string[];
+  onClose: () => void;
+  onPick: (character: CharacterRecord) => Promise<void>;
+}) {
+  const { activeProjectId } = useProject();
+  const [characters, setCharacters] = useState<CharacterRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [picking, setPicking] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoading(true);
+    listCharacters({ projectId: activeProjectId ?? undefined, kind })
+      .then(setCharacters)
+      .catch(() => setCharacters([]))
+      .finally(() => setLoading(false));
+  }, [isOpen, activeProjectId, kind]);
+
+  const noun = kind === 'monster' ? 'mob' : 'character';
+  const Fallback = kind === 'monster' ? Skull : Users;
+  // Only offer designs not already on this questline's roster.
+  const available = characters.filter((c) => !excludeIds.includes(c._id));
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="bg-steel-850 border-steel-700 text-steel-100 max-w-lg w-full">
+        <DialogHeader>
+          <DialogTitle className="text-steel-100 text-lg flex items-center gap-2">
+            <Fallback className="w-5 h-5 text-pulse" />
+            Add {noun} from Studio
+          </DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-pulse animate-spin" /></div>
+        ) : (
+          <>
+            {available.length === 0 && (
+              <p className="text-steel-400 text-sm pt-1">
+                {characters.length === 0
+                  ? `No ${noun} designs yet.`
+                  : `Every ${noun} design is already on this questline.`}
+              </p>
+            )}
+            <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">
+              {available.map((char) => (
+                <button
+                  key={char._id}
+                  disabled={picking !== null}
+                  onClick={async () => {
+                    setPicking(char._id);
+                    try { await onPick(char); onClose(); } finally { setPicking(null); }
+                  }}
+                  className="relative text-left bg-steel-900 border border-steel-700 hover:border-volt rounded-md overflow-hidden transition-colors cursor-pointer disabled:opacity-60"
+                  title={char.name}
+                >
+                  <div className="aspect-square flex items-center justify-center p-2" style={CHECKER_SM}>
+                    {char.previewUrl
+                      ? <img src={char.previewUrl} alt={char.name} loading="lazy" className="w-full h-full object-contain" />
+                      : <Fallback className="w-6 h-6 text-steel-600" />}
+                  </div>
+                  <div className="px-2 py-1.5 border-t border-steel-700">
+                    <p className="text-steel-200 text-[11px] truncate">{char.name}</p>
+                  </div>
+                  {picking === char._id && (
+                    <span className="absolute inset-0 bg-steel-950/60 flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 text-pulse animate-spin" />
+                    </span>
+                  )}
+                </button>
+              ))}
+              <StudioNewCard />
+            </div>
+          </>
         )}
       </DialogContent>
     </Dialog>
@@ -130,7 +249,7 @@ function ItemLinkDialog({ isOpen, title, onClose, onPick }: {
 
 // --- Main dock ------------------------------------------------------------------
 
-export function BuilderDock({ questlineId, isOpen, onQuestClick, onCharacterDeleted, onRewardDeleted }: BuilderDockProps) {
+export function BuilderDock({ questlineId, isOpen, refreshSignal, onQuestClick, onCharacterDeleted, onRewardDeleted }: BuilderDockProps) {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<DockTab>('quests');
@@ -147,24 +266,38 @@ export function BuilderDock({ questlineId, isOpen, onQuestClick, onCharacterDele
   const [draftB, setDraftB] = useState(''); // background | description
   const [savingDetail, setSavingDetail] = useState(false);
 
-  // Deletion
-  const [pendingCharDelete, setPendingCharDelete] = useState<Character | null>(null);
-  const [charDeleteUsage, setCharDeleteUsage] = useState<{ nodeCount: number; questlineCount: number } | null>(null);
-  const [pendingRewardDelete, setPendingRewardDelete] = useState<Reward | null>(null);
-  const [rewardDeleteUsage, setRewardDeleteUsage] = useState<{ nodeCount: number; questlineCount: number } | null>(null);
+  // Remove-from-questline (detach only — the project design in the Studio is kept;
+  // a real delete lives on the Project/Studio pages, not here).
+  const [pendingCharRemove, setPendingCharRemove] = useState<Character | null>(null);
+  const [pendingRewardRemove, setPendingRewardRemove] = useState<Reward | null>(null);
+  const [rewardRemoveUsage, setRewardRemoveUsage] = useState<{ nodeCount: number } | null>(null);
 
-  // "Add reward from Studio" picker
+  // "Add from Studio" pickers
   const [addFromStudioOpen, setAddFromStudioOpen] = useState(false);
+  const [addCharKind, setAddCharKind] = useState<CharacterKind | null>(null);
 
   const refreshRewards = useCallback(() => {
     fetchRewards(questlineId).then(setRewards).catch(console.error);
   }, [questlineId]);
 
-  useEffect(() => {
+  const refreshCharacters = useCallback(() => {
     fetchCharacters(questlineId).then(setCharacters).catch(console.error);
+  }, [questlineId]);
+
+  useEffect(() => {
+    refreshCharacters();
     fetchQuestSummaries(questlineId).then(setQuestSummaries).catch(console.error);
     refreshRewards();
-  }, [questlineId, refreshRewards]);
+  }, [questlineId, refreshCharacters, refreshRewards]);
+
+  // Re-fetch the roster after each graph save so node-attached characters/items
+  // (reconciled server-side in saveGraph) show up in the shelves live.
+  useEffect(() => {
+    if (!refreshSignal) return;
+    refreshCharacters();
+    refreshRewards();
+    fetchQuestSummaries(questlineId).then(setQuestSummaries).catch(console.error);
+  }, [refreshSignal, questlineId, refreshCharacters, refreshRewards]);
 
   const npcs = characters.filter((c) => c.kind !== 'monster');
   const mobs = characters.filter((c) => c.kind === 'monster');
@@ -200,72 +333,70 @@ export function BuilderDock({ questlineId, isOpen, onQuestClick, onCharacterDele
     }
   };
 
-  // ── Deletion with dependent-node warning ─────────────────────────────────────
-  const requestCharDelete = (c: Character) => {
-    setPendingCharDelete(c);
-    setCharDeleteUsage(null);
-    getCharacterUsage(c.id)
-      .then(setCharDeleteUsage)
-      .catch(() => setCharDeleteUsage({ nodeCount: 0, questlineCount: 0 }));
-  };
+  // ── Remove from this questline (detach, not delete) ──────────────────────────
+  // Node usage for characters is already known from the loaded roster (questIds =
+  // node ids the character appears in), so no lookup is needed. Rewards need a
+  // questline-scoped usage count.
+  const requestCharRemove = (c: Character) => setPendingCharRemove(c);
 
-  const confirmCharDelete = async () => {
-    if (!pendingCharDelete) return;
-    const target = pendingCharDelete;
-    setPendingCharDelete(null);
-    setCharDeleteUsage(null);
+  const confirmCharRemove = async () => {
+    if (!pendingCharRemove) return;
+    const target = pendingCharRemove;
+    setPendingCharRemove(null);
     if (selected?.id === target.id) setSelected(null);
     try {
-      await deleteCharacter(target.id);
+      await detachCharacter(questlineId, target.id);
       setCharacters((prev) => prev.filter((c) => c.id !== target.id));
-      onCharacterDeleted?.(target.id);
-      toast.success('Character deleted');
+      onCharacterDeleted?.(target.id); // strips node references from the live graph
+      toast.success('Removed from questline');
     } catch {
-      toast.error('Failed to delete character');
+      toast.error('Failed to remove character');
     }
   };
 
-  const requestRewardDelete = (r: Reward) => {
-    setPendingRewardDelete(r);
-    setRewardDeleteUsage(null);
-    getItemUsage(r.id)
-      .then(setRewardDeleteUsage)
-      .catch(() => setRewardDeleteUsage({ nodeCount: 0, questlineCount: 0 }));
+  const requestRewardRemove = (r: Reward) => {
+    setPendingRewardRemove(r);
+    setRewardRemoveUsage(null);
+    getRewardUsage(questlineId, r.id)
+      .then(setRewardRemoveUsage)
+      .catch(() => setRewardRemoveUsage({ nodeCount: 0 }));
   };
 
-  const confirmRewardDelete = async () => {
-    if (!pendingRewardDelete) return;
-    const target = pendingRewardDelete;
-    setPendingRewardDelete(null);
-    setRewardDeleteUsage(null);
+  const confirmRewardRemove = async () => {
+    if (!pendingRewardRemove) return;
+    const target = pendingRewardRemove;
+    setPendingRewardRemove(null);
+    setRewardRemoveUsage(null);
     if (selected?.id === target.id) setSelected(null);
     try {
-      // Rewards ARE studio items — deleting removes the item everywhere,
-      // exactly like character deletion.
-      await deleteItem(target.id);
+      // Detach from this questline only — the Item design stays in the project.
+      await deleteReward(questlineId, target.id);
       setRewards((prev) => prev.filter((r) => r.id !== target.id));
-      onRewardDeleted?.(target.id);
-      toast.success('Item deleted');
+      onRewardDeleted?.(target.id); // strips node references from the live graph
+      toast.success('Removed from questline');
     } catch {
-      toast.error('Failed to delete item');
+      toast.error('Failed to remove item');
     }
   };
 
-  const charDeleteMessage = !pendingCharDelete
-    ? ''
-    : charDeleteUsage === null
-      ? `Checking where "${pendingCharDelete.name}" is used…`
-      : charDeleteUsage.nodeCount > 0
-        ? `"${pendingCharDelete.name}" is referenced by ${charDeleteUsage.nodeCount} quest node${charDeleteUsage.nodeCount === 1 ? '' : 's'}${charDeleteUsage.questlineCount > 1 ? ` across ${charDeleteUsage.questlineCount} questlines` : ''}. Deleting it will permanently remove the character and those references. This cannot be undone.`
-        : `"${pendingCharDelete.name}" will be permanently deleted. This cannot be undone.`;
+  const usedInQuests = (count: number) =>
+    ` It's used in ${count} quest${count === 1 ? '' : 's'} here — those references are cleared.`;
 
-  const rewardDeleteMessage = !pendingRewardDelete
+  const charRemoveMessage = !pendingCharRemove
     ? ''
-    : rewardDeleteUsage === null
-      ? `Checking where "${pendingRewardDelete.title}" is used…`
-      : rewardDeleteUsage.nodeCount > 0
-        ? `"${pendingRewardDelete.title}" is referenced by ${rewardDeleteUsage.nodeCount} quest node${rewardDeleteUsage.nodeCount === 1 ? '' : 's'}${rewardDeleteUsage.questlineCount > 1 ? ` across ${rewardDeleteUsage.questlineCount} questlines` : ''}. Deleting it will permanently remove the item and those references. This cannot be undone.`
-        : `"${pendingRewardDelete.title}" will be permanently deleted from the Studio and every questline. This cannot be undone.`;
+    : `Remove "${pendingCharRemove.name}" from this questline?${
+        pendingCharRemove.questIds?.length ? usedInQuests(pendingCharRemove.questIds.length) : ''
+      } It stays in your project — delete it for good from the Studio.`;
+
+  const rewardRemoveMessage = !pendingRewardRemove
+    ? ''
+    : `Remove "${pendingRewardRemove.title}" from this questline?${
+        rewardRemoveUsage === null
+          ? ''
+          : rewardRemoveUsage.nodeCount > 0
+            ? usedInQuests(rewardRemoveUsage.nodeCount)
+            : ''
+      } It stays in your project — delete it for good from the Studio.`;
 
   // ── Attach an existing studio item as a reward ───────────────────────────────
   const handleAddRewardFromItem = async (item: ItemRecord) => {
@@ -275,6 +406,17 @@ export function BuilderDock({ questlineId, isOpen, onQuestClick, onCharacterDele
       toast.success(`${item.name} added to this questline`);
     } catch {
       toast.error('Failed to add item');
+    }
+  };
+
+  // ── Attach an existing studio character/mob to the roster ────────────────────
+  const handleAddCharacterFromStudio = async (character: CharacterRecord) => {
+    try {
+      await attachCharacter(questlineId, character._id);
+      refreshCharacters();
+      toast.success(`${character.name} added to this questline`);
+    } catch {
+      toast.error('Failed to add character');
     }
   };
 
@@ -316,9 +458,9 @@ export function BuilderDock({ questlineId, isOpen, onQuestClick, onCharacterDele
           <Palette className="w-3 h-3" />
         </button>
         <button
-          onClick={() => requestCharDelete(char)}
+          onClick={() => requestCharRemove(char)}
           className="w-5 h-5 flex items-center justify-center bg-steel-950/80 hover:bg-steel-800 text-steel-300 hover:text-red-400 rounded transition-colors cursor-pointer"
-          title="Delete"
+          title="Remove from questline"
         >
           <Trash2 className="w-3 h-3" />
         </button>
@@ -357,12 +499,12 @@ export function BuilderDock({ questlineId, isOpen, onQuestClick, onCharacterDele
             </p>
           )}
           <button
-            onClick={() => navigate('/studio')}
+            onClick={() => setAddCharKind(activeTab === 'mobs' ? 'monster' : 'npc')}
             className="w-28 shrink-0 flex flex-col items-center justify-center gap-1 border border-dashed border-steel-600 hover:border-steel-400 rounded-md text-steel-500 hover:text-steel-300 transition-colors cursor-pointer"
-            title="Design in Studio"
+            title={`Add a studio ${activeTab === 'mobs' ? 'mob' : 'character'} to this questline`}
           >
-            <Palette className="w-4 h-4" />
-            <span className="text-[10px]">Studio</span>
+            <Plus className="w-4 h-4" />
+            <span className="text-[10px]">From Studio</span>
           </button>
         </>
       );
@@ -403,9 +545,9 @@ export function BuilderDock({ questlineId, isOpen, onQuestClick, onCharacterDele
                 <Palette className="w-3 h-3" />
               </button>
               <button
-                onClick={() => requestRewardDelete(reward)}
+                onClick={() => requestRewardRemove(reward)}
                 className="w-5 h-5 flex items-center justify-center bg-steel-950/80 hover:bg-steel-800 text-steel-300 hover:text-red-400 rounded transition-colors cursor-pointer"
-                title="Delete"
+                title="Remove from questline"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -429,26 +571,34 @@ export function BuilderDock({ questlineId, isOpen, onQuestClick, onCharacterDele
       <ItemLinkDialog
         isOpen={addFromStudioOpen}
         title="Add item from Studio"
+        excludeIds={rewards.map((r) => r.itemId ?? r.id)}
         onClose={() => setAddFromStudioOpen(false)}
         onPick={handleAddRewardFromItem}
       />
-      <ConfirmModal
-        isOpen={pendingCharDelete !== null}
-        title="Delete character?"
-        message={charDeleteMessage}
-        confirmLabel="Delete"
-        danger
-        onConfirm={confirmCharDelete}
-        onCancel={() => { setPendingCharDelete(null); setCharDeleteUsage(null); }}
+      <CharacterLinkDialog
+        isOpen={addCharKind !== null}
+        kind={addCharKind ?? 'npc'}
+        excludeIds={(addCharKind === 'monster' ? mobs : npcs).map((c) => c.id)}
+        onClose={() => setAddCharKind(null)}
+        onPick={handleAddCharacterFromStudio}
       />
       <ConfirmModal
-        isOpen={pendingRewardDelete !== null}
-        title="Delete reward?"
-        message={rewardDeleteMessage}
-        confirmLabel="Delete"
+        isOpen={pendingCharRemove !== null}
+        title="Remove from questline?"
+        message={charRemoveMessage}
+        confirmLabel="Remove"
         danger
-        onConfirm={confirmRewardDelete}
-        onCancel={() => { setPendingRewardDelete(null); setRewardDeleteUsage(null); }}
+        onConfirm={confirmCharRemove}
+        onCancel={() => setPendingCharRemove(null)}
+      />
+      <ConfirmModal
+        isOpen={pendingRewardRemove !== null}
+        title="Remove from questline?"
+        message={rewardRemoveMessage}
+        confirmLabel="Remove"
+        danger
+        onConfirm={confirmRewardRemove}
+        onCancel={() => { setPendingRewardRemove(null); setRewardRemoveUsage(null); }}
       />
 
       {/* Detail strip */}

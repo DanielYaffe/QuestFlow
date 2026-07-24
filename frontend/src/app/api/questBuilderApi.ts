@@ -66,3 +66,9 @@ export async function saveQuestlineGraph(
 ): Promise<void> {
   await api.put(`/questlines/${questlineId}/graph`, { nodes, edges });
 }
+
+// Delete only the questline document. Project-scoped characters and items are
+// referenced by id and are left untouched — they live on in the project.
+export async function deleteQuestline(questlineId: string): Promise<void> {
+  await api.delete(`/questlines/${questlineId}`);
+}

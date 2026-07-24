@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Loader2, Workflow, Users, Inbox, FolderOpen, ChevronRight, Gift } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, Workflow, Users, Inbox, FolderOpen, ChevronRight, Gift, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProjectRecord, ProjectReward, getProject, fetchProjectRewards } from '../../api/projectApi';
-import { fetchQuestlines, QuestlineSummary } from '../../api/questBuilderApi';
+import { fetchQuestlines, QuestlineSummary, deleteQuestline } from '../../api/questBuilderApi';
 import { listCharacters, CharacterRecord } from '../../api/characterApi';
 import { useProject } from '../../context/ProjectContext';
+import { ConfirmModal } from '../../components/shared/ConfirmModal';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -31,6 +32,24 @@ export function ProjectDashboard() {
   const [characters, setCharacters] = useState<CharacterRecord[]>([]);
   const [rewards, setRewards] = useState<ProjectReward[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<QuestlineSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+    setDeleting(true);
+    try {
+      await deleteQuestline(target._id);
+      setQuestlines((prev) => prev.filter((q) => q._id !== target._id));
+      toast.success('Questline deleted');
+      setPendingDelete(null);
+    } catch {
+      toast.error('Failed to delete questline');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Drilling into a project makes it the active project, so scoped operations
   // (new quest, sprite generation, exports) target it via the X-Project-Id header.
@@ -191,8 +210,15 @@ export function ProjectDashboard() {
                 <div
                   key={ql._id}
                   onClick={() => navigate(`/quest-builder/${ql._id}`)}
-                  className="bg-steel-850 border border-steel-700 rounded-md overflow-hidden hover:border-steel-500 hover:shadow-lg hover:shadow-black/30 transition-all cursor-pointer group"
+                  className="relative bg-steel-850 border border-steel-700 rounded-md overflow-hidden hover:border-steel-500 hover:shadow-lg hover:shadow-black/30 transition-all cursor-pointer group"
                 >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setPendingDelete(ql); }}
+                    className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center bg-steel-950/80 hover:bg-red-950/80 text-steel-300 hover:text-red-400 rounded-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                    title="Delete questline"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                   <div
                     className="h-24 bg-steel-900 border-b border-steel-700"
                     style={{ boxShadow: `inset 0 3px 0 0 ${CARD_ACCENTS[i % CARD_ACCENTS.length]}` }}
@@ -209,6 +235,20 @@ export function ProjectDashboard() {
           )}
         </section>
       </main>
+
+      <ConfirmModal
+        isOpen={pendingDelete !== null}
+        title="Delete questline?"
+        message={
+          pendingDelete
+            ? `"${pendingDelete.title}" will be permanently deleted. Its characters, mobs, and items stay in the project — only the questline is removed. This cannot be undone.`
+            : ''
+        }
+        confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+        danger
+        onConfirm={confirmDelete}
+        onCancel={() => { if (!deleting) setPendingDelete(null); }}
+      />
     </div>
   );
 }

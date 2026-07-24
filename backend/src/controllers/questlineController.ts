@@ -277,24 +277,45 @@ class QuestlineController extends BaseController {
         incomingPreQuestByNodeId.set(edge.target, [...current, sourceQuestId]);
       });
 
+      // Reconcile node references into the questline roster. Attaching a
+      // character/item to a node must also surface it in the Builder's shelves
+      // and in exports/AI context, which read characterIds/itemIds directly.
+      // Additive-only (see docs/adr/0001). We use an atomic $addToSet rather than
+      // read-modify-write so a concurrent "add from Studio" can't be clobbered by
+      // a stale copy of the array read at the top of this handler.
+      const nodeCharacterIds = new Set<string>();
+      const nodeItemIds = new Set<string>();
+      (nodes ?? []).forEach((n) => {
+        (n.data.npcIds ?? []).forEach((id) => nodeCharacterIds.add(id));
+        (n.data.monsterIds ?? []).forEach((id) => nodeCharacterIds.add(id));
+        (n.data.rewardIds ?? []).forEach((id) => nodeItemIds.add(id));
+      });
+
+      const addToSet: Record<string, unknown> = {};
+      if (nodeCharacterIds.size) addToSet.characterIds = { $each: [...nodeCharacterIds] };
+      if (nodeItemIds.size) addToSet.itemIds = { $each: [...nodeItemIds] };
+
       await QuestlineModel.findByIdAndUpdate(req.params.id, {
-        nodes: (nodes ?? []).map((n) => ({
-          nodeId:     n.id,
-          type:       n.type ?? 'questNode',
-          title:      n.data.title,
-          body:       n.data.body,
-          variant:    n.data.variant ?? 'story',
-          npcIds:     n.data.npcIds     ?? [],
-          monsterIds: n.data.monsterIds ?? [],
-          rewardIds:  n.data.rewardIds  ?? [],
-          exportFields: normalizeExportFields(n.id, n.data.exportFields, incomingPreQuestByNodeId.get(n.id)),
-          templateValues: n.data.templateValues ?? {},
-        })),
-        edges: (edges ?? []).map((e) => ({
-          edgeId: e.id,
-          source: e.source,
-          target: e.target,
-        })),
+        $set: {
+          nodes: (nodes ?? []).map((n) => ({
+            nodeId:     n.id,
+            type:       n.type ?? 'questNode',
+            title:      n.data.title,
+            body:       n.data.body,
+            variant:    n.data.variant ?? 'story',
+            npcIds:     n.data.npcIds     ?? [],
+            monsterIds: n.data.monsterIds ?? [],
+            rewardIds:  n.data.rewardIds  ?? [],
+            exportFields: normalizeExportFields(n.id, n.data.exportFields, incomingPreQuestByNodeId.get(n.id)),
+            templateValues: n.data.templateValues ?? {},
+          })),
+          edges: (edges ?? []).map((e) => ({
+            edgeId: e.id,
+            source: e.source,
+            target: e.target,
+          })),
+        },
+        ...(Object.keys(addToSet).length ? { $addToSet: addToSet } : {}),
       });
 
       res.json({ message: 'Graph saved' });
@@ -416,6 +437,75 @@ class QuestlineController extends BaseController {
         })),
       );
       res.json(shaped);
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  }
+
+  // POST /questlines/:id/characters — { characterId } attaches an existing
+  // project Character to this questline's roster (characterIds), without pinning
+  // it to any node. Mirrors createReward's attach branch.
+  async addCharacter(req: AuthRequest, res: Response) {
+    const userId = req.user?._id;
+    try {
+      const questline = await QuestlineModel.findById(req.params.id);
+      if (!questline) { res.status(404).json({ error: 'Questline not found' }); return; }
+      if (questline.ownerId !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+      const { characterId } = req.body as { characterId?: string };
+      if (!characterId?.trim()) { res.status(400).json({ error: 'characterId is required' }); return; }
+
+      const character = await CharacterModel.findOne({ _id: characterId, ownerId: userId }).lean();
+      if (!character) { res.status(404).json({ error: 'Character not found' }); return; }
+
+      const id = character._id.toString();
+      // Atomic add so a concurrent graph autosave can't clobber the roster.
+      await QuestlineModel.updateOne({ _id: req.params.id }, { $addToSet: { characterIds: id } });
+
+      // Node ids this character already appears in (usually none right after add).
+      const questIds: string[] = [];
+      for (const n of questline.nodes ?? []) {
+        if ([...(n.npcIds ?? []), ...(n.monsterIds ?? [])].includes(id)) questIds.push(n.nodeId);
+      }
+
+      res.status(201).json({
+        _id:        id,
+        name:       character.name,
+        kind:       character.kind,
+        appearance: character.appearance ?? '',
+        background: character.lore ?? '',
+        imageUrl:   await signCharacterPreview(character),
+        questIds,
+        kbRef:      character.kbRef ?? '',
+      });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  }
+
+  // DELETE /questlines/:id/characters/:characterId — detaches the Character from
+  // THIS questline (characterIds + node npc/monster lists). The Character doc
+  // lives on; global deletion is DELETE /characters/:id. Atomic $pull so it is
+  // race-safe against a concurrent graph autosave.
+  async removeCharacter(req: AuthRequest, res: Response) {
+    const userId = req.user?._id;
+    try {
+      const questline = await QuestlineModel.findById(req.params.id).select('ownerId').lean();
+      if (!questline) { res.status(404).json({ error: 'Questline not found' }); return; }
+      if (questline.ownerId !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+      const characterId = String(req.params.characterId);
+      await QuestlineModel.updateOne(
+        { _id: req.params.id, ownerId: userId },
+        {
+          $pull: {
+            characterIds: characterId,
+            'nodes.$[].npcIds': characterId,
+            'nodes.$[].monsterIds': characterId,
+          },
+        },
+      );
+      res.json({ message: 'Character removed from questline' });
     } catch (error) {
       this.handleError(res, error);
     }

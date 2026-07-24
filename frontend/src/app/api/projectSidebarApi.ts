@@ -55,6 +55,27 @@ export async function fetchRewards(questlineId: string): Promise<Reward[]> {
   return data.map((r: Reward & { _id?: string }) => ({ ...r, id: r._id ?? r.id }));
 }
 
+// Attach an existing project character/monster to this questline's roster.
+export async function attachCharacter(
+  questlineId: string,
+  characterId: string,
+): Promise<Character> {
+  const { data } = await api.post<Character & { _id?: string }>(
+    `/questlines/${questlineId}/characters`,
+    { characterId },
+  );
+  return { ...data, id: data._id ?? data.id };
+}
+
+// Detach a character from this questline (roster + node references). The
+// project-scoped design is kept; only this questline's link is removed.
+export async function detachCharacter(
+  questlineId: string,
+  characterId: string,
+): Promise<void> {
+  await api.delete(`/questlines/${questlineId}/characters/${characterId}`);
+}
+
 export async function updateCharacter(
   questlineId: string,
   characterId: string,

@@ -39,8 +39,8 @@ import {
   incomingPreQuestForNode,
   syncNodePreQuestFromEdges,
 } from "./hooks/useQuestGraphSync";
-import { fetchRewards } from "../../api/projectSidebarApi";
 import { listCharacters } from "../../api/characterApi";
+import { listItems } from "../../api/itemApi";
 import {
   fetchQuestlineMeta,
   saveQuestlineGraph,
@@ -169,6 +169,10 @@ export function QuestBuilder() {
   const [isAiEditOpen, setIsAiEditOpen] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  // Bumped after every successful graph save so the bottom dock re-fetches its
+  // roster — node-attached characters/items are reconciled server-side on save,
+  // and this surfaces them in the shelves without a page reload.
+  const [savedVersion, setSavedVersion] = useState(0);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -266,15 +270,17 @@ export function QuestBuilder() {
       .catch(() => {});
   }, [projectId]);
 
-  // Reward name map stays sourced from the questline
+  // Reward name map is sourced from the project item collection (mirrors the
+  // character map) so a node's freshly-picked item resolves its name immediately,
+  // even before it's reconciled into the questline roster on save.
   useEffect(() => {
-    if (!questlineId) return;
-    fetchRewards(questlineId)
-      .then((rwds) =>
-        setRewardNames(Object.fromEntries(rwds.map((r) => [r.id, r.title]))),
+    if (!projectId) return;
+    listItems({ projectId })
+      .then((items) =>
+        setRewardNames(Object.fromEntries(items.map((i) => [i._id, i.name]))),
       )
       .catch(() => {});
-  }, [questlineId]);
+  }, [projectId]);
 
   // Populate graph once data is fetched and apply default horizontal layout
   useEffect(() => {
@@ -599,6 +605,7 @@ export function QuestBuilder() {
           edgesRef.current,
         );
         setHasUnsavedChanges(false);
+        setSavedVersion((v) => v + 1);
       } catch {
         // will retry on next change
       } finally {
@@ -858,6 +865,7 @@ export function QuestBuilder() {
       <BuilderDock
         questlineId={questlineId}
         isOpen={isLeftSidebarOpen}
+        refreshSignal={savedVersion}
         onQuestClick={focusNode}
         onCharacterDeleted={removeCharacterFromGraph}
         onRewardDeleted={removeRewardFromGraph}

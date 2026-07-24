@@ -5,8 +5,9 @@ import { toast } from 'sonner';
 import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 import { motion, AnimatePresence } from 'motion/react';
 import { NodeVariant, QuestExportFields, QuestNodeData } from '../../../types/quest';
-import { fetchRewards, Reward } from '../../../api/projectSidebarApi';
+import { Reward } from '../../../api/projectSidebarApi';
 import { listCharacters, CharacterRecord } from '../../../api/characterApi';
+import { listItems } from '../../../api/itemApi';
 import { requestAiEdit } from '../../../api/questAiEditApi';
 import { CharacterPicker } from './CharacterPicker';
 import { TemplateFieldsEditor, getTemplateFieldSchema } from './TemplateFieldsEditor';
@@ -435,7 +436,9 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
     }
   }, [node]);
 
-  // Fetch project characters + questline rewards when sidebar opens
+  // Fetch project characters + project items when sidebar opens. Both pickers pull
+  // from the project (the design source of truth), not just this questline — picking
+  // one attaches it to the node, and the graph save reconciles it into the roster.
   useEffect(() => {
     if (!isOpen) return;
     setCharsLoaded(false);
@@ -447,9 +450,20 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       setCharacters([]); setCharsLoaded(true);
     }
     setRewardsLoaded(false);
-    if (questlineId) {
-      fetchRewards(questlineId)
-        .then((r) => { setRewards(r); setRewardsLoaded(true); })
+    if (projectId) {
+      listItems({ projectId })
+        .then((items) => {
+          setRewards(items.map((i) => ({
+            id: i._id,
+            title: i.name,
+            description: i.description,
+            rarity: i.rarity,
+            imageUrl: i.previewUrl,
+            kbRef: i.kbRef,
+            itemId: i._id,
+          })));
+          setRewardsLoaded(true);
+        })
         .catch(() => { setRewards([]); setRewardsLoaded(true); });
     } else {
       setRewards([]); setRewardsLoaded(true);
