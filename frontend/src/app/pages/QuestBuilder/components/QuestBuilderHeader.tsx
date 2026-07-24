@@ -1,5 +1,5 @@
 import { Node } from '@xyflow/react';
-import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelBottom, Loader2, Check, Wand2 } from 'lucide-react';
+import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelBottom, Loader2, Check, Wand2, Undo2, Redo2 } from 'lucide-react';
 import { QuestNodeData } from '../../../types/quest';
 
 interface QuestBuilderHeaderProps {
@@ -10,13 +10,17 @@ interface QuestBuilderHeaderProps {
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
   onExport: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   isAiEditOpen: boolean;
   onOpenAiEdit: () => void;
   isSaving: boolean;
   hasUnsavedChanges: boolean;
 }
 
-export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, canUndo, canRedo, onUndo, onRedo, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
   return (
     <header className="bg-steel-850 border-b border-steel-700 px-6 py-4 flex items-center justify-between z-10">
       <div className="flex items-center gap-3">
@@ -47,6 +51,27 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
             AI Assistant
           </button>
         )}
+
+        {/* Undo / redo history */}
+        <div className="flex items-center bg-steel-800 border border-steel-600 rounded-lg overflow-hidden">
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo last change"
+            className="px-3 py-2 flex items-center text-steel-300 hover:text-steel-100 hover:bg-steel-700 transition-colors disabled:text-steel-600 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+          >
+            <Undo2 className="w-4 h-4" />
+          </button>
+          <div className="w-px h-6 bg-steel-700" />
+          <button
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="Redo"
+            className="px-3 py-2 flex items-center text-steel-300 hover:text-steel-100 hover:bg-steel-700 transition-colors disabled:text-steel-600 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+          >
+            <Redo2 className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* Layout direction toggle */}
         <div className="flex items-center bg-steel-800 border border-steel-600 rounded-lg overflow-hidden">
@@ -98,7 +123,7 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
           }`}
         >
           <Wand2 className="w-4 h-4" />
-          AI Edit
+          AI Questline Edit
         </button>
 
         <button

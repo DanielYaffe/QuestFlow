@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useReducer } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -24,7 +24,6 @@ import { BuilderDock } from './components/BuilderDock';
 import { AISidebar } from '../../components/shared/AISidebar';
 import { NodeEditSidebar, NodeSnapshot } from './components/NodeEditSidebar';
 import { getLayoutedElements } from '../../utils/layoutUtils';
-import { QuestNodeData, NodeVariant } from '../../types/quest';
 import { useQuestlineData } from './hooks/useQuestlineData';
 import { useProject } from '../../context/ProjectContext';
 import {
@@ -40,6 +39,7 @@ import { fetchQuestlineMeta, saveQuestlineGraph } from '../../api/questBuilderAp
 import { ExportDialog } from './components/ExportDialog';
 import { AIEditPanel } from './components/AIEditPanel';
 import { AIChange } from '../../api/questAiEditApi';
+import { NodeVariant } from '@/types/quest';
 
 const nodeTypes = {
   questNode: QuestNode,
@@ -92,6 +92,8 @@ function FocusNodeController({ target }: { target: { nodeId: string; nonce: numb
 
 type PendingNode = { sourceNodeId: string; position: 'top' | 'bottom' | 'left' | 'right' };
 
+type GraphSnapshot = { nodes: QuestFlowNode[]; edges: Edge[] };
+
 export function QuestBuilder() {
   const { questlineId = '' } = useParams<{ questlineId: string }>();
   const navigate = useNavigate();
@@ -135,6 +137,55 @@ export function QuestBuilder() {
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
   useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+
+  // ── Undo / redo history ──────────────────────────────────────────────────
+  // Each entry is a full graph snapshot taken *before* a discrete content change
+  // (node add/delete, node edit, AI apply). Refs hold the stacks so undo/redo stay
+  // correct under rapid clicks; a version counter forces the toolbar buttons to re-render.
+  const undoStackRef = useRef<GraphSnapshot[]>([]);
+  const redoStackRef = useRef<GraphSnapshot[]>([]);
+  const [, bumpHistory] = useReducer((x: number) => x + 1, 0);
+
+  const pushHistory = useCallback(() => {
+    undoStackRef.current = [...undoStackRef.current, { nodes: nodesRef.current, edges: edgesRef.current }];
+    redoStackRef.current = [];
+    bumpHistory();
+  }, []);
+
+  // Eagerly sync the refs before setState so two rapid undo/redo clicks read fresh
+  // values (nodesRef/edgesRef are otherwise only updated by an effect after render).
+  const restoreSnapshot = useCallback((snap: GraphSnapshot) => {
+    nodesRef.current = snap.nodes;
+    edgesRef.current = snap.edges;
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    markUnsaved();
+    // markUnsaved intentionally omitted from deps — it is declared later in this
+    // component; referencing it here at call time is safe, but adding it to the
+    // dependency array would hit the temporal dead zone at render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setNodes, setEdges]);
+
+  const undo = useCallback(() => {
+    const stack = undoStackRef.current;
+    if (stack.length === 0) return;
+    redoStackRef.current = [...redoStackRef.current, { nodes: nodesRef.current, edges: edgesRef.current }];
+    undoStackRef.current = stack.slice(0, -1);
+    restoreSnapshot(stack[stack.length - 1]);
+    bumpHistory();
+  }, [restoreSnapshot]);
+
+  const redo = useCallback(() => {
+    const stack = redoStackRef.current;
+    if (stack.length === 0) return;
+    undoStackRef.current = [...undoStackRef.current, { nodes: nodesRef.current, edges: edgesRef.current }];
+    redoStackRef.current = stack.slice(0, -1);
+    restoreSnapshot(stack[stack.length - 1]);
+    bumpHistory();
+  }, [restoreSnapshot]);
+
+  const canUndo = undoStackRef.current.length > 0;
+  const canRedo = redoStackRef.current.length > 0;
 
   // Resolve the owning project so we can source project-scoped characters
   useEffect(() => {
@@ -262,6 +313,8 @@ export function QuestBuilder() {
       const sourceNode = nodes.find((n) => n.id === sourceNodeId);
       if (!sourceNode) return;
 
+      pushHistory();
+
       const newNodeId = (nodeIdCounter + 1).toString();
       setNodeIdCounter((prev) => prev + 1);
 
@@ -293,7 +346,7 @@ export function QuestBuilder() {
       setPendingNode(null);
       markUnsaved();
     },
-    [pendingNode, nodes, nodeIdCounter, setNodes, setEdges, requestNewNode]
+    [pendingNode, nodes, nodeIdCounter, setNodes, setEdges, requestNewNode, pushHistory]
   );
 
   const deleteNode = useCallback(
@@ -391,13 +444,13 @@ export function QuestBuilder() {
           characterNames,
           rewardNames,
           onAddPath: (pos: 'top' | 'bottom' | 'left' | 'right') => requestNewNode(node.id, pos),
-          onDelete: () => deleteNode(node.id),
+          onDelete: () => { pushHistory(); deleteNode(node.id); },
           onChangeVariant: (variant: NodeVariant) => changeNodeVariant(node.id, variant),
           onEdit: () => openEditSidebar(node.id),
         },
       }))
     );
-  }, [requestNewNode, deleteNode, changeNodeVariant, openEditSidebar, characterNames, rewardNames]);
+  }, [requestNewNode, deleteNode, changeNodeVariant, openEditSidebar, characterNames, rewardNames, pushHistory]);
 
   const markUnsaved = useCallback(() => {
     setHasUnsavedChanges(true);
@@ -505,6 +558,14 @@ export function QuestBuilder() {
     }
   }, [nodes, nodeIdCounter, setNodes, setEdges, setNodeIdCounter, layoutDirection, requestNewNode, deleteNode, markUnsaved, clearNodeHighlight]);
 
+  // Apply a batch of AI-Edit changes as one undoable step: snapshot once, then apply
+  // all. A single approval passes a one-element array, so it stays one undo step too.
+  const applyAiChangesWithUndo = useCallback((changes: AIChange[]) => {
+    if (changes.length === 0) return;
+    pushHistory();
+    changes.forEach(applyAiChange);
+  }, [pushHistory, applyAiChange]);
+
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center bg-steel-950">
@@ -537,6 +598,10 @@ export function QuestBuilder() {
         isSidebarOpen={isLeftSidebarOpen}
         onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
         onExport={() => setIsExportOpen(true)}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
         isAiEditOpen={isAiEditOpen}
         onOpenAiEdit={() => { setEditingNode(null); setIsAiEditOpen(true); }}
         isSaving={isSaving}
@@ -600,11 +665,16 @@ export function QuestBuilder() {
         questlineId={questlineId}
         projectId={projectId}
         nodeId={editingNode?.id ?? ''}
+        nodes={nodes}
+        edges={edges}
         autoAttachId={autoAttachId}
         template={template ?? null}
         onClose={() => { setEditingNode(null); setAutoAttachId(null); }}
         onApply={(updated) => {
-          if (editingNode) updateNode(editingNode.id, updated);
+          if (editingNode) {
+            pushHistory();
+            updateNode(editingNode.id, updated);
+          }
           setEditingNode(null);
           setAutoAttachId(null);
         }}
@@ -622,7 +692,7 @@ export function QuestBuilder() {
         questlineId={questlineId}
         nodes={nodes}
         edges={edges}
-        onApplyChange={applyAiChange}
+        onApplyChanges={applyAiChangesWithUndo}
       />
     </div>
   );

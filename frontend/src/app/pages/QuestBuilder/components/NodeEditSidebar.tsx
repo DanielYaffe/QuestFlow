@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull } from 'lucide-react';
+import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull, Sparkles, Loader2, Send } from 'lucide-react';
+import { Node, Edge } from '@xyflow/react';
+import { toast } from 'sonner';
 import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 import { motion, AnimatePresence } from 'motion/react';
-import { NodeVariant, QuestExportFields } from '../../../types/quest';
+import { NodeVariant, QuestExportFields, QuestNodeData } from '../../../types/quest';
 import { fetchRewards, Reward } from '../../../api/projectSidebarApi';
 import { listCharacters, CharacterRecord } from '../../../api/characterApi';
+import { requestAiEdit } from '../../../api/questAiEditApi';
 import { CharacterPicker } from './CharacterPicker';
 import { TemplateFieldsEditor, getTemplateFieldSchema } from './TemplateFieldsEditor';
+
+type AiFieldKey = 'title' | 'body' | 'variant';
+const AI_FIELD_LABEL: Record<AiFieldKey, string> = { title: 'title', body: 'description', variant: 'node type' };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,6 +35,8 @@ interface NodeEditSidebarProps {
   questlineId: string;
   projectId: string;
   nodeId: string;
+  nodes: Node<QuestNodeData>[];
+  edges: Edge[];
   autoAttachId?: string | null;
   template?: {
     id: string;
@@ -376,7 +384,7 @@ function templateValuesEqual(a?: Record<string, unknown>, b?: Record<string, unk
   return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
 }
 
-export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, autoAttachId, template, onClose, onApply }: NodeEditSidebarProps) {
+export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, nodes, edges, autoAttachId, template, onClose, onApply }: NodeEditSidebarProps) {
   const { configs, getConfig } = useVariantConfigs();
   const [phase, setPhase] = useState<Phase>('edit');
   const [title,      setTitle]      = useState('');
@@ -388,6 +396,13 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
   const [exportFields, setExportFields] = useState<QuestExportFields>(DEFAULT_EXPORT_FIELDS);
   const [templateValues, setTemplateValues] = useState<Record<string, unknown>>({});
   const [width,      setWidth]      = useState(DEFAULT_WIDTH);
+
+  // Node-scoped "Ask AI" — rewrites this step only; the suggestion lands in the draft
+  // fields below and flows through the same Review Changes → diff → Apply path.
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [aiLoading,     setAiLoading]     = useState(false);
+  const [aiError,       setAiError]       = useState<string | null>(null);
+  const [aiFields,      setAiFields]      = useState<AiFieldKey[]>([]);
 
   const [characters,       setCharacters]       = useState<CharacterRecord[]>([]);
   const [rewards,          setRewards]          = useState<Reward[]>([]);
@@ -414,6 +429,9 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       setExportFields(normalizeExportFields(node.exportFields));
       setTemplateValues(node.templateValues ?? {});
       setPhase('edit');
+      setAiInstruction('');
+      setAiError(null);
+      setAiFields([]);
     }
   }, [node]);
 
@@ -491,6 +509,55 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       !templateValuesEqual(templateValues, node.templateValues)
     );
 
+  // Ask the AI to rewrite THIS step only, then drop its suggestion into the draft
+  // fields so it flows through the same Review Changes → diff → Apply → Undo path.
+  const handleAiSuggest = useCallback(async (rawText: string) => {
+    if (!node || !nodeId || aiLoading) return;
+    const userText = rawText.trim() || 'Improve the writing — make it clearer, more vivid and dramatic.';
+    setAiLoading(true);
+    setAiError(null);
+    setAiFields([]);
+
+    // Constrain the shared /ai-edit endpoint to a single-node rewrite.
+    const scoped =
+      `Focus ONLY on the quest node with id "${nodeId}" (currently titled "${node.title}"). ` +
+      `Return exactly one updateNode change for node id "${nodeId}" and do NOT add, delete, ` +
+      `connect or modify any other node. Instruction: ${userText}`;
+
+    try {
+      const { changes } = await requestAiEdit(questlineId, { instruction: scoped, nodes, edges });
+      const change = changes.find((c) => c.type === 'updateNode' && c.nodeId === nodeId);
+      if (!change || change.type !== 'updateNode') {
+        toast('No changes suggested', { description: 'The AI had nothing to change for this step.' });
+        return;
+      }
+
+      const touched: AiFieldKey[] = [];
+      if (change.after.title !== title) { setTitle(change.after.title); touched.push('title'); }
+      if (change.after.body !== body)   { setBody(change.after.body);   touched.push('body'); }
+      if (change.after.variant && change.after.variant !== variant) {
+        setVariant(change.after.variant as NodeVariant);
+        touched.push('variant');
+      }
+
+      if (touched.length === 0) {
+        toast('No changes suggested', { description: 'The AI returned the same content for this step.' });
+        return;
+      }
+      setAiFields(touched);
+      setAiInstruction('');
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err &&
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          ? String((err as { response: { data: { error: string } } }).response.data.error)
+          : 'Something went wrong — please try again';
+      setAiError(msg);
+    } finally {
+      setAiLoading(false);
+    }
+  }, [node, nodeId, aiLoading, questlineId, nodes, edges, title, body, variant]);
+
   const handleClose = () => { setPhase('edit'); onClose(); };
   const handleApply = () => {
     onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds, exportFields, templateValues });
@@ -547,6 +614,53 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
             {/* ── Edit phase ── */}
             {phase === 'edit' && (
               <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
+                {/* Ask AI — rewrite this step; the suggestion lands in the draft fields below */}
+                <div className="rounded-lg border border-steel-600 bg-steel-800/40 p-3 space-y-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-pulse" />
+                    <span className="text-steel-200 text-xs font-semibold uppercase tracking-wide">Ask AI</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <textarea
+                      value={aiInstruction}
+                      onChange={(e) => setAiInstruction(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAiSuggest(aiInstruction); }}
+                      placeholder="e.g. make it darker and more tense…"
+                      rows={2}
+                      disabled={aiLoading}
+                      className="flex-1 bg-steel-800 text-steel-100 px-3 py-2 rounded-lg border border-steel-600 focus:border-pulse focus:outline-none placeholder:text-steel-500 resize-none disabled:opacity-50 text-sm leading-relaxed"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleAiSuggest(aiInstruction)}
+                      disabled={aiLoading}
+                      title="Ask AI (⌘/Ctrl+Enter)"
+                      className="px-3 bg-volt hover:brightness-95 disabled:bg-steel-700 disabled:text-steel-400 text-steel-950 font-semibold rounded-lg transition-colors flex items-center justify-center shrink-0"
+                    >
+                      {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Make it more dramatic', 'Simplify the wording', 'Add a twist'].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => handleAiSuggest(s)}
+                        disabled={aiLoading}
+                        className="text-xs px-2 py-1 bg-steel-800 hover:bg-steel-700 text-steel-400 hover:text-steel-200 border border-steel-600 rounded-full transition-colors disabled:opacity-50"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  {aiError && <p className="text-red-400 text-xs">{aiError}</p>}
+                  {aiFields.length > 0 && (
+                    <p className="text-pulse text-xs">
+                      AI updated {aiFields.map((f) => AI_FIELD_LABEL[f]).join(', ')}. Tweak below if needed, then Review Changes.
+                    </p>
+                  )}
+                </div>
+
                 {/* Title */}
                 <div>
                   <label className="text-steel-400 text-xs uppercase tracking-wide mb-2 block">Title</label>
