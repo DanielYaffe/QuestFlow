@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FolderOpen, Plus, Loader2, Inbox, Workflow, Users, Trash2, Pencil, Copy } from 'lucide-react';
+import { FolderOpen, Plus, Loader2, Inbox, Workflow, Users, Trash2, Pencil, Copy, Github } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProject } from '../../context/ProjectContext';
 import { ProjectFormDialog } from '../../components/shared/ProjectFormDialog';
+import { ProjectRepoDialog } from '../../components/shared/ProjectRepoDialog';
 import { ConfirmModal } from '../../components/shared/ConfirmModal';
+import { Project } from '../../api/projectApi';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -26,11 +28,12 @@ const CARD_ACCENTS = ['#57c7d4', '#f5d90a', '#7dd39a', '#f0954f', '#6ea8ff', '#e
 // the grid stays in sync with the global active-project switcher in the SideNav.
 export function Projects() {
   const navigate = useNavigate();
-  const { projects, loading, createProject, renameProject, duplicateProject, deleteProject } = useProject();
+  const { projects, loading, createProject, renameProject, duplicateProject, deleteProject, refreshProjects } = useProject();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [repoTarget, setRepoTarget] = useState<Project | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const handleCreate = async (name: string) => {
@@ -104,6 +107,12 @@ export function Projects() {
         onConfirm={handleDelete}
         onCancel={() => setPendingDelete(null)}
       />
+      <ProjectRepoDialog
+        isOpen={repoTarget !== null}
+        project={repoTarget}
+        onClose={() => setRepoTarget(null)}
+        onSaved={async () => { await refreshProjects(); }}
+      />
 
       <main className="max-w-7xl mx-auto px-8 py-10 flex flex-col gap-8">
         <div className="flex items-center justify-between">
@@ -164,6 +173,15 @@ export function Projects() {
                         title="Rename"
                       >
                         <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {!p.isInbox && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setRepoTarget(p); }}
+                        className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-steel-700 text-white/70 hover:text-white rounded-lg transition-colors"
+                        title={p.git?.repoOwner && p.git?.repoName ? `Repository: ${p.git.repoOwner}/${p.git.repoName}` : 'Set export repository'}
+                      >
+                        <Github className="w-3.5 h-3.5" />
                       </button>
                     )}
                     <button

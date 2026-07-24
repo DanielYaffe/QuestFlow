@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { Model } from 'mongoose';
+import { z } from 'zod';
 import BaseController from './baseController';
-import ProjectModel, { ensureInboxProject } from '../models/projectModel';
+import ProjectModel, { ensureInboxProject, IProjectGitSettings } from '../models/projectModel';
 import QuestlineModel from '../models/questlineModel';
 import SpriteModel from '../models/spriteModel';
 import CharacterModel from '../models/characterModel';
@@ -18,6 +19,33 @@ interface CountRow {
 // S3 keys never start with http — presigned URLs always do
 function isS3Key(value: string): boolean {
   return !!value && !value.startsWith('http');
+}
+
+// Empty strings are allowed so a field can be cleared. The regexes catch the
+// real footguns — spaces and slashes — that otherwise only surface as a cryptic
+// GitHub error at push time.
+const gitSettingsSchema = z
+  .object({
+    repoOwner: z.string().trim().max(100)
+      .regex(/^[A-Za-z0-9-]*$/, 'Owner may contain only letters, numbers, and hyphens.'),
+    repoName: z.string().trim().max(100)
+      .regex(/^[A-Za-z0-9._-]*$/, 'Repository may contain only letters, numbers, dots, hyphens, and underscores.'),
+    defaultBranch: z.string().trim().max(255)
+      .regex(/^\S*$/, 'Branch must not contain spaces.'),
+    defaultFilePath: z.string().trim().max(500),
+  })
+  .partial();
+
+// Validates req.body.git when present. Returns the parsed settings, or sends a
+// 400 and returns undefined when validation fails.
+function parseGitSettings(req: AuthRequest, res: Response): IProjectGitSettings | null | undefined {
+  if (req.body.git === undefined || req.body.git === null) return null;
+  const result = gitSettingsSchema.safeParse(req.body.git);
+  if (!result.success) {
+    res.status(400).json({ error: result.error.issues[0]?.message ?? 'Invalid git settings.' });
+    return undefined;
+  }
+  return result.data;
 }
 
 class ProjectController extends BaseController {
@@ -55,6 +83,8 @@ class ProjectController extends BaseController {
       const spriteMap = new Map(spriteCounts.map((c) => [c._id, c.n]));
       const charMap = new Map(charCounts.map((c) => [c._id, c.n]));
 
+      // No .select() above, so each project carries its `git` settings through
+      // to the list — the per-project repo editor needs them.
       res.json(
         projects.map((p) => ({
           ...p,
@@ -149,6 +179,8 @@ class ProjectController extends BaseController {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+    const git = parseGitSettings(req, res);
+    if (git === undefined) return;
     try {
       const { name, description, defaultThemeId, defaultExportFormat } = req.body as {
         name?: string;
@@ -167,6 +199,7 @@ class ProjectController extends BaseController {
         defaultThemeId: defaultThemeId ?? 'generic_rpg',
         defaultExportFormat: defaultExportFormat ?? 'json',
         isInbox: false,
+        git: git ?? undefined,
       });
       res.status(201).json(project);
     } catch (error) {
@@ -174,9 +207,11 @@ class ProjectController extends BaseController {
     }
   }
 
-  // PUT /projects/:id — update name/description/defaults (owner only)
+  // PUT /projects/:id — owner only (rename / edit description / set defaults / set repo)
   async put(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
+    const git = parseGitSettings(req, res);
+    if (git === undefined) return;
     try {
       const project = await ProjectModel.findById(req.params.id);
       if (!project) {
@@ -205,6 +240,18 @@ class ProjectController extends BaseController {
           return;
         }
         project.gameId = gameId;
+      }
+      if (git) {
+        // Field-level merge so callers can patch a single repo setting without
+        // clobbering the rest.
+        const existing = project.git;
+        project.git = {
+          repoOwner:       git.repoOwner       ?? existing?.repoOwner,
+          repoName:        git.repoName        ?? existing?.repoName,
+          defaultBranch:   git.defaultBranch   ?? existing?.defaultBranch,
+          defaultFilePath: git.defaultFilePath ?? existing?.defaultFilePath,
+        };
+        project.markModified('git');
       }
       await project.save();
       res.json(project);
@@ -267,6 +314,12 @@ class ProjectController extends BaseController {
         defaultThemeId:      source.defaultThemeId,
         defaultExportFormat: source.defaultExportFormat,
         isInbox:             false,
+        git:                 source.git ? {
+          repoOwner:       source.git.repoOwner,
+          repoName:        source.git.repoName,
+          defaultBranch:   source.git.defaultBranch,
+          defaultFilePath: source.git.defaultFilePath,
+        } : undefined,
       });
       const newProjectId = copy._id.toString();
       const sourceId = source._id.toString();

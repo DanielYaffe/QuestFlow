@@ -4,6 +4,7 @@ import { fetchQuestlineById } from '../../../api/questBuilderApi';
 import { QuestNodeData } from '../../../types/quest';
 
 interface QuestlineState {
+  projectId: string;
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
   nextNodeId: number;
@@ -18,6 +19,7 @@ interface QuestlineState {
 
 export function useQuestlineData(questlineId: string): QuestlineState {
   const [state, setState] = useState<QuestlineState>({
+    projectId: '',
     nodes: [],
     edges: [],
     nextNodeId: 1,

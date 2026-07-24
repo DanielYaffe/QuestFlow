@@ -1,8 +1,16 @@
 import api from './axiosInstance';
 
+export interface ProjectGitSettings {
+  repoOwner?: string;
+  repoName?: string;
+  defaultBranch?: string;
+  defaultFilePath?: string;
+}
+
 // Unified project shape — superset of both efforts. The multi-project flow uses
 // name/description/ownerId; the architecture-phase1 flow adds per-project defaults,
-// the Inbox flag, and content counts returned by GET /projects.
+// the Inbox flag, and content counts returned by GET /projects; the export flow
+// adds the per-project `git` repository settings.
 export interface Project {
   _id: string;
   name: string;
@@ -15,6 +23,7 @@ export interface Project {
   questlineCount?: number;
   spriteCount?: number;
   characterCount?: number;
+  git?: ProjectGitSettings;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,7 +64,7 @@ export async function createProject(
 
 export async function updateProject(
   id: string,
-  patch: Partial<CreateProjectInput>,
+  patch: Partial<Pick<Project, 'name' | 'description' | 'defaultThemeId' | 'defaultExportFormat' | 'gameId' | 'git'>>,
 ): Promise<Project> {
   const { data } = await api.put<Project>(`/projects/${id}`, patch);
   return data;

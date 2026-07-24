@@ -7,6 +7,13 @@ import mongoose, { Document, Schema } from 'mongoose';
 // holds questlines/sprites/characters created before/without an explicit project.
 // ---------------------------------------------------------------------------
 
+export interface IProjectGitSettings {
+  repoOwner?: string;
+  repoName?: string;
+  defaultBranch?: string;
+  defaultFilePath?: string;
+}
+
 export interface IProject extends Document {
   _id: mongoose.Types.ObjectId;
   ownerId: string;
@@ -18,6 +25,9 @@ export interface IProject extends Document {
   // generation. Shared: many projects may reference the same Game. '' = none.
   gameId: string;
   isInbox: boolean;
+  // Optional GitHub repository this project's questlines export to. The auth
+  // token stays shared at the user level.
+  git?: IProjectGitSettings;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,6 +56,18 @@ export interface IProject extends Document {
  *           type: string
  *         isInbox:
  *           type: boolean
+ *         git:
+ *           type: object
+ *           description: GitHub repository this project's questlines export to. The auth token is shared at the user level.
+ *           properties:
+ *             repoOwner:
+ *               type: string
+ *             repoName:
+ *               type: string
+ *             defaultBranch:
+ *               type: string
+ *             defaultFilePath:
+ *               type: string
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -53,6 +75,16 @@ export interface IProject extends Document {
  *           type: string
  *           format: date-time
  */
+const ProjectGitSettingsSchema = new Schema<IProjectGitSettings>(
+  {
+    repoOwner:       { type: String, default: undefined },
+    repoName:        { type: String, default: undefined },
+    defaultBranch:   { type: String, default: 'main' },
+    defaultFilePath: { type: String, default: '' },
+  },
+  { _id: false },
+);
+
 const ProjectSchema = new Schema<IProject>(
   {
     ownerId:             { type: String, required: true, index: true },
@@ -62,6 +94,7 @@ const ProjectSchema = new Schema<IProject>(
     defaultExportFormat: { type: String, default: 'json' },
     gameId:              { type: String, default: '' },
     isInbox:             { type: Boolean, default: false },
+    git:                 { type: ProjectGitSettingsSchema, default: undefined },
   },
   { timestamps: true },
 );

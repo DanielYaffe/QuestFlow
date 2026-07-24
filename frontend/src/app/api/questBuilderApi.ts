@@ -43,6 +43,7 @@ export async function fetchQuestlineMeta(questlineId: string): Promise<Questline
 }
 
 export interface QuestlineData {
+  projectId: string;
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
   nextNodeId: number;
