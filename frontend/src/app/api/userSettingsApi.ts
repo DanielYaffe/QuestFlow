@@ -25,3 +25,20 @@ export async function updateGitSettings(payload: UpdateGitSettingsPayload): Prom
   const { data } = await api.put<GitSettings>('/users/me/git-settings', payload);
   return data;
 }
+
+export interface TestGitConnectionPayload {
+  token?: string;
+  repoOwner: string;
+  repoName: string;
+  branch?: string;
+}
+
+export async function testGitConnection(
+  payload: TestGitConnectionPayload,
+): Promise<{ ok: true; message: string }> {
+  const { data } = await api.post<{ ok: true; message: string }>(
+    '/users/me/git-settings/test',
+    payload,
+  );
+  return data;
+}
