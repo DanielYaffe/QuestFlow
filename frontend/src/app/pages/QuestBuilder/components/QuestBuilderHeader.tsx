@@ -1,10 +1,6 @@
-import { Node } from '@xyflow/react';
-import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Sparkles, PanelBottom, Loader2, Check, Wand2, Undo2, Redo2 } from 'lucide-react';
-import { QuestNodeData } from '../../../types/quest';
+import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, PanelBottom, Loader2, Check, Wand2, Undo2, Redo2 } from 'lucide-react';
 
 interface QuestBuilderHeaderProps {
-  selectedNode: Node<QuestNodeData> | null;
-  onOpenSidebar: () => void;
   onAutoLayout: (direction: 'TB' | 'LR') => void;
   layoutDirection: 'TB' | 'LR';
   isSidebarOpen: boolean;
@@ -20,7 +16,7 @@ interface QuestBuilderHeaderProps {
   hasUnsavedChanges: boolean;
 }
 
-export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, canUndo, canRedo, onUndo, onRedo, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({ onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, canUndo, canRedo, onUndo, onRedo, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
   return (
     <header className="bg-steel-850 border-b border-steel-700 px-6 py-4 flex items-center justify-between z-10">
       <div className="flex items-center gap-3">
@@ -42,16 +38,6 @@ export function QuestBuilderHeader({ selectedNode, onOpenSidebar, onAutoLayout, 
       </div>
 
       <div className="flex items-center gap-4">
-        {selectedNode && (
-          <button
-            onClick={onOpenSidebar}
-            className="px-4 py-2 bg-volt hover:brightness-95 text-steel-950 font-semibold rounded-lg transition-colors flex items-center gap-2"
-          >
-            <Sparkles className="w-4 h-4" />
-            AI Assistant
-          </button>
-        )}
-
         {/* Undo / redo history */}
         <div className="flex items-center bg-steel-800 border border-steel-600 rounded-lg overflow-hidden">
           <button

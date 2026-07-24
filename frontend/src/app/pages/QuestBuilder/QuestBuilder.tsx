@@ -27,7 +27,7 @@ import { Loader2, Crosshair } from "lucide-react";
 import { QuestNode } from "./components/QuestNode";
 import { QuestBuilderHeader } from "./components/QuestBuilderHeader";
 import { BuilderDock } from "./components/BuilderDock";
-import { AISidebar } from "../../components/shared/AISidebar";
+import { CreateNodeSidebar } from "./components/CreateNodeSidebar";
 import { NodeEditSidebar, NodeSnapshot } from "./components/NodeEditSidebar";
 import { getLayoutedElements } from "../../utils/layoutUtils";
 import { useQuestlineData } from "./hooks/useQuestlineData";
@@ -144,7 +144,6 @@ export function QuestBuilder() {
   const [edges, setEdges] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<QuestFlowNode | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [sidebarMode, setSidebarMode] = useState<"edit" | "create">("edit");
   const [pendingNode, setPendingNode] = useState<PendingNode | null>(null);
   const [nodeIdCounter, setNodeIdCounter] = useState(1);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
@@ -383,11 +382,10 @@ export function QuestBuilder() {
     [setNodes],
   );
 
-  // Step 1: + button pressed — open sidebar in create mode
+  // Step 1: + button pressed — open the create-node sidebar
   const requestNewNode = useCallback(
     (sourceNodeId: string, position: "top" | "bottom" | "left" | "right") => {
       setPendingNode({ sourceNodeId, position });
-      setSidebarMode("create");
       setIsSidebarOpen(true);
     },
     [],
@@ -804,11 +802,6 @@ export function QuestBuilder() {
   return (
     <div className="h-full flex flex-col">
       <QuestBuilderHeader
-        selectedNode={selectedNode}
-        onOpenSidebar={() => {
-          setSidebarMode("edit");
-          setIsSidebarOpen(true);
-        }}
         onAutoLayout={handleAutoLayout}
         layoutDirection={layoutDirection}
         isSidebarOpen={isLeftSidebarOpen}
@@ -870,16 +863,13 @@ export function QuestBuilder() {
         onRewardDeleted={removeRewardFromGraph}
       />
 
-      {/* Create-node sidebar (+ button flow) or AI chat sidebar */}
-      <AISidebar
+      {/* Create-node sidebar (+ button flow) */}
+      <CreateNodeSidebar
         isOpen={isSidebarOpen}
-        mode={sidebarMode}
         onClose={() => {
           setIsSidebarOpen(false);
           setPendingNode(null);
-          setSidebarMode("edit");
         }}
-        selectedNodeTitle={selectedNode?.data.title}
         onCreateNode={confirmNewNode}
       />
 
