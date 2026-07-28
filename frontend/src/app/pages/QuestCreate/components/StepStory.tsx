@@ -42,17 +42,17 @@ export function StepStory({
 
       {/* Heading */}
       <div className="text-center flex flex-col gap-3">
-        <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 via-violet-400 to-blue-400 bg-clip-text text-transparent leading-tight">
+        <h1 className="text-5xl font-bold text-steel-100 leading-tight">
           Story to Quest in seconds
         </h1>
-        <p className="text-zinc-400 text-lg">
+        <p className="text-steel-400 text-lg">
           Describe your story and genre — AI will structure it into a questline
         </p>
       </div>
 
       {/* Textarea */}
       <div
-        className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-4 transition-all focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-500/20 cursor-text"
+        className="relative bg-steel-850 border border-steel-600 rounded-md p-4 transition-all focus-within:border-pulse focus-within:ring-2 focus-within:ring-pulse/20 cursor-text"
         onClick={() => textareaRef.current?.focus()}
       >
         <textarea
@@ -61,7 +61,7 @@ export function StepStory({
           onChange={(e) => onStoryChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="A wandering knight stumbles upon a shattered dimensional rift in an ancient forest. Strange creatures pour through and the surrounding villages begin to vanish into mist..."
-          className="w-full bg-transparent text-zinc-200 placeholder-zinc-600 resize-none focus:outline-none text-base leading-relaxed"
+          className="w-full bg-transparent text-steel-200 placeholder-steel-500 resize-none focus:outline-none text-base leading-relaxed"
           style={{ minHeight: '220px' }}
           disabled={isLoading}
         />
@@ -72,10 +72,10 @@ export function StepStory({
             onClick={onSubmit}
             disabled={!storyInput.trim() || isLoading}
             title="Generate questline (Ctrl+Enter)"
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+            className={`w-10 h-10 rounded-md flex items-center justify-center transition-all ${
               storyInput.trim() && !isLoading
-                ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/30'
-                : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                ? 'bg-volt hover:brightness-95 text-steel-950 font-semibold shadow-lg shadow-black/30'
+                : 'bg-steel-700 text-steel-400 cursor-not-allowed'
             }`}
           >
             {isLoading ? (
@@ -87,13 +87,13 @@ export function StepStory({
         </div>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
-        <label className="text-zinc-400 text-xs uppercase tracking-wide">Quest Template</label>
+      <div className="bg-steel-850 border border-steel-700 rounded-md p-4 space-y-2">
+        <label className="text-steel-400 text-xs uppercase tracking-wide">Quest Template</label>
         <select
           value={selectedTemplateId}
           onChange={(event) => onTemplateChange(event.target.value)}
           disabled={isLoading}
-          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+          className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
         >
           <option value="">No template</option>
           {templates.map((template) => (
@@ -102,7 +102,7 @@ export function StepStory({
             </option>
           ))}
         </select>
-        <p className="text-zinc-500 text-xs">
+        <p className="text-steel-400 text-xs">
           {selectedTemplateId
             ? templates.find((template) => template._id === selectedTemplateId)?.templateSchema?.summary
               || templates.find((template) => template._id === selectedTemplateId)?.schemaSummary?.structureSummary
@@ -122,8 +122,8 @@ export function StepStory({
               disabled={isLoading}
               className={`px-4 py-1.5 rounded-full text-sm transition-all ${
                 isActive
-                  ? 'bg-gradient-to-r from-purple-600 to-blue-500 text-white border border-transparent shadow-md shadow-purple-600/20'
-                  : 'bg-zinc-800/60 border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'
+                  ? 'bg-volt text-steel-950 font-semibold border border-transparent '
+                  : 'bg-steel-800/60 border border-steel-600 text-steel-400 hover:text-steel-100 hover:border-steel-400'
               }`}
             >
               {genre}
@@ -133,7 +133,7 @@ export function StepStory({
       </div>
 
       {isLoading && (
-        <p className="text-center text-zinc-500 text-sm animate-pulse">
+        <p className="text-center text-steel-400 text-sm animate-pulse">
           Generating objectives and rewards...
         </p>
       )}

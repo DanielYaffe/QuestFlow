@@ -58,7 +58,7 @@ export function QuestLoadingScreen({ visible, mode }: Props) {
     <AnimatePresence>
       {visible && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-steel-950"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -133,7 +133,7 @@ export function QuestLoadingScreen({ visible, mode }: Props) {
 
             {/* Central glowing sigil */}
             <motion.div
-              className="relative z-10 w-20 h-20 rounded-full bg-zinc-900 border border-amber-600/60 flex items-center justify-center"
+              className="relative z-10 w-20 h-20 rounded-full bg-steel-850 border border-amber-600/60 flex items-center justify-center"
               animate={{ boxShadow: ['0 0 12px rgba(251,191,36,0.3)', '0 0 32px rgba(251,191,36,0.7)', '0 0 12px rgba(251,191,36,0.3)'] }}
               transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
             >

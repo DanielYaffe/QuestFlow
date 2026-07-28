@@ -356,7 +356,7 @@ questlineRouter.get('/:id/characters', questlineController.getCharacters.bind(qu
  * @swagger
  * /questlines/{id}/characters:
  *   post:
- *     summary: Add a character to a questline (owner only)
+ *     summary: Attach an existing project character to the questline roster
  *     tags: [Questlines]
  *     security:
  *       - bearerAuth: []
@@ -371,14 +371,20 @@ questlineRouter.get('/:id/characters', questlineController.getCharacters.bind(qu
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Character'
+ *             type: object
+ *             required: [characterId]
+ *             properties:
+ *               characterId:
+ *                 type: string
  *     responses:
  *       201:
- *         description: Character created
+ *         description: Character attached to the roster
  *       403:
  *         description: Forbidden
+ *       404:
+ *         description: Not found
  */
-questlineRouter.post('/:id/characters', questlineController.createCharacter.bind(questlineController));
+questlineRouter.post('/:id/characters', questlineController.addCharacter.bind(questlineController));
 
 /**
  * @swagger
@@ -419,7 +425,7 @@ questlineRouter.put('/:id/characters/:characterId', questlineController.updateCh
  * @swagger
  * /questlines/{id}/characters/{characterId}:
  *   delete:
- *     summary: Delete a character (owner only)
+ *     summary: Detach a character from this questline (keeps the project design)
  *     tags: [Questlines]
  *     security:
  *       - bearerAuth: []
@@ -436,133 +442,13 @@ questlineRouter.put('/:id/characters/:characterId', questlineController.updateCh
  *           type: string
  *     responses:
  *       200:
- *         description: Deleted
+ *         description: Character removed from the questline
  *       403:
  *         description: Forbidden
  *       404:
  *         description: Not found
  */
-questlineRouter.delete('/:id/characters/:characterId', questlineController.deleteCharacter.bind(questlineController));
-
-// ── Chapters ────────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /questlines/{id}/chapters:
- *   get:
- *     summary: Get chapters for a questline
- *     tags: [Questlines]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: List of chapters
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Chapter'
- */
-questlineRouter.get('/:id/chapters', questlineController.getChapters.bind(questlineController));
-
-/**
- * @swagger
- * /questlines/{id}/chapters:
- *   post:
- *     summary: Add a chapter to a questline (owner only)
- *     tags: [Questlines]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Chapter'
- *     responses:
- *       201:
- *         description: Chapter created
- *       403:
- *         description: Forbidden
- */
-questlineRouter.post('/:id/chapters', questlineController.createChapter.bind(questlineController));
-
-/**
- * @swagger
- * /questlines/{id}/chapters/{chapterId}:
- *   put:
- *     summary: Update a chapter (owner only)
- *     tags: [Questlines]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: chapterId
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Chapter'
- *     responses:
- *       200:
- *         description: Updated chapter
- *       403:
- *         description: Forbidden
- *       404:
- *         description: Not found
- */
-questlineRouter.put('/:id/chapters/:chapterId', questlineController.updateChapter.bind(questlineController));
-
-/**
- * @swagger
- * /questlines/{id}/chapters/{chapterId}:
- *   delete:
- *     summary: Delete a chapter (owner only)
- *     tags: [Questlines]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: chapterId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Deleted
- *       403:
- *         description: Forbidden
- *       404:
- *         description: Not found
- */
-questlineRouter.delete('/:id/chapters/:chapterId', questlineController.deleteChapter.bind(questlineController));
+questlineRouter.delete('/:id/characters/:characterId', questlineController.removeCharacter.bind(questlineController));
 
 // ── Rewards ─────────────────────────────────────────────────────────────────
 
@@ -654,6 +540,37 @@ questlineRouter.post('/:id/rewards', questlineController.createReward.bind(quest
  *         description: Not found
  */
 questlineRouter.put('/:id/rewards/:rewardId', questlineController.updateReward.bind(questlineController));
+
+/**
+ * @swagger
+ * /questlines/{id}/rewards/{rewardId}/usage:
+ *   get:
+ *     summary: Count quest nodes referencing this reward
+ *     tags: [Questlines]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: rewardId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Usage count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 nodeCount: { type: integer }
+ */
+questlineRouter.get('/:id/rewards/:rewardId/usage', questlineController.getRewardUsage.bind(questlineController));
 
 /**
  * @swagger

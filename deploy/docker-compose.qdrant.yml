@@ -1,0 +1,86 @@
+# Standalone Qdrant vector DB for server deployment, behind Caddy for TLS.
+# Caddy obtains and renews a free Let's Encrypt certificate automatically —
+# you never manage cert files yourself.
+#
+# Usage:
+#   1. DNS: create an A record for your subdomain pointing at this server,
+#      e.g.  qdrant.yourdomain.com → <server-ip>
+#   2. Firewall (BOTH the cloud vendor rule and the OS iptables): open
+#      TCP 80 + 443. Port 6333 no longer needs to be open to the internet —
+#      close it if you opened it earlier.
+#   3. Create a .env next to this file:
+#        QDRANT_DOMAIN=qdrant.yourdomain.com
+#        QDRANT_API_KEY=<long random string>   # openssl rand -hex 32
+#      (Without a .env the example key below is used — fine for a smoke test,
+#      but REPLACE IT for real use: it's public, it's in this repo.)
+#   4. docker compose -f docker-compose.qdrant.yml up -d
+#      First start takes ~30s extra while Caddy gets the certificate.
+#   5. Point the QuestFlow backend at it (backend/.env):
+#        QDRANT_URL=https://qdrant.yourdomain.com
+#        QDRANT_API_KEY=<same key>
+#      Note: https, and NO :6333 — Caddy listens on 443 and proxies inside
+#      the compose network.
+#
+# Security notes:
+#   - The API key is REQUIRED; without it anyone who can reach Qdrant can
+#     read/write every collection. With Caddy in front it now travels
+#     encrypted instead of as plaintext HTTP.
+#   - Qdrant's port is bound to localhost only (debugging from the server
+#     itself still works: curl -H "api-key: ..." http://127.0.0.1:6333).
+#   - gRPC (6334) is not exposed — the backend uses the REST client.
+
+# Pin the compose project name so this stack gets its own containers/network/
+# volumes (questflow-qdrant-*) regardless of which directory it's run from —
+# otherwise Compose inherits the current directory's name and rides another
+# project's network.
+name: questflow-qdrant
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333" # server-local debugging only; Caddy proxies via the compose network
+    environment:
+      # Example key so the file works out of the box — override via .env.
+      # Anything committed to a repo is not a secret: change it for real use.
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-0584a4e346c50d398d04fc71899e52be2a7fe26e05e960070755100cba0daeac}
+      # Store payloads on disk instead of RAM — right default for a small VPS.
+      QDRANT__STORAGE__ON_DISK_PAYLOAD: "true"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      # The image ships no curl/wget; a bash TCP probe is the standard check.
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"   # Let's Encrypt HTTP challenge + redirect to https
+      - "443:443" # TLS endpoint the backend talks to
+    # Automatic HTTPS: Caddy provisions a Let's Encrypt cert for QDRANT_DOMAIN
+    # on first start and renews it in the background.
+    command: caddy reverse-proxy --from ${QDRANT_DOMAIN:?set QDRANT_DOMAIN in .env, e.g. qdrant.yourdomain.com} --to qdrant:6333
+    depends_on:
+      - qdrant
+    volumes:
+      - caddy_data:/data # persists certificates across restarts (avoids LE rate limits)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  qdrant_data:
+  caddy_data:

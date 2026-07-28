@@ -13,15 +13,15 @@ export function AuthCallback() {
 
     if (token && refreshToken) {
       loginWithTokens(token, refreshToken);
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     } else {
       navigate('/login?error=google_failed', { replace: true });
     }
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <p className="text-zinc-400 text-sm">Signing you in…</p>
+    <div className="min-h-screen bg-steel-950 flex items-center justify-center">
+      <p className="text-steel-400 text-sm">Signing you in…</p>
     </div>
   );
 }

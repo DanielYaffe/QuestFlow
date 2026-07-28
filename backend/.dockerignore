@@ -1,0 +1,5 @@
+node_modules
+dist
+.env
+vendor/pixel-snapper/target
+vendor/pixel-snapper/pkg

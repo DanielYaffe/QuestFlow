@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FolderOpen, Plus, Loader2, Inbox, Workflow, Users, Trash2, Pencil, Copy, Github } from 'lucide-react';
 import { toast } from 'sonner';
-import { FolderKanban, Plus, Check, Copy, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
 import { ProjectFormDialog } from '../../components/shared/ProjectFormDialog';
+import { ProjectRepoDialog } from '../../components/shared/ProjectRepoDialog';
+import { ConfirmModal } from '../../components/shared/ConfirmModal';
+import { Project } from '../../api/projectApi';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -15,42 +19,40 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-export function Projects() {
-  const {
-    projects,
-    activeProjectId,
-    loading,
-    setActiveProject,
-    createProject,
-    renameProject,
-    deleteProject,
-    duplicateProject,
-  } = useProject();
+// Flat accent rotation for project card icons (Cyber style — no gradients).
+const CARD_ACCENTS = ['#57c7d4', '#f5d90a', '#7dd39a', '#f0954f', '#6ea8ff', '#e5484d'];
 
-  const [busyId, setBusyId] = useState<string | null>(null);
+// Projects browser — a grid of project cards that drills into a per-project
+// dashboard (questlines + characters, incl. orphans). Project management
+// (create / rename / duplicate / delete) is driven through ProjectContext so
+// the grid stays in sync with the global active-project switcher in the SideNav.
+export function Projects() {
+  const navigate = useNavigate();
+  const { projects, loading, createProject, renameProject, duplicateProject, deleteProject, refreshProjects } = useProject();
+
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [repoTarget, setRepoTarget] = useState<Project | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const handleCreate = async (name: string) => {
     try {
-      await createProject(name);
+      const project = await createProject(name);
       toast.success('Project created');
+      navigate(`/projects/${project._id}`);
     } catch {
       toast.error('Failed to create project');
     }
   };
 
   const handleRename = async (name: string) => {
-    if (!editing || name === editing.name) return;
-    setBusyId(editing.id);
+    if (!editing) return;
     try {
       await renameProject(editing.id, name);
       toast.success('Project renamed');
     } catch {
       toast.error('Failed to rename project');
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -66,21 +68,14 @@ export function Projects() {
     }
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (projects.length <= 1) {
-      toast.error('You must keep at least one project');
-      return;
-    }
-    setDeleteTarget({ id, name });
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    setBusyId(deleteTarget.id);
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+    setPendingDelete(null);
+    setBusyId(target.id);
     try {
-      await deleteProject(deleteTarget.id);
-      toast.success('Project deleted');
-      setDeleteTarget(null);
+      await deleteProject(target.id);
+      toast.success('Project deleted — its contents moved to Inbox');
     } catch {
       toast.error('Failed to delete project');
     } finally {
@@ -89,99 +84,7 @@ export function Projects() {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-4xl mx-auto px-6 py-10 pb-16">
-        <div className="mb-8 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-white text-2xl font-semibold">Projects</h1>
-            <p className="text-zinc-400 text-sm mt-1">
-              Organise your questlines and sprites into separate projects
-            </p>
-          </div>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-purple-600 text-white text-sm hover:bg-purple-500 transition-colors shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Project</span>
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {projects.map((p) => {
-              const isActive = p._id === activeProjectId;
-              const busy = busyId === p._id;
-              return (
-                <div
-                  key={p._id}
-                  className={`flex items-center gap-4 px-5 py-4 rounded-xl border transition-colors ${
-                    isActive
-                      ? 'bg-zinc-900 border-purple-600/60'
-                      : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
-                  }`}
-                >
-                  <div className="bg-zinc-800 p-2.5 rounded-lg">
-                    <FolderKanban className="w-5 h-5 text-purple-400" />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-medium truncate">{p.name}</span>
-                      {isActive && (
-                        <span className="flex items-center gap-1 text-xs text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full">
-                          <Check className="w-3 h-3" /> Active
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-zinc-500 text-xs mt-0.5">Updated {timeAgo(p.updatedAt)}</p>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    {!isActive && (
-                      <button
-                        onClick={() => setActiveProject(p._id)}
-                        className="px-3 py-1.5 rounded-lg text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-                      >
-                        Switch
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setEditing({ id: p._id, name: p.name })}
-                      disabled={busy}
-                      title="Rename"
-                      className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDuplicate(p._id)}
-                      disabled={busy}
-                      title="Duplicate"
-                      className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
-                    >
-                      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(p._id, p.name)}
-                      disabled={busy || projects.length <= 1}
-                      title={projects.length <= 1 ? 'You must keep at least one project' : 'Delete'}
-                      className="p-2 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-30"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
+    <div className="h-full overflow-y-auto bg-steel-950">
       <ProjectFormDialog
         isOpen={createOpen}
         mode="create"
@@ -195,43 +98,116 @@ export function Projects() {
         onClose={() => setEditing(null)}
         onSubmit={handleRename}
       />
+      <ConfirmModal
+        isOpen={pendingDelete !== null}
+        title="Delete project?"
+        message={`"${pendingDelete?.name}" will be deleted. Its questlines, sprites and characters will be moved to your Inbox — nothing is lost.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
+      <ProjectRepoDialog
+        isOpen={repoTarget !== null}
+        project={repoTarget}
+        onClose={() => setRepoTarget(null)}
+        onSaved={async () => { await refreshProjects(); }}
+      />
 
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl">
-            <div className="flex items-start gap-3 border-b border-zinc-800 px-5 py-4">
-              <div className="mt-0.5 rounded-lg bg-red-500/10 p-2 text-red-400">
-                <Trash2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-white">Delete project?</h2>
-                <p className="mt-1 text-sm text-zinc-400">
-                  Delete "{deleteTarget.name}" and all its questlines and sprites. This cannot be undone.
-                </p>
-              </div>
+      <main className="max-w-7xl mx-auto px-8 py-10 flex flex-col gap-8">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-steel-800 flex items-center justify-center">
+              <FolderOpen className="w-5 h-5 text-pulse" />
             </div>
-            <div className="flex justify-end gap-2 px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                disabled={busyId === deleteTarget.id}
-                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDelete}
-                disabled={busyId === deleteTarget.id}
-                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm text-white transition-colors hover:bg-red-500 disabled:opacity-50"
-              >
-                {busyId === deleteTarget.id && <Loader2 className="h-4 w-4 animate-spin" />}
-                Delete
-              </button>
+            <div>
+              <h1 className="text-steel-100 font-semibold text-lg leading-none">Projects</h1>
+              <p className="text-steel-400 text-xs mt-0.5">Organise your questlines, sprites and characters</p>
             </div>
           </div>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 text-steel-950 font-semibold text-sm rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Project
+          </button>
         </div>
-      )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 text-pulse animate-spin" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            {projects.map((p, i) => {
+              const busy = busyId === p._id;
+              return (
+                <div
+                  key={p._id}
+                  onClick={() => navigate(`/projects/${p._id}`)}
+                  className="group bg-steel-850 border border-steel-700 rounded-md overflow-hidden hover:border-steel-500 hover:shadow-lg hover:shadow-black/30 transition-all cursor-pointer relative"
+                >
+                  <div className="h-24 bg-steel-900 border-b border-steel-700 flex items-center justify-center">
+                    {p.isInbox
+                      ? <Inbox className="w-8 h-8" style={{ color: CARD_ACCENTS[i % CARD_ACCENTS.length] }} />
+                      : <FolderOpen className="w-8 h-8" style={{ color: CARD_ACCENTS[i % CARD_ACCENTS.length] }} />}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="text-steel-100 text-sm font-medium mb-2 group-hover:text-pulse transition-colors truncate">
+                      {p.name}
+                    </h3>
+                    <div className="flex items-center gap-3 text-steel-400 text-xs">
+                      <span className="flex items-center gap-1"><Workflow className="w-3 h-3" />{p.questlineCount ?? 0}</span>
+                      <span className="flex items-center gap-1"><Users className="w-3 h-3" />{p.characterCount ?? 0}</span>
+                      <span className="ml-auto">{timeAgo(p.updatedAt)}</span>
+                    </div>
+                  </div>
+
+                  {/* Hover management actions */}
+                  <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {!p.isInbox && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditing({ id: p._id, name: p.name }); }}
+                        className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-steel-700 text-white/70 hover:text-white rounded-lg transition-colors"
+                        title="Rename"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {!p.isInbox && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setRepoTarget(p); }}
+                        className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-steel-700 text-white/70 hover:text-white rounded-lg transition-colors"
+                        title={p.git?.repoOwner && p.git?.repoName ? `Repository: ${p.git.repoOwner}/${p.git.repoName}` : 'Set export repository'}
+                      >
+                        <Github className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDuplicate(p._id); }}
+                      disabled={busy}
+                      className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-steel-700 text-white/70 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+                      title="Duplicate"
+                    >
+                      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                    {!p.isInbox && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: p._id, name: p.name }); }}
+                        className="w-7 h-7 flex items-center justify-center bg-black/40 hover:bg-red-600/80 text-white/70 hover:text-white rounded-lg transition-colors"
+                        title="Delete project"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </main>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 /// <reference types="vite/client" />
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { Workflow } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { Sword } from 'lucide-react';
+import '../Landing/landing.css';
 
 type Mode = 'login' | 'register';
 
@@ -26,7 +27,7 @@ export function Login() {
       } else {
         await register(email, password);
       }
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
@@ -41,105 +42,157 @@ export function Login() {
     window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`;
   };
 
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setError('');
+  };
+
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Sword className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-2xl font-bold text-white tracking-tight">QuestFlow</span>
-        </div>
-
-        {/* Card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 shadow-xl">
-          <h1 className="text-xl font-semibold text-white mb-1">
-            {mode === 'login' ? 'Welcome back' : 'Create account'}
-          </h1>
-          <p className="text-sm text-zinc-400 mb-6">
-            {mode === 'login'
-              ? 'Sign in to continue building your quests'
-              : 'Get started with QuestFlow for free'}
-          </p>
-
-          {/* Google OAuth */}
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm font-medium rounded-lg px-4 py-2.5 transition-colors mb-4"
+    <div className="min-h-dvh bg-steel-950 lp-grid-bg flex flex-col">
+      {/* Chrome bar — links back to the landing page */}
+      <header className="h-12 bg-steel-900/95 border-b border-steel-700">
+        <div className="max-w-6xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between">
+          <Link
+            to="/"
+            className="flex items-center gap-2.5 focus-visible:outline-2 focus-visible:outline-pulse rounded"
           >
-            <GoogleIcon />
-            Continue with Google
-          </button>
+            <div className="w-6 h-6 rounded bg-volt flex items-center justify-center">
+              <Workflow className="w-4 h-4 text-steel-950" />
+            </div>
+            <span className="text-steel-100 font-semibold text-sm tracking-wide">QuestFlow</span>
+          </Link>
+          <span className="font-hud text-[11px] text-steel-500 tracking-wider">
+            session — {mode === 'login' ? 'sign_in' : 'register'}
+          </span>
+        </div>
+      </header>
 
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px bg-zinc-800" />
-            <span className="text-xs text-zinc-500">or</span>
-            <div className="flex-1 h-px bg-zinc-800" />
-          </div>
-
-          {/* Email / password form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-                Email
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full bg-zinc-800 border border-zinc-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none transition-colors"
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          {/* Session panel */}
+          <div className="lp-fade bg-steel-850 border border-steel-700 rounded-md shadow-xl overflow-hidden">
+            {/* Editor tabs */}
+            <div className="flex bg-steel-900 border-b border-steel-700" role="tablist">
+              <ModeTab
+                active={mode === 'login'}
+                label="sign_in"
+                onClick={() => switchMode('login')}
+              />
+              <ModeTab
+                active={mode === 'register'}
+                label="register"
+                onClick={() => switchMode('register')}
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-zinc-800 border border-zinc-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none transition-colors"
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg px-3 py-2">
-                {error}
+            <div className="p-8">
+              <h1 className="font-display font-semibold uppercase tracking-wide text-lg text-steel-100 mb-1">
+                {mode === 'login' ? 'Welcome back' : 'Create account'}
+              </h1>
+              <p className="text-sm text-steel-400 mb-6">
+                {mode === 'login'
+                  ? 'Sign in to continue building your quests'
+                  : 'Get started with QuestFlow for free'}
               </p>
-            )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2.5 transition-colors"
-            >
-              {loading
-                ? mode === 'login' ? 'Signing in…' : 'Creating account…'
-                : mode === 'login' ? 'Sign in' : 'Create account'}
-            </button>
-          </form>
+              {/* Google OAuth */}
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="w-full flex items-center justify-center gap-3 bg-steel-800 hover:bg-steel-700 border border-steel-600 text-steel-100 text-sm font-medium rounded-md px-4 py-2.5 transition-colors mb-4 cursor-pointer focus-visible:outline-2 focus-visible:outline-pulse"
+              >
+                <GoogleIcon />
+                Continue with Google
+              </button>
 
-          {/* Mode toggle */}
-          <p className="text-center text-sm text-zinc-400 mt-6">
-            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-            <button
-              type="button"
-              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
-              className="text-purple-400 hover:text-purple-300 font-medium transition-colors"
-            >
-              {mode === 'login' ? 'Sign up' : 'Sign in'}
-            </button>
-          </p>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 h-px bg-steel-700" />
+                <span className="font-hud text-[11px] text-steel-500">or</span>
+                <div className="flex-1 h-px bg-steel-700" />
+              </div>
+
+              {/* Email / password form */}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="auth-email"
+                    className="block font-hud text-[11px] text-steel-400 tracking-wider mb-1.5"
+                  >
+                    email
+                  </label>
+                  <input
+                    id="auth-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full bg-steel-900 border border-steel-600 focus:border-pulse focus:ring-1 focus:ring-pulse rounded-md px-3 py-2.5 text-sm text-steel-100 placeholder-steel-500 outline-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="auth-password"
+                    className="block font-hud text-[11px] text-steel-400 tracking-wider mb-1.5"
+                  >
+                    password
+                  </label>
+                  <input
+                    id="auth-password"
+                    type="password"
+                    required
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-steel-900 border border-steel-600 focus:border-pulse focus:ring-1 focus:ring-pulse rounded-md px-3 py-2.5 text-sm text-steel-100 placeholder-steel-500 outline-none transition-colors"
+                  />
+                </div>
+
+                {error && (
+                  <p
+                    role="alert"
+                    className="text-sm text-red-400 bg-red-950/40 border border-red-900/50 rounded-md px-3 py-2"
+                  >
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-volt hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed text-steel-950 font-semibold text-sm rounded-md px-4 py-2.5 transition-[filter] cursor-pointer focus-visible:outline-2 focus-visible:outline-pulse"
+                >
+                  {loading
+                    ? mode === 'login' ? 'Signing in…' : 'Creating account…'
+                    : mode === 'login' ? 'Sign in' : 'Create account'}
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function ModeTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`flex-1 font-hud text-xs tracking-wider py-2.5 border-b-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-pulse ${
+        active
+          ? 'border-volt text-steel-100 bg-steel-850'
+          : 'border-transparent text-steel-500 hover:text-steel-100'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

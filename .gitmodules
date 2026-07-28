@@ -1,0 +1,3 @@
+[submodule "backend/vendor/pixel-snapper"]
+	path = backend/vendor/pixel-snapper
+	url = https://github.com/Hugo-Dz/spritefusion-pixel-snapper.git

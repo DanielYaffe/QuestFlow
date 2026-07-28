@@ -23,10 +23,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    const dbName = mongoose.connection.name.toLowerCase();
-    if (dbName.includes('test')) {
-        await mongoose.connection.dropDatabase();
+    const dbName = (mongoose.connection.db?.databaseName ?? mongoose.connection.name ?? '').toLowerCase();
+    if (!dbName.includes('test')) {
+        await mongoose.connection.close();
+        throw new Error(`SAFETY: refusing to drop non-test database "${dbName}"`);
     }
+    await mongoose.connection.dropDatabase();
     await mongoose.connection.close();
 });
 

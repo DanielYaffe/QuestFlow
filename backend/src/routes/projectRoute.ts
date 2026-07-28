@@ -7,14 +7,14 @@ const projectRouter = Router();
  * @swagger
  * tags:
  *   name: Projects
- *   description: Project management API — a project groups questlines and sprites
+ *   description: Project management API — a project groups questlines, sprites and characters
  */
 
 /**
  * @swagger
  * /projects:
  *   get:
- *     summary: Get all projects owned by the authenticated user
+ *     summary: List projects owned by the authenticated user (with counts)
  *     tags: [Projects]
  *     security:
  *       - bearerAuth: []
@@ -56,6 +56,30 @@ projectRouter.get('/', projectController.get.bind(projectController));
  *       404:
  *         description: Not found
  */
+/**
+ * @swagger
+ * /projects/{id}/rewards:
+ *   get:
+ *     summary: List all rewards across the project's questlines (owner only)
+ *     tags: [Projects]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Rewards with their source questline and KB provenance (kbRef)
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Not found
+ */
+projectRouter.get('/:id/rewards', projectController.getRewards.bind(projectController));
+
 projectRouter.get('/:id', projectController.getById.bind(projectController));
 
 /**
@@ -78,6 +102,10 @@ projectRouter.get('/:id', projectController.getById.bind(projectController));
  *               name:
  *                 type: string
  *               description:
+ *                 type: string
+ *               defaultThemeId:
+ *                 type: string
+ *               defaultExportFormat:
  *                 type: string
  *     responses:
  *       201:
@@ -114,6 +142,10 @@ projectRouter.post('/', projectController.create.bind(projectController));
  *                 type: string
  *               description:
  *                 type: string
+ *               defaultThemeId:
+ *                 type: string
+ *               defaultExportFormat:
+ *                 type: string
  *     responses:
  *       200:
  *         description: Updated project
@@ -128,7 +160,7 @@ projectRouter.put('/:id', projectController.put.bind(projectController));
  * @swagger
  * /projects/{id}:
  *   delete:
- *     summary: Delete a project and all its questlines and sprites (owner only)
+ *     summary: Delete a project (owner only). Inbox cannot be deleted; its contents move to Inbox.
  *     tags: [Projects]
  *     security:
  *       - bearerAuth: []
@@ -142,7 +174,7 @@ projectRouter.put('/:id', projectController.put.bind(projectController));
  *       200:
  *         description: Deleted
  *       400:
- *         description: Cannot delete the only project
+ *         description: Cannot delete the Inbox project
  *       403:
  *         description: Forbidden
  *       404:

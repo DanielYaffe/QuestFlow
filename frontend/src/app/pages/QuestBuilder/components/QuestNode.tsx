@@ -34,16 +34,16 @@ export function QuestNode({ data, selected }: { data: QuestNodeData; selected?: 
     ? 'border-blue-500 shadow-lg shadow-blue-500/30'
     : selected
     ? `${config.borderColor} shadow-lg ${config.shadowColor}`
-    : 'border-zinc-700 hover:border-zinc-500';
+    : 'border-steel-600 hover:border-steel-400';
 
   return (
     <div
       onClick={() => data.onEdit?.()}
-      className={`relative bg-zinc-900 rounded-lg border-2 transition-all min-w-[280px] max-w-[320px] group cursor-pointer ${borderClass}`}
+      className={`relative bg-steel-850 rounded-lg border-2 transition-all min-w-[280px] max-w-[320px] group cursor-pointer ${borderClass}`}
     >
       {/* AI change highlight ring */}
       {highlight && (
-        <span className={`absolute -inset-[4px] rounded-xl border-2 pointer-events-none animate-pulse ${
+        <span className={`absolute -inset-[4px] rounded-md border-2 pointer-events-none animate-pulse ${
           highlight === 'added' ? 'border-emerald-400/50' : 'border-blue-400/50'
         }`} />
       )}
@@ -75,13 +75,13 @@ export function QuestNode({ data, selected }: { data: QuestNodeData; selected?: 
         <>
           <button
             onClick={(e) => { e.stopPropagation(); data.onAddPath?.('left'); }}
-            className="absolute -left-6 top-1/2 -translate-y-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            className="absolute -left-6 top-1/2 -translate-y-1/2 w-5 h-5 bg-steel-800 border border-steel-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
           >
             <Plus className={`w-3 h-3 ${config.iconColor}`} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); data.onAddPath?.('right'); }}
-            className="absolute -right-6 top-1/2 -translate-y-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            className="absolute -right-6 top-1/2 -translate-y-1/2 w-5 h-5 bg-steel-800 border border-steel-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
           >
             <Plus className={`w-3 h-3 ${config.iconColor}`} />
           </button>
@@ -90,13 +90,13 @@ export function QuestNode({ data, selected }: { data: QuestNodeData; selected?: 
         <>
           <button
             onClick={(e) => { e.stopPropagation(); data.onAddPath?.('top'); }}
-            className="absolute -top-6 left-1/2 -translate-x-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            className="absolute -top-6 left-1/2 -translate-x-1/2 w-5 h-5 bg-steel-800 border border-steel-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
           >
             <Plus className={`w-3 h-3 ${config.iconColor}`} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); data.onAddPath?.('bottom'); }}
-            className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-5 h-5 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-5 h-5 bg-steel-800 border border-steel-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
           >
             <Plus className={`w-3 h-3 ${config.iconColor}`} />
           </button>
@@ -107,9 +107,9 @@ export function QuestNode({ data, selected }: { data: QuestNodeData; selected?: 
       <div className={`p-4 ${config.bgColor}`}>
         <div className="flex items-start gap-2 mb-3">
           <Icon className={`w-5 h-5 ${config.iconColor} flex-shrink-0 mt-0.5`} />
-          <h3 className="flex-1 text-white font-medium leading-snug">{data.title}</h3>
+          <h3 className="flex-1 text-steel-100 font-medium leading-snug">{data.title}</h3>
         </div>
-        <p className="text-zinc-400 text-sm line-clamp-3">{data.body}</p>
+        <p className="text-steel-400 text-sm line-clamp-3">{data.body}</p>
 
         {hasChips && (
           <div className="mt-3 flex flex-col gap-1.5">
@@ -142,7 +142,7 @@ export function QuestNode({ data, selected }: { data: QuestNodeData; selected?: 
       </div>
 
       {/* Variant badge */}
-      <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full pointer-events-none">
+      <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-steel-800 border border-steel-600 rounded-full pointer-events-none">
         <span className={`text-xs ${config.iconColor} capitalize`}>{config.label}</span>
       </div>
 

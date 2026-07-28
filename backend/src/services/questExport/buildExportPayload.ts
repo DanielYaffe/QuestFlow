@@ -29,12 +29,35 @@ function uniqueSlug(base: string, seen: Set<string>): string {
   return slug;
 }
 
-export function buildExportPayload(questline: IQuestline): CanonicalExport {
+export interface ExportCharacterInput {
+  _id: { toString(): string };
+  name: string;
+  appearance?: string;
+  background?: string;
+}
+
+export interface ExportRewardInput {
+  _id: { toString(): string };
+  title: string;
+  description?: string;
+  rarity: 'common' | 'rare' | 'epic';
+}
+
+export function buildExportPayload(
+  questline: IQuestline,
+  characterDocs: ExportCharacterInput[] = [],
+  // Rewards live in the standalone Item collection (referenced by
+  // questline.itemIds); the caller resolves the docs and passes them in.
+  // Defaults to legacy embedded rewards for pre-migration fixtures.
+  rewardDocs: ExportRewardInput[] = questline.rewards ?? [],
+): CanonicalExport {
   const seenSlugs = new Set<string>();
 
   // ── Characters: _id → "npc_<slug>" ──────────────────────────────────────
+  // Characters live in the standalone Character collection (referenced by
+  // questline.characterIds); the caller resolves the docs and passes them in.
   const charIdMap = new Map<string, string>();
-  const characters: CanonicalCharacter[] = questline.characters.map((c) => {
+  const characters: CanonicalCharacter[] = characterDocs.map((c) => {
     const slug = uniqueSlug(`npc_${slugify(c.name)}`, seenSlugs);
     charIdMap.set(c._id.toString(), slug);
     return {
@@ -47,7 +70,7 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
 
   // ── Rewards: _id → "reward_<slug>" ──────────────────────────────────────
   const rewardIdMap = new Map<string, string>();
-  const rewards: CanonicalReward[] = questline.rewards.map((r) => {
+  const rewards: CanonicalReward[] = rewardDocs.map((r) => {
     const slug = uniqueSlug(`reward_${slugify(r.title)}`, seenSlugs);
     rewardIdMap.set(r._id.toString(), slug);
     return {
@@ -65,17 +88,8 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
     description: o.description ?? '',
   }));
 
-  // ── Chapters: _id → "chapter_<slug>" ────────────────────────────────────
-  const chapterIdMap = new Map<string, string>();
-  const chapters: CanonicalChapter[] = questline.chapters.map((ch) => {
-    const slug = uniqueSlug(`chapter_${slugify(ch.title)}`, seenSlugs);
-    chapterIdMap.set(ch._id.toString(), slug);
-    return {
-      id:     slug,
-      title:  ch.title,
-      scenes: ch.scenes.map((s) => ({ id: s.id, title: s.title })),
-    };
-  });
+  // ── Chapters: not modeled in the unified questline schema ────────────────
+  const chapters: CanonicalChapter[] = [];
 
   // ── Nodes: nodeId → "quest_<nodeId>" ────────────────────────────────────
   const nodeIdMap = new Map<string, string>();

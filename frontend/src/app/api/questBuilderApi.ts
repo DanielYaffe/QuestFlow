@@ -9,12 +9,13 @@ export interface QuestlineSummary {
   _id: string;
   title: string;
   description: string;
+  projectId?: string;
   updatedAt: string;
   nodeCount?: number;
 }
 
-export async function fetchQuestlines(): Promise<QuestlineSummary[]> {
-  const { data } = await api.get('/questlines');
+export async function fetchQuestlines(projectId?: string): Promise<QuestlineSummary[]> {
+  const { data } = await api.get('/questlines', { params: projectId ? { projectId } : undefined });
   return data;
 }
 
@@ -23,16 +24,26 @@ export interface QuestlineMeta {
   title: string;
   genre: string;
   styleId: string;
+  projectId?: string;
   templateId?: string;
   templateName?: string;
 }
 
 export async function fetchQuestlineMeta(questlineId: string): Promise<QuestlineMeta> {
   const { data } = await api.get(`/questlines/${questlineId}`);
-  return { _id: data._id, title: data.title, genre: data.genre ?? '', styleId: data.styleId ?? '', templateId: data.templateId, templateName: data.templateName };
+  return {
+    _id: data._id,
+    title: data.title,
+    genre: data.genre ?? '',
+    styleId: data.styleId ?? '',
+    projectId: data.projectId ?? '',
+    templateId: data.templateId,
+    templateName: data.templateName,
+  };
 }
 
 export interface QuestlineData {
+  projectId: string;
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
   nextNodeId: number;
@@ -54,4 +65,10 @@ export async function saveQuestlineGraph(
   edges: Edge[],
 ): Promise<void> {
   await api.put(`/questlines/${questlineId}/graph`, { nodes, edges });
+}
+
+// Delete only the questline document. Project-scoped characters and items are
+// referenced by id and are left untouched — they live on in the project.
+export async function deleteQuestline(questlineId: string): Promise<void> {
+  await api.delete(`/questlines/${questlineId}`);
 }

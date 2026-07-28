@@ -1,13 +1,21 @@
 import { Response } from 'express';
 import mongoose from 'mongoose';
-import { config } from '../config/config';
 import { AuthRequest } from '../middlewares/authMiddleware';
-import { callGemini } from '../utils/gemini';
 import { getProjectId } from '../utils/projectScope';
 import QuestlineModel from '../models/questlineModel';
 import QuestStyleModel from '../models/questStyleModel';
+import CharacterModel from '../models/characterModel';
+import ItemModel from '../models/itemModel';
 import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVariantConfigModel';
+import GameThemeModel, { IGameTheme } from '../models/gameThemeModel';
+import ThemeConfigModel from '../models/themeConfigModel';
 import ExportTemplateModel from '../models/exportTemplateModel';
+import { resolveProjectId } from '../models/projectModel';
+import { complete } from '../services/ai';
+import { hasGenApiKey } from '../config/ai';
+import { buildReferenceContext, ReferenceEntity } from '../services/generationContext';
+import { ownsGame } from '../services/gameService';
+import { DifficultyBucket } from '../services/structuredParse';
 
 const BASE_VARIANT_KEYS = new Set(BASE_VARIANT_SEEDS.map((s) => s.key));
 
@@ -62,6 +70,106 @@ interface Objective {
 interface Reward {
   id: string;
   title: string;
+  // Exact KB entity name when this reward IS an existing item from the game's
+  // knowledge base — surfaced as a "grounded" mark and persisted on the
+  // questline reward. Absent for invented rewards.
+  kbRef?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Helper — load theme metadata (falls back to generic_rpg if not found)
+// ---------------------------------------------------------------------------
+
+async function loadTheme(themeId?: string): Promise<IGameTheme | null> {
+  const id = themeId || 'generic_rpg';
+  return GameThemeModel.findOne({ themeId: id }).lean();
+}
+
+function buildThemeContext(theme: IGameTheme | null): string {
+  if (!theme) return '';
+
+  const rewardList = theme.rewardTypes.map((r) => `${r.name} (${r.rarity})`).join(', ');
+  const questList  = theme.questTypes.map((q) => q.name).join(', ');
+
+  return `
+Theme context:
+- Tone: ${theme.questTone}
+- Naming style: ${theme.namingStyle}
+- Available reward types: ${rewardList}
+- Quest types: ${questList}
+- Location rules: ${theme.locationRules}
+- Dialogue style: ${theme.dialogueStyle}`.trim();
+}
+
+// Optional soft progression hint from the client ('' / unknown → none).
+function parseProgression(v: unknown): DifficultyBucket | undefined {
+  return v === 'early' || v === 'mid' || v === 'late' ? v : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Project roster context — what the project already has, offered to generation
+// so it reuses existing characters/rewards instead of minting near-duplicates
+// on every run.
+// ---------------------------------------------------------------------------
+
+const ROSTER_LIMIT = 30;
+
+async function loadProjectRewardTitles(userId: string | undefined, projectIdHint: string): Promise<string[]> {
+  if (!userId) return [];
+  try {
+    const projectId = await resolveProjectId(userId, projectIdHint);
+    const items = await ItemModel.find({ projectId })
+      .select('name')
+      .sort({ updatedAt: -1 })
+      .limit(ROSTER_LIMIT)
+      .lean();
+    const titles = items.map((i) => i.name.trim()).filter(Boolean);
+    return [...new Set(titles)];
+  } catch {
+    return [];
+  }
+}
+
+interface ProjectCharacterRef {
+  id: string;
+  name: string;
+  kind: string;
+  lore: string;
+}
+
+async function loadProjectCharacters(userId: string | undefined, projectIdHint: string): Promise<ProjectCharacterRef[]> {
+  if (!userId) return [];
+  try {
+    const projectId = await resolveProjectId(userId, projectIdHint);
+    const docs = await CharacterModel.find({ projectId })
+      .select('name kind lore')
+      .sort({ updatedAt: -1 })
+      .limit(ROSTER_LIMIT)
+      .lean();
+    return docs.map((d) => ({
+      id: d._id.toString(),
+      name: d.name,
+      kind: d.kind,
+      lore: (d.lore ?? '').slice(0, 120),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function buildProjectRewardsBlock(titles: string[]): string {
+  if (titles.length === 0) return '';
+  return `
+REWARDS THAT ALREADY EXIST IN THIS PROJECT:
+${titles.map((t) => `  - ${t}`).join('\n')}
+Avoid inventing near-duplicates of these. If the story genuinely calls for one of them again, reuse its exact title; otherwise create rewards clearly distinct from this list.`;
+}
+
+function buildProjectCharactersBlock(chars: ProjectCharacterRef[]): string {
+  if (chars.length === 0) return '';
+  return `
+CHARACTERS THAT ALREADY EXIST IN THIS PROJECT (reusable — linking avoids duplicates):
+${chars.map((c) => `  - existingId="${c.id}" name="${c.name}" role="${c.kind}"${c.lore ? ` — ${c.lore}` : ''}`).join('\n')}`;
 }
 
 function isQuotaError(error: unknown): boolean {
@@ -170,12 +278,11 @@ function shouldSeedDialogField(path: string): boolean {
     || /(^|\.)(start|inprogress|in_progress|progress|complete)\.pages$/.test(normalized);
 }
 
-
 // ---------------------------------------------------------------------------
 // POST /quests/generate — generate objectives + rewards
 // ---------------------------------------------------------------------------
 
-function buildTemplateObjectivesPrompt(story: string, genre: string, template: TemplateContext): string {
+function buildTemplateObjectivesPrompt(story: string, genre: string, themeContext: string, referenceBlock: string, projectBlock: string, template: TemplateContext): string {
   const contract = template.templateSchema?.generationContract;
   const requirementFields = contract?.requirementRoles?.length
     ? contract.requirementRoles.join(', ')
@@ -193,12 +300,12 @@ function buildTemplateObjectivesPrompt(story: string, genre: string, template: T
     ?? JSON.stringify(template.structure);
 
   return `You are a professional game designer specialising in quest design for ${genre} games.
-
+${themeContext ? `\n${themeContext}\n` : ''}
 A player has provided the following story premise:
 """
 ${story}
 """
-
+${referenceBlock ? `${referenceBlock}\n` : ''}${projectBlock ? `${projectBlock}\n` : ''}
 The user selected a quest-node export template named "${template.name}".
 Analyzed template schema summary:
 ${structureSummary}
@@ -219,7 +326,8 @@ Rules:
 - Use the detected template schema roles to decide which requirement, reward, and dialog categories make sense.
 - Do not copy IDs, amounts, concrete item names, monster names, or placeholder values from the template into generated titles.
 - Do not assume the template has combat, collection, item reward, currency reward, experience reward, or dialog fields unless those roles are present above.
-- Reward IDs and item IDs are filled manually later, so do not invent final IDs.
+- Reward IDs and item IDs are filled manually later, so do not invent final IDs.${referenceBlock ? `
+- If a reward IS one of the existing items listed in the reference material, use that item's exact name and add "kbRef" with the same exact name. Never add kbRef to rewards you invent.` : ''}
 - Return ONLY valid JSON, no markdown, no explanation.
 
 Return this JSON structure:
@@ -231,19 +339,21 @@ Return this JSON structure:
   "rewards": [
     { "id": "rew-1", "title": "Generic reward type" }
   ]
-}`;
+}${referenceBlock ? `
+
+A reward object may additionally carry "kbRef" — the exact name of the reference-material item it reuses. Include it whenever the reward IS one of the listed existing items.` : ''}`;
 }
 
-function buildObjectivesPrompt(story: string, genre: string, template?: TemplateContext): string {
-  if (template) return buildTemplateObjectivesPrompt(story, genre, template);
+function buildObjectivesPrompt(story: string, genre: string, themeContext: string, referenceBlock: string, projectBlock: string, template?: TemplateContext): string {
+  if (template) return buildTemplateObjectivesPrompt(story, genre, themeContext, referenceBlock, projectBlock, template);
 
   return `You are a professional game designer specialising in quest design for ${genre} games.
-
+${themeContext ? `\n${themeContext}\n` : ''}
 A player has provided the following story premise:
 """
 ${story}
 """
-
+${referenceBlock ? `${referenceBlock}\n` : ''}${projectBlock ? `${projectBlock}\n` : ''}
 Your task is to extract 3 to 7 quest objectives and 3 to 7 rewards that fit naturally within this story.
 
 Rules:
@@ -252,7 +362,8 @@ Rules:
 - Rewards must feel appropriate to the story's tone and setting
 - Do NOT repeat themes — each objective and reward must be distinct
 - Return between 3 and 7 objectives
-- Return between 3 and 7 rewards
+- Return between 3 and 7 rewards${referenceBlock ? `
+- If a reward IS one of the existing items listed in the reference material, use that item's exact name and add "kbRef" with the same exact name. Never add kbRef to rewards you invent.` : ''}
 - Return ONLY valid JSON, no markdown, no explanation
 
 Return this exact JSON structure:
@@ -267,25 +378,43 @@ Return this exact JSON structure:
     { "id": "rew-2", "title": "reward name" },
     { "id": "rew-3", "title": "reward name" }
   ]
-}`;
+}${referenceBlock ? `
+
+A reward object may additionally carry "kbRef" — the exact name of the reference-material item it reuses. Include it whenever the reward IS one of the listed existing items.` : ''}`;
 }
 
 export async function generateObjectives(req: AuthRequest, res: Response) {
-  const { story, genre, templateId } = req.body as { story?: string; genre?: string; templateId?: string };
+  const { story, genre, themeId, templateId, gameId, progression } = req.body as {
+    story?: string; genre?: string; themeId?: string; templateId?: string; gameId?: string; progression?: string;
+  };
 
   if (!story || !genre) {
     res.status(400).json({ error: 'story and genre are required' });
     return;
   }
 
-  if (!config.GEMINI_API_KEY) {
-    res.status(500).json({ error: 'Gemini API key is not configured' });
+  if (!hasGenApiKey()) {
+    res.status(500).json({ error: 'AI provider API key is not configured' });
     return;
   }
 
   let template: TemplateContext | undefined;
 
   try {
+    const [theme, reference, existingRewardTitles] = await Promise.all([
+      loadTheme(themeId),
+      buildReferenceContext({
+        ownerId: String(req.user?._id ?? ''),
+        gameId,
+        step: 'objectives',
+        query: story,
+        progression: parseProgression(progression),
+      }),
+      loadProjectRewardTitles(req.user?._id, getProjectId(req)),
+    ]);
+    const themeContext = buildThemeContext(theme);
+    const projectBlock = buildProjectRewardsBlock(existingRewardTitles);
+
     if (templateId) {
       if (!mongoose.Types.ObjectId.isValid(templateId)) {
         res.status(400).json({ error: 'Invalid template id' });
@@ -308,9 +437,24 @@ export async function generateObjectives(req: AuthRequest, res: Response) {
         inferredAiGuidance: templateDoc.inferredAiGuidance,
       };
     }
-    const json = await callGemini(buildObjectivesPrompt(story, genre, template));
+
+    const json = await complete(buildObjectivesPrompt(story, genre, themeContext, reference.referenceBlock, projectBlock, template));
     const parsed = JSON.parse(json) as { objectives: Objective[]; rewards: Reward[] };
-    res.json(parsed);
+    // kbRef is only trusted when it names an entity we actually offered as
+    // reference — anything else is a hallucination and is dropped. A reward
+    // whose title exactly matches an offered item is grounded even when the
+    // model forgot the kbRef field.
+    const canonicalNames = new Map(reference.entities.map((e: ReferenceEntity) => [e.name.toLowerCase(), e.name]));
+    res.json({
+      objectives: parsed.objectives ?? [],
+      rewards: (parsed.rewards ?? []).map((reward) => ({
+        ...reward,
+        kbRef: (typeof reward.kbRef === 'string'
+          ? canonicalNames.get(reward.kbRef.trim().toLowerCase())
+          : undefined)
+          ?? (typeof reward.title === 'string' ? canonicalNames.get(reward.title.trim().toLowerCase()) : undefined),
+      })),
+    });
   } catch (error) {
     if (error instanceof SyntaxError) {
       res.status(502).json({ error: 'AI returned malformed JSON — try again' });
@@ -331,73 +475,118 @@ export async function generateObjectives(req: AuthRequest, res: Response) {
 interface GeneratedCharacter {
   id: string;
   name: string;
-  role: 'npc' | 'villain' | 'ally' | 'monster' | 'neutral';
+  role: 'npc' | 'monster';
   appearance: string;
   background: string;
+  // Exact KB entity name when this character IS an existing game entity —
+  // generateQuestline links the existing Character doc instead of duplicating.
+  kbRef?: string;
+  // Mongo _id of an existing project Character this one reuses — linked
+  // directly instead of inserting a duplicate.
+  existingId?: string;
 }
 
-const CHARACTER_ROLES = new Set(['npc', 'villain', 'ally', 'monster', 'neutral']);
-
+// Coerce any AI-emitted role to the CharacterModel enum ('npc' | 'monster').
+// Any hostile descriptor maps to 'monster'; everything else defaults to 'npc'.
 function normalizeCharacterRole(role: unknown): GeneratedCharacter['role'] {
-  if (typeof role !== 'string') return 'neutral';
-  const normalized = role.toLowerCase().trim();
-  if (CHARACTER_ROLES.has(normalized)) return normalized as GeneratedCharacter['role'];
-  if (/enemy|boss|antagonist|evil|foe/.test(normalized)) return 'villain';
-  if (/creature|beast|mob/.test(normalized)) return 'monster';
-  if (/friend|companion|helper|mentor/.test(normalized)) return 'ally';
-  return 'neutral';
+  if (typeof role === 'string') {
+    const normalized = role.toLowerCase().trim();
+    if (normalized === 'monster') return 'monster';
+    if (normalized === 'npc') return 'npc';
+    if (/enemy|boss|antagonist|evil|foe|villain|creature|beast|mob|hostile/.test(normalized)) return 'monster';
+  }
+  return 'npc';
 }
 
-function buildCharactersPrompt(story: string, genre: string): string {
+function buildCharactersPrompt(story: string, genre: string, themeContext: string, referenceBlock: string, projectBlock: string): string {
   return `You are a professional narrative designer for ${genre} games.
-
+${themeContext ? `\n${themeContext}\n` : ''}
 A player has provided the following story premise:
 """
 ${story}
 """
-
-Your task is to identify all meaningful characters that exist or are implied in this story — NPCs, allies, villains, monsters, and neutral figures.
+${referenceBlock ? `${referenceBlock}\n` : ''}${projectBlock ? `${projectBlock}\n` : ''}
+Your task is to identify all meaningful characters that exist or are implied in this story.
 
 Rules:
 - Extract 1 to 6 characters. Include only characters who would plausibly appear in the quest.
 - Do NOT invent characters that are not suggested by the story.
-- Each character must have a distinct role: "npc" (quest giver, merchant, bystander), "ally" (joins the player), "villain" (antagonist, boss), "monster" (enemy creature), or "neutral" (ambiguous, can be either).
+- Each character must have role "npc" (any friendly or neutral figure: quest giver, merchant, ally, bystander) or "monster" (any hostile figure: villain, boss, enemy creature, antagonist).
 - Appearance: 1 concise sentence describing their look (clothing, physical traits, atmosphere).
-- Background: 1 concise sentence about who they are and their motivation in this story.
+- Background: 1 concise sentence about who they are and their motivation in this story.${referenceBlock ? `
+- The reference material lists characters and creatures that ALREADY EXIST in this game world. When the story involves a figure that matches one of them — a leader, mentor, elder, merchant, rival, beast — CAST the existing entity instead of inventing a similar new one: use its exact name and add "kbRef" with the same exact name.
+- Only invent a new character when nothing in the reference material fits the role. Never add kbRef to characters you invent.` : ''}${projectBlock ? `
+- If a story character IS one of the existing project characters listed above, return it with "existingId" set to that exact id and keep the same name — do not create a duplicate. Still fill role, appearance, and background.` : ''}
 - Return ONLY valid JSON, no markdown, no explanation.
 
 Return this exact JSON structure:
 {
   "characters": [
     { "id": "char-1", "name": "Name", "role": "npc",     "appearance": "...", "background": "..." },
-    { "id": "char-2", "name": "Name", "role": "villain",  "appearance": "...", "background": "..." },
-    { "id": "char-3", "name": "Name", "role": "ally",     "appearance": "...", "background": "..." }
+    { "id": "char-2", "name": "Name", "role": "monster",  "appearance": "...", "background": "..." },
+    { "id": "char-3", "name": "Name", "role": "npc",     "appearance": "...", "background": "..." }
   ]
-}`;
+}${referenceBlock || projectBlock ? `
+
+A character object may additionally carry ${referenceBlock ? '"kbRef" — the exact name of the reference-material entity it reuses' : ''}${referenceBlock && projectBlock ? ', and/or ' : ''}${projectBlock ? '"existingId" — the exact id of the project character it reuses' : ''}. Include the field whenever it applies.` : ''}`;
 }
 
 export async function generateCharacters(req: AuthRequest, res: Response) {
-  const { story, genre } = req.body as { story?: string; genre?: string };
+  const { story, genre, themeId, gameId, progression } = req.body as {
+    story?: string; genre?: string; themeId?: string; gameId?: string; progression?: string;
+  };
 
   if (!story || !genre) {
     res.status(400).json({ error: 'story and genre are required' });
     return;
   }
 
-  if (!config.GEMINI_API_KEY) {
-    res.status(500).json({ error: 'Gemini API key is not configured' });
+  if (!hasGenApiKey()) {
+    res.status(500).json({ error: 'AI provider API key is not configured' });
     return;
   }
 
   try {
-    const json = await callGemini(buildCharactersPrompt(story, genre));
+    const [theme, reference, projectCharacters] = await Promise.all([
+      loadTheme(themeId),
+      buildReferenceContext({
+        ownerId: String(req.user?._id ?? ''),
+        gameId,
+        step: 'characters',
+        query: story,
+        progression: parseProgression(progression),
+      }),
+      loadProjectCharacters(req.user?._id, getProjectId(req)),
+    ]);
+    const themeContext = buildThemeContext(theme);
+    const projectBlock = buildProjectCharactersBlock(projectCharacters);
+    const json = await complete(buildCharactersPrompt(story, genre, themeContext, reference.referenceBlock, projectBlock));
     const parsed = JSON.parse(json) as { characters: GeneratedCharacter[] };
+    // kbRef/existingId are only trusted when they name an entity we actually
+    // offered — anything else is a hallucination and is dropped. The model may
+    // also cast an offered entity without tagging it, so an exact name match
+    // grounds the character anyway (the flag must not depend on the model
+    // remembering a field).
+    const canonicalNames = new Map(reference.entities.map((e: ReferenceEntity) => [e.name.toLowerCase(), e.name]));
+    const validExistingIds = new Set(projectCharacters.map((c) => c.id));
+    const projectIdByName = new Map(projectCharacters.map((c) => [c.name.toLowerCase(), c.id]));
     res.json({
-      characters: (parsed.characters ?? []).map((character, index) => ({
-        ...character,
-        id: character.id || `char-${index + 1}`,
-        role: normalizeCharacterRole(character.role),
-      })),
+      characters: (parsed.characters ?? []).map((character, index) => {
+        const name = typeof character.name === 'string' ? character.name.trim().toLowerCase() : '';
+        const kbRef = (typeof character.kbRef === 'string'
+          ? canonicalNames.get(character.kbRef.trim().toLowerCase())
+          : undefined) ?? canonicalNames.get(name);
+        const existingId = (typeof character.existingId === 'string' && validExistingIds.has(character.existingId.trim())
+          ? character.existingId.trim()
+          : undefined) ?? projectIdByName.get(name);
+        return {
+          ...character,
+          id: character.id || `char-${index + 1}`,
+          role: normalizeCharacterRole(character.role),
+          kbRef,
+          existingId,
+        };
+      }),
     });
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -419,16 +608,17 @@ function buildGraphPrompt(
   rewards: Reward[],
   characters: GeneratedCharacter[],
   promptSuffix: string,
+  themeContext: string,
+  referenceBlock: string,
 ): string {
   const objectiveList = objectives.map((o, i) => `  ${i + 1}. ${o.title} — ${o.description}`).join('\n');
   const rewardList    = rewards.map((r) => `  - id="${r.id}" title="${r.title}"`).join('\n');
   const characterList = characters.map((c) => `  - id="${c.id}" name="${c.name}" role="${c.role}"`).join('\n');
 
   const hasCharacters = characters.length > 0;
-  const hasRewards    = rewards.length > 0;
 
   return `You are a professional game designer creating a quest node graph for a ${genre} game.
-
+${themeContext ? `\n${themeContext}\n` : ''}
 Story premise:
 """
 ${story}
@@ -442,7 +632,7 @@ ${rewardList}
 ${hasCharacters ? `
 Characters in this story (use their exact IDs when assigning to nodes):
 ${characterList}
-` : ''}
+` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}
 ━━━ WHAT A NODE IS ━━━
 A node is a single SCENE in the story — one moment, one location, one decision point.
 Think of it like a chapter in a book or a room in a dungeon.
@@ -454,7 +644,7 @@ Each node has a variant that describes the TYPE of scene:
 
 ━━━ CHARACTER & REWARD ASSIGNMENT ━━━
 - Every dialogue/story node SHOULD involve 1–2 relevant characters. Put their IDs in "npcIds".
-- Every combat node SHOULD involve the villain or monster characters. Put their IDs in "monsterIds".
+- Every combat node SHOULD involve the monster characters. Put their IDs in "monsterIds".
 - The final resolution node MUST have the reward IDs in "rewardIds". Mid-quest treasure nodes may also have reward IDs.
 - Use ONLY IDs from the lists above. Leave arrays empty ([]) if none apply.
 
@@ -509,14 +699,19 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     return;
   }
 
-  const { story, genre, objectives, rewards, characters, styleId, templateId } = req.body as {
+  const { story, genre, objectives, rewards, characters, styleId, themeId, exportFormat, templateId, projectId, gameId, progression } = req.body as {
     story?: string;
     genre?: string;
     objectives?: Objective[];
     rewards?: Reward[];
     characters?: GeneratedCharacter[];
     styleId?: string;
+    themeId?: string;
+    exportFormat?: string;
     templateId?: string;
+    projectId?: string;
+    gameId?: string;
+    progression?: string;
   };
 
   if (!story || !genre || !objectives?.length) {
@@ -524,21 +719,51 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     return;
   }
 
-  if (!config.GEMINI_API_KEY) {
-    res.status(500).json({ error: 'Gemini API key is not configured' });
+  if (!hasGenApiKey()) {
+    res.status(500).json({ error: 'AI provider API key is not configured' });
     return;
   }
 
-  try {
-    // 1. Resolve the style's promptSuffix (if provided)
-    let promptSuffix = '';
-    if (styleId) {
-      const style = mongoose.Types.ObjectId.isValid(styleId)
-        ? await QuestStyleModel.findById(styleId).lean()
-        : await QuestStyleModel.findOne({ engine: styleId }).lean();
-      if (style) promptSuffix = style.promptSuffix;
-    }
+  // Track inserted Character/Item docs so we can roll them back if the
+  // questline itself fails to persist (standalone Mongo has no transactions).
+  let insertedCharacterIds: mongoose.Types.ObjectId[] = [];
+  let insertedItemIds: mongoose.Types.ObjectId[] = [];
+  let questlineSaved = false;
 
+  try {
+    // 1. Resolve style promptSuffix and theme metadata in parallel
+    const [style, theme] = await Promise.all([
+      styleId
+        ? (mongoose.isValidObjectId(styleId)
+            ? QuestStyleModel.findById(styleId).lean()
+            : QuestStyleModel.findOne({ engine: styleId }).lean())
+        : Promise.resolve(null),
+      loadTheme(themeId),
+    ]);
+
+    const promptSuffix = style?.promptSuffix ?? '';
+    const themeContext = buildThemeContext(theme);
+
+    // Resolve export format: request body → theme default → 'json'
+    const resolvedExportFormat = exportFormat
+      ?? (await ThemeConfigModel.findOne({ themeId: themeId ?? 'generic_rpg' }).lean())?.defaultExportFormat
+      ?? 'json';
+
+    // Resolve the owning project (active project header → body → user's Inbox)
+    const resolvedProjectId = await resolveProjectId(userId, getProjectId(req) || projectId);
+
+    // KB grounding: only a Game the caller owns counts; anything else is
+    // treated as "no game" and generation runs free.
+    const ownedGameId = gameId && (await ownsGame(String(userId), gameId)) ? gameId : '';
+    const reference = await buildReferenceContext({
+      ownerId: String(userId),
+      gameId: ownedGameId || undefined,
+      step: 'questline',
+      query: [story, ...(objectives ?? []).map((o) => o.title)].join('\n'),
+      progression: parseProgression(progression),
+    });
+
+    // Resolve the export template (if provided)
     let templateDoc = null;
     if (templateId) {
       if (!mongoose.Types.ObjectId.isValid(templateId)) {
@@ -555,8 +780,8 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       }
     }
 
-    // 2. Ask Gemini to generate the graph
-    const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix));
+    // 2. Ask the model to generate the graph
+    const json = await complete(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix, themeContext, reference.referenceBlock));
     const generated = JSON.parse(json) as {
       title: string;
       nodes: { id: string; type: string; variant: string; title: string; body: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[] }[];
@@ -567,18 +792,121 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     const variantKeys = [...new Set(generated.nodes.map((n) => n.variant ?? 'story'))];
     await ensureVariantConfigsExist(variantKeys);
 
-    // 4. Build temp-id → index maps so we can remap AI-generated IDs to MongoDB _ids after insert
+    // 4. Create standalone Character documents so they appear in the project roster,
+    //    then build temp-id → CharacterModel._id map for node remapping.
+    //    KB-referenced characters (kbRef) link the already-materialized doc when
+    //    one exists in this project instead of creating a duplicate.
     const charIdMap  = new Map<string, string>(); // "char-1" → mongo _id
     const rewardIdMap = new Map<string, string>(); // "rew-1"  → mongo _id
 
+    const questlineCharacterIds: string[] = [];
+    const toInsert: { c: GeneratedCharacter; kbRefTag: string }[] = [];
+    for (const c of characters ?? []) {
+      // Explicit reuse of a project character — link it, never duplicate.
+      if (typeof c.existingId === 'string' && mongoose.isValidObjectId(c.existingId)) {
+        const existing = await CharacterModel.findOne({ _id: c.existingId, projectId: resolvedProjectId })
+          .select('_id')
+          .lean();
+        if (existing) {
+          const id = String(existing._id);
+          charIdMap.set(c.id, id);
+          questlineCharacterIds.push(id);
+          continue;
+        }
+      }
+      const kbRefTag = ownedGameId && typeof c.kbRef === 'string' && c.kbRef.trim()
+        ? `${ownedGameId}:${c.kbRef.trim()}`
+        : '';
+      if (kbRefTag) {
+        const existing = await CharacterModel.findOne({ projectId: resolvedProjectId, kbRef: kbRefTag })
+          .select('_id')
+          .lean();
+        if (existing) {
+          const id = String(existing._id);
+          charIdMap.set(c.id, id);
+          questlineCharacterIds.push(id);
+          continue;
+        }
+      }
+      toInsert.push({ c, kbRefTag });
+    }
+
+    const characterDocs = await CharacterModel.insertMany(
+      toInsert.map(({ c, kbRefTag }) => ({
+        ownerId:    userId,
+        projectId:  resolvedProjectId,
+        kind:       c.role, // role is already coerced to 'npc' | 'monster'
+        name:       c.name,
+        appearance: c.appearance,
+        lore:       c.background,
+        kbRef:      kbRefTag,
+      })),
+    );
+    insertedCharacterIds = characterDocs.map((d) => d._id);
+    toInsert.forEach(({ c }, i) => {
+      const mongoId = characterDocs[i]?._id?.toString();
+      if (mongoId) {
+        charIdMap.set(c.id, mongoId);
+        questlineCharacterIds.push(mongoId);
+      }
+    });
+
+    // 4b. Create standalone Item documents for rewards (mirrors characters):
+    //     reuse an existing project item when the kbRef tag or exact title
+    //     matches, otherwise insert a new Item; the questline stores references.
+    const existingItems = await ItemModel.find({ projectId: resolvedProjectId })
+      .select('name kbRef')
+      .lean();
+    const itemByName  = new Map(existingItems.map((i) => [i.name.trim().toLowerCase(), String(i._id)]));
+    const itemByKbRef = new Map(existingItems.filter((i) => i.kbRef).map((i) => [i.kbRef, String(i._id)]));
+
+    const questlineItemIds: string[] = [];
+    const itemsToInsert: { r: Reward; kbRefTag: string }[] = [];
+    for (const r of rewards ?? []) {
+      if (!r.title?.trim()) continue;
+      const kbRefTag = ownedGameId && typeof r.kbRef === 'string' && r.kbRef.trim()
+        ? `${ownedGameId}:${r.kbRef.trim()}`
+        : '';
+      const existingId = (kbRefTag && itemByKbRef.get(kbRefTag))
+        || itemByName.get(r.title.trim().toLowerCase());
+      if (existingId) {
+        rewardIdMap.set(r.id, existingId);
+        if (!questlineItemIds.includes(existingId)) questlineItemIds.push(existingId);
+        continue;
+      }
+      itemsToInsert.push({ r, kbRefTag });
+    }
+
+    const itemDocs = await ItemModel.insertMany(
+      itemsToInsert.map(({ r, kbRefTag }) => ({
+        ownerId:   userId,
+        projectId: resolvedProjectId,
+        name:      r.title.trim(),
+        kbRef:     kbRefTag,
+      })),
+    );
+    insertedItemIds = itemDocs.map((d) => d._id);
+    itemsToInsert.forEach(({ r }, i) => {
+      const mongoId = itemDocs[i]?._id?.toString();
+      if (mongoId) {
+        rewardIdMap.set(r.id, mongoId);
+        questlineItemIds.push(mongoId);
+        itemByName.set(r.title.trim().toLowerCase(), mongoId);
+      }
+    });
+
     const questline = await QuestlineModel.create({
-      ownerId: userId,
-      projectId:   getProjectId(req),
-      title:       generated.title || story.split('\n')[0].slice(0, 60) || 'New Quest',
-      description: story,
-      genre:       genre,
-      storyPrompt: story,
-      styleId:     styleId ?? '',
+      ownerId:      userId,
+      projectId:    resolvedProjectId,
+      title:        generated.title || story.split('\n')[0].slice(0, 60) || 'New Quest',
+      description:  story,
+      genre:        genre,
+      storyPrompt:  story,
+      styleId:      styleId ?? '',
+      themeId:      themeId ?? 'generic_rpg',
+      exportFormat: resolvedExportFormat,
+      gameId:       ownedGameId,
+      characterIds: questlineCharacterIds,
       templateId:   templateDoc?._id.toString() ?? '',
       templateName: templateDoc?.name ?? '',
       templateSnapshot: templateDoc ? {
@@ -633,30 +961,10 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
         title:       o.title,
         description: o.description,
       })),
-      rewards: (rewards ?? []).map((r) => ({
-        title:       r.title,
-        description: '',
-      })),
-      characters: (characters ?? []).map((c) => ({
-        name:       c.name,
-        appearance: c.appearance,
-        background: c.background,
-        imageUrl:   '',
-        questIds:   [],
-      })),
+      itemIds: questlineItemIds,
     });
 
-    // 5. Build temp-id → MongoDB _id maps from the newly created embedded documents
-    (characters ?? []).forEach((c, i) => {
-      const mongoId = questline.characters[i]?._id?.toString();
-      if (mongoId) charIdMap.set(c.id, mongoId);
-    });
-    (rewards ?? []).forEach((r, i) => {
-      const mongoId = questline.rewards[i]?._id?.toString();
-      if (mongoId) rewardIdMap.set(r.id, mongoId);
-    });
-
-    // 6. Remap node arrays from temp IDs to MongoDB _ids and save
+    // 5. Remap node arrays from temp IDs to MongoDB _ids and save
     const remappedNodes = questline.nodes.map((n) => ({
       _id:        n._id,
       nodeId:     n.nodeId,
@@ -672,9 +980,18 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     }));
     questline.nodes = remappedNodes as typeof questline.nodes;
     await questline.save();
+    questlineSaved = true;
 
     res.status(201).json({ questlineId: questline._id.toString() });
   } catch (error) {
+    // Roll back orphaned Character/Item docs if the questline never persisted.
+    if (!questlineSaved && insertedCharacterIds.length > 0) {
+      await CharacterModel.deleteMany({ _id: { $in: insertedCharacterIds } }).catch(() => {});
+    }
+    if (!questlineSaved && insertedItemIds.length > 0) {
+      await ItemModel.deleteMany({ _id: { $in: insertedItemIds } }).catch(() => {});
+    }
+    console.error('[generateQuestline]', error);
     if (error instanceof SyntaxError) {
       res.status(502).json({ error: 'AI returned malformed JSON — try again' });
     } else {

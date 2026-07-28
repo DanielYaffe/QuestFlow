@@ -131,24 +131,24 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-2xl w-full">
+        <DialogContent className="bg-steel-850 border-steel-700 text-steel-100 max-w-2xl w-full">
           <DialogHeader>
-            <DialogTitle className="text-white text-lg">Export Quest</DialogTitle>
+            <DialogTitle className="text-steel-100 text-lg">Export Quest</DialogTitle>
           </DialogHeader>
 
           {/* Format selector */}
           <div className="space-y-1">
-            <label className="text-zinc-400 text-sm">Format</label>
+            <label className="text-steel-400 text-sm">Format</label>
             <Select value={format} onValueChange={(v) => setFormat(v as Format)}>
-              <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white focus:ring-purple-500">
+              <SelectTrigger className="bg-steel-800 border-steel-600 text-steel-100 focus:ring-pulse">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
+              <SelectContent className="bg-steel-800 border-steel-600">
                 {FORMAT_OPTIONS.map((opt) => (
                   <SelectItem
                     key={opt.id}
                     value={opt.id}
-                    className="text-white focus:bg-zinc-700 focus:text-white"
+                    className="text-steel-100 focus:bg-steel-700 focus:text-steel-100"
                   >
                     {opt.label}
                   </SelectItem>
@@ -160,15 +160,15 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
           {isTemplateFormat && (
             <>
               <div className="space-y-1">
-                <label className="text-zinc-400 text-sm">Template</label>
+                <label className="text-steel-400 text-sm">Template</label>
                 <Select value={templateId || 'none'} onValueChange={(v) => setTemplateId(v === 'none' ? '' : v)}>
-                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white focus:ring-purple-500">
+                  <SelectTrigger className="bg-steel-800 border-steel-600 text-steel-100 focus:ring-pulse">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-zinc-800 border-zinc-700">
-                    <SelectItem value="none" className="text-white focus:bg-zinc-700 focus:text-white">No template</SelectItem>
+                  <SelectContent className="bg-steel-800 border-steel-600">
+                    <SelectItem value="none" className="text-steel-100 focus:bg-steel-700 focus:text-steel-100">No template</SelectItem>
                     {templates.map((template) => (
-                      <SelectItem key={template._id} value={template._id} className="text-white focus:bg-zinc-700 focus:text-white">
+                      <SelectItem key={template._id} value={template._id} className="text-steel-100 focus:bg-steel-700 focus:text-steel-100">
                         {template.name}
                       </SelectItem>
                     ))}
@@ -178,23 +178,23 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-zinc-400 text-sm">Quest Nodes</label>
+                  <label className="text-steel-400 text-sm">Quest Nodes</label>
                   <button
                     type="button"
                     onClick={() => setSelectedNodeIds(selectedNodeIds.length === questNodes.length ? [] : questNodes.map((node) => node.id))}
-                    className="text-xs text-purple-300 hover:text-purple-200"
+                    className="text-xs text-pulse hover:text-pulse"
                   >
                     {selectedNodeIds.length === questNodes.length ? 'Select none' : 'Whole questline'}
                   </button>
                 </div>
-                <div className="max-h-28 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-2 space-y-1">
+                <div className="max-h-28 overflow-auto rounded-lg border border-steel-700 bg-steel-950 p-2 space-y-1">
                   {questNodes.map((node) => (
-                    <label key={node.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-900 text-sm text-zinc-300">
+                    <label key={node.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-steel-850 text-sm text-steel-200">
                       <input
                         type="checkbox"
                         checked={selectedNodeIds.includes(node.id)}
                         onChange={() => setSelectedNodeIds((prev) => prev.includes(node.id) ? prev.filter((id) => id !== node.id) : [...prev, node.id])}
-                        className="accent-purple-600"
+                        className="accent-pulse"
                       />
                       <span className="truncate">{node.title}</span>
                     </label>
@@ -207,27 +207,27 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
           {/* Preview */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <label className="text-zinc-400 text-sm">Preview</label>
+              <label className="text-steel-400 text-sm">Preview</label>
               {filename && !isLoading && (
-                <span className="text-zinc-500 text-xs font-mono">{filename}</span>
+                <span className="text-steel-400 text-xs font-mono">{filename}</span>
               )}
             </div>
 
             {isLoading ? (
-              <div className="space-y-2 rounded-lg border border-zinc-700 bg-zinc-950 p-4 h-64">
-                <Skeleton className="h-4 w-3/4 bg-zinc-800" />
-                <Skeleton className="h-4 w-1/2 bg-zinc-800" />
-                <Skeleton className="h-4 w-2/3 bg-zinc-800" />
-                <Skeleton className="h-4 w-1/3 bg-zinc-800" />
-                <Skeleton className="h-4 w-4/5 bg-zinc-800" />
+              <div className="space-y-2 rounded-lg border border-steel-600 bg-steel-950 p-4 h-64">
+                <Skeleton className="h-4 w-3/4 bg-steel-800" />
+                <Skeleton className="h-4 w-1/2 bg-steel-800" />
+                <Skeleton className="h-4 w-2/3 bg-steel-800" />
+                <Skeleton className="h-4 w-1/3 bg-steel-800" />
+                <Skeleton className="h-4 w-4/5 bg-steel-800" />
               </div>
             ) : error ? (
               <div className="rounded-lg border border-red-800 bg-red-950/30 p-4 h-64 flex items-center justify-center">
                 <p className="text-red-400 text-sm text-center">{error}</p>
               </div>
             ) : (
-              <div className="relative rounded-lg border border-zinc-700 bg-zinc-950 h-64">
-                <pre className="absolute inset-0 p-4 text-xs font-mono text-zinc-300 whitespace-pre overflow-auto">
+              <div className="relative rounded-lg border border-steel-600 bg-steel-950 h-64">
+                <pre className="absolute inset-0 p-4 text-xs font-mono text-steel-200 whitespace-pre overflow-auto">
                   {content}
                 </pre>
               </div>
@@ -239,7 +239,7 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
             <button
               onClick={() => setIsPushOpen(true)}
               disabled={isLoading || !!error || (isTemplateFormat && selectedNodeIds.length === 0)}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 rounded-lg transition-colors text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-steel-800 hover:bg-steel-700 disabled:opacity-40 disabled:cursor-not-allowed text-steel-200 rounded-lg transition-colors text-sm"
             >
               <Github className="w-4 h-4" />
               Push to GitHub
@@ -249,7 +249,7 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
               <button
                 onClick={handleCopy}
                 disabled={isLoading || !!error || !content}
-                className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-steel-800 hover:bg-steel-700 disabled:opacity-40 disabled:cursor-not-allowed text-steel-100 rounded-lg transition-colors text-sm"
               >
                 <Copy className="w-4 h-4" />
                 Copy
@@ -257,7 +257,7 @@ export function ExportDialog({ isOpen, onClose, questlineId }: ExportDialogProps
               <button
                 onClick={handleDownload}
                 disabled={isLoading || isDownloading || !!error || !content}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed text-steel-950 font-semibold rounded-lg transition-colors text-sm"
               >
                 {isDownloading
                   ? <Loader2 className="w-4 h-4 animate-spin" />

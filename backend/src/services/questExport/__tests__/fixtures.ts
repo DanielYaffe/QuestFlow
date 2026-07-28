@@ -107,7 +107,11 @@ export function makeFixture(): CanonicalExport {
     updatedAt: new Date('2024-01-01'),
   };
 
-  // Cast to IQuestline-compatible shape for buildExportPayload
+  // Characters now live in the standalone Character collection; the caller
+  // resolves them and passes them in (mirrors exportQuestline at runtime).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return buildExportPayload(questline as unknown as Parameters<typeof buildExportPayload>[0]);
+  return buildExportPayload(
+    questline as unknown as Parameters<typeof buildExportPayload>[0],
+    questline.characters,
+  );
 }

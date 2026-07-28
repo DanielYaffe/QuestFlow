@@ -145,6 +145,34 @@ authRouter.post("/refresh", authController.refreshToken);
  *       302:
  *         description: Redirects to Google consent screen
  */
+/**
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Get the authenticated user's profile (id, email, role)
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: The current user
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 role:
+ *                   type: string
+ *                   enum: [user, admin]
+ *       401:
+ *         description: Unauthorized
+ */
+authRouter.get("/me", authenticate, authController.me);
+
 authRouter.get('/google', googleAuth);
 
 /**

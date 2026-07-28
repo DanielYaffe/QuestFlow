@@ -62,15 +62,6 @@ export interface IQuestlineVariant {
   color: string;
 }
 
-export interface ICharacter {
-  _id: mongoose.Types.ObjectId;
-  name: string;
-  appearance: string;
-  background: string;
-  imageUrl: string;
-  questIds: string[];
-}
-
 export interface IObjective {
   _id: mongoose.Types.ObjectId;
   objectiveId: string;
@@ -78,23 +69,18 @@ export interface IObjective {
   description: string;
 }
 
+// LEGACY: embedded reward copies. Superseded by questline.itemIds referencing
+// the standalone Item collection (same pattern as characterIds → Character).
+// Kept only so pre-migration documents load; migrateEmbeddedRewardsToItems()
+// empties this array at startup.
 export interface IReward {
   _id: mongoose.Types.ObjectId;
   title: string;
   description: string;
   rarity: 'common' | 'rare' | 'epic';
   imageUrl?: string;
-}
-
-export interface IScene {
-  id: string;
-  title: string;
-}
-
-export interface IChapter {
-  _id: mongoose.Types.ObjectId;
-  title: string;
-  scenes: IScene[];
+  kbRef: string;
+  itemId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,16 +93,23 @@ export interface IQuestline extends Document {
   genre: string;
   storyPrompt: string;
   styleId: string;
+  themeId: string;
+  exportFormat: string;
   templateId?: string;
   templateName?: string;
   templateSnapshot?: unknown;
   ownerId: string;
   projectId: string;
+  // Optional per-questline Game/KB override; falls back to the project's
+  // gameId when empty. '' = inherit.
+  gameId: string;
+  characterIds: string[];
+  // References into the standalone Item collection (node.rewardIds hold the
+  // same Item ids) — mirrors characterIds → Character.
+  itemIds: string[];
   nodes: IQuestNode[];
   edges: IQuestEdge[];
   variants: IQuestlineVariant[];
-  characters: ICharacter[];
-  chapters: IChapter[];
   objectives: IObjective[];
   rewards: IReward[];
 }
@@ -157,14 +150,6 @@ const QuestlineVariantSchema = new Schema<IQuestlineVariant>({
   color: { type: String, default: '#6366f1' },
 });
 
-const CharacterSchema = new Schema<ICharacter>({
-  name:       { type: String, required: true },
-  appearance: { type: String, default: '' },
-  background: { type: String, default: '' },
-  imageUrl:   { type: String, default: '' },
-  questIds:   { type: [String], default: [] },
-});
-
 const ObjectiveSchema = new Schema<IObjective>({
   objectiveId: { type: String, required: true },
   title:       { type: String, required: true },
@@ -176,19 +161,8 @@ const RewardSchema = new Schema<IReward>({
   description: { type: String, default: '' },
   rarity:      { type: String, enum: ['common', 'rare', 'epic'], default: 'common' },
   imageUrl:    { type: String, default: '' },
-});
-
-const SceneSchema = new Schema<IScene>(
-  {
-    id:    { type: String, required: true },
-    title: { type: String, required: true },
-  },
-  { _id: false },
-);
-
-const ChapterSchema = new Schema<IChapter>({
-  title:  { type: String, required: true },
-  scenes: { type: [SceneSchema], default: [] },
+  kbRef:       { type: String, default: '' },
+  itemId:      { type: String, default: '' },
 });
 
 // ---------------------------------------------------------------------------
@@ -225,14 +199,6 @@ const ChapterSchema = new Schema<IChapter>({
  *           type: array
  *           items:
  *             type: object
- *         characters:
- *           type: array
- *           items:
- *             type: object
- *         chapters:
- *           type: array
- *           items:
- *             type: object
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -242,21 +208,24 @@ const ChapterSchema = new Schema<IChapter>({
  */
 const QuestlineSchema = new Schema<IQuestline>(
   {
-    title:       { type: String, required: true },
-    description: { type: String, default: '' },
-    genre:       { type: String, default: '' },
-    storyPrompt: { type: String, default: '' },
-    styleId:     { type: String, default: '' },
-    templateId:   { type: String, default: '' },
-    templateName: { type: String, default: '' },
+    title:        { type: String, required: true },
+    description:  { type: String, default: '' },
+    genre:        { type: String, default: '' },
+    storyPrompt:  { type: String, default: '' },
+    styleId:      { type: String, default: '' },
+    themeId:      { type: String, default: 'generic_rpg' },
+    exportFormat: { type: String, default: 'json' },
+    templateId:       { type: String, default: '' },
+    templateName:     { type: String, default: '' },
     templateSnapshot: { type: Schema.Types.Mixed },
-    ownerId:     { type: String, required: true, index: true },
-    projectId:   { type: String, default: '', index: true },
+    ownerId:      { type: String, required: true, index: true },
+    projectId:    { type: String, default: '', index: true },
+    gameId:       { type: String, default: '' },
+    characterIds: { type: [String], default: [] },
+    itemIds:      { type: [String], default: [] },
     nodes:       { type: [QuestNodeSchema], default: [] },
     edges:       { type: [QuestEdgeSchema], default: [] },
     variants:    { type: [QuestlineVariantSchema], default: [] },
-    characters:  { type: [CharacterSchema], default: [] },
-    chapters:    { type: [ChapterSchema], default: [] },
     objectives:  { type: [ObjectiveSchema], default: [] },
     rewards:     { type: [RewardSchema], default: [] },
   },

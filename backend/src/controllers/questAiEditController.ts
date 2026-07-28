@@ -1,7 +1,11 @@
 import { Response } from 'express';
-import { config } from '../config/config';
 import { QuestlineRequest } from '../middlewares/requireQuestlineOwnership';
-import { callGemini } from '../utils/gemini';
+import { complete } from '../services/ai';
+import { hasGenApiKey } from '../config/ai';
+import CharacterModel from '../models/characterModel';
+import ItemModel from '../models/itemModel';
+import ProjectModel from '../models/projectModel';
+import { buildReferenceContext } from '../services/generationContext';
 
 // ---------------------------------------------------------------------------
 // Input shapes (deserialized from frontend React Flow state)
@@ -58,6 +62,7 @@ function buildAiEditPrompt(
   characters: Array<{ name: string; background: string }>,
   rewards: Array<{ title: string; rarity: string }>,
   instruction: string,
+  referenceBlock: string,
 ): string {
   const nodeTitleMap = new Map(nodes.map((n) => [n.id, n.data?.title ?? n.id]));
 
@@ -104,7 +109,7 @@ ${characterList}
 
 Rewards in this questline:
 ${rewardList}
-
+${referenceBlock ? `${referenceBlock}\n` : ''}
 User instruction:
 """
 ${instruction}
@@ -188,8 +193,8 @@ Return this exact JSON structure:
  *         description: AI returned malformed JSON
  */
 export async function aiEditQuestline(req: QuestlineRequest, res: Response): Promise<void> {
-  if (!config.GEMINI_API_KEY) {
-    res.status(500).json({ error: 'Gemini API key is not configured' });
+  if (!hasGenApiKey()) {
+    res.status(500).json({ error: 'AI provider API key is not configured' });
     return;
   }
 
@@ -214,14 +219,33 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
 
   const questline = req.questline!;
 
-  const characters = (questline.characters ?? []).map((c) => ({
+  const characterDocs = await CharacterModel.find({ _id: { $in: questline.characterIds ?? [] } }).lean();
+  const characters = characterDocs.map((c) => ({
     name: c.name,
-    background: c.background,
+    background: c.lore ?? '',
   }));
-  const rewards = (questline.rewards ?? []).map((r) => ({
-    title: r.title,
-    rarity: r.rarity,
+  const itemDocs = await ItemModel.find({ _id: { $in: questline.itemIds ?? [] } })
+    .select('name rarity')
+    .lean();
+  const rewards = itemDocs.map((i) => ({
+    title: i.name,
+    rarity: i.rarity ?? 'common',
   }));
+
+  // KB grounding: the questline's own game, falling back to its project's
+  // linked game ('' on the questline means inherit). No game → free editing.
+  let effectiveGameId = questline.gameId || '';
+  if (!effectiveGameId && questline.projectId) {
+    const project = await ProjectModel.findById(questline.projectId).select('gameId').lean();
+    effectiveGameId = project?.gameId || '';
+  }
+  const trimmedInstruction = instruction.trim().slice(0, 500);
+  const reference = await buildReferenceContext({
+    ownerId: questline.ownerId,
+    gameId: effectiveGameId || undefined,
+    step: 'questline',
+    query: `${trimmedInstruction}\n${questline.storyPrompt || questline.description}`,
+  });
 
   const prompt = buildAiEditPrompt(
     questline.storyPrompt || questline.description,
@@ -230,11 +254,12 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
     edges as EdgeSnapshot[],
     characters,
     rewards,
-    instruction.trim().slice(0, 500),
+    trimmedInstruction,
+    reference.referenceBlock,
   );
 
   try {
-    const json = await callGemini(prompt);
+    const json = await complete(prompt);
     const parsed = JSON.parse(json) as { changes?: unknown };
     const raw = Array.isArray(parsed.changes) ? parsed.changes : [];
     const changes = raw.filter(isValidChange).slice(0, 8);
