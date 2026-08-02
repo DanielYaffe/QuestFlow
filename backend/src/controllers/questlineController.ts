@@ -166,6 +166,7 @@ class QuestlineController extends BaseController {
           rewardIds:  (n.rewardIds  ?? []).map((id) => remapId(id, staleCharMap, staleRewardMap)),
           exportFields: normalizeExportFields(n.nodeId, n.exportFields, preQuestByNodeId.get(n.nodeId)),
           templateValues: n.templateValues ?? {},
+          promptValues: n.promptValues ?? {},
         },
       }));
 
@@ -224,7 +225,7 @@ class QuestlineController extends BaseController {
       }
 
       const { nodes, edges } = req.body as {
-        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; exportFields?: Partial<IQuestNodeExportFields>; templateValues?: Record<string, unknown> } }[];
+        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; exportFields?: Partial<IQuestNodeExportFields>; templateValues?: Record<string, unknown>; promptValues?: Record<string, unknown> } }[];
         edges: { id: string; source: string; target: string }[];
       };
 
@@ -251,6 +252,7 @@ class QuestlineController extends BaseController {
           rewardIds:  n.data.rewardIds  ?? [],
           exportFields: normalizeExportFields(n.id, n.data.exportFields, incomingPreQuestByNodeId.get(n.id)),
           templateValues: n.data.templateValues ?? {},
+          promptValues: n.data.promptValues ?? {},
         })),
         edges: (edges ?? []).map((e) => ({
           edgeId: e.id,

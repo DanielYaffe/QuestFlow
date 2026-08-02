@@ -185,7 +185,7 @@ export function QuestBuilder() {
         id: newNodeId,
         type: 'questNode',
         position: positionMap[position],
-        data: { ...data, exportFields: defaultExportFields(newNodeId), templateValues: {}, layoutDirection, onAddPath: (pos) => requestNewNode(newNodeId, pos) },
+        data: { ...data, exportFields: defaultExportFields(newNodeId), templateValues: {}, promptValues: {}, layoutDirection, onAddPath: (pos) => requestNewNode(newNodeId, pos) },
       };
       const newEdge: Edge = {
         id: `e${sourceNodeId}-${newNodeId}`,
@@ -251,6 +251,7 @@ export function QuestBuilder() {
               rewardIds:  (node.data.rewardIds  as string[]) ?? [],
               exportFields,
               templateValues: node.data.templateValues as Record<string, unknown> | undefined,
+              promptValues: node.data.promptValues as Record<string, unknown> | undefined,
             },
           });
         }

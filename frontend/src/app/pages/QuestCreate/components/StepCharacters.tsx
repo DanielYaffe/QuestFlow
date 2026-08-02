@@ -29,8 +29,8 @@ function getRoleConfig(role?: string) {
 }
 
 export function StepCharacters({
-  characters,
-  selectedCharacters,
+  characters = [],
+  selectedCharacters = [],
   isLoading,
   onToggleCharacter,
   onSelectAllCharacters,

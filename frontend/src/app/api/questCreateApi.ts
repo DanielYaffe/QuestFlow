@@ -41,7 +41,10 @@ export async function generateObjectives(
 ): Promise<GenerateObjectivesResult> {
   try {
     const { data } = await api.post('/quests/generate', { story, genre, templateId });
-    return data;
+    return {
+      objectives: Array.isArray(data?.objectives) ? data.objectives : [],
+      rewards: Array.isArray(data?.rewards) ? data.rewards : [],
+    };
   } catch (error) {
     throw new Error(getApiErrorMessage(error, 'Failed to generate objectives'));
   }
@@ -53,7 +56,9 @@ export async function generateCharacters(
 ): Promise<{ characters: GeneratedCharacter[] }> {
   try {
     const { data } = await api.post('/quests/generate-characters', { story, genre });
-    return data;
+    return {
+      characters: Array.isArray(data?.characters) ? data.characters : [],
+    };
   } catch (error) {
     throw new Error(getApiErrorMessage(error, 'Failed to generate characters'));
   }

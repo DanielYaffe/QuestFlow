@@ -36,12 +36,53 @@ export interface TemplateSchema {
   version: number;
   summary: string;
   editableFields: TemplateFieldSummary[];
+  promptScheme?: TemplatePromptScheme;
   generationContract?: {
     requirementRoles: string[];
     rewardRoles: string[];
     dialogRoles: string[];
+    promptRoles?: string[];
     promptSummary: string;
   };
+}
+
+export interface TemplatePromptField {
+  id: string;
+  path: string;
+  label: string;
+  mode: 'monologue' | 'dialogue' | 'promptText' | 'grouped' | 'mixed';
+  kind: TemplateFieldSummary['kind'];
+  shape?: TemplateFieldShape;
+  control?: TemplateFieldSummary['control'];
+  itemFields?: Array<{
+    path: string;
+    label: string;
+    valueType: 'string' | 'number' | 'boolean';
+  }>;
+  textFields?: string[];
+  optionFields?: string[];
+  referenceFields?: string[];
+  navigationFields?: string[];
+  stateFields?: string[];
+  defaultValue?: unknown;
+  fillSource?: 'ai' | 'manual' | 'templateDefault';
+  description?: string;
+}
+
+export interface TemplatePromptRelationship {
+  fieldPath: string;
+  relationType: string;
+  relatedFields: string[];
+  explanation: string;
+  generationGuidance: string;
+  required: boolean;
+}
+
+export interface TemplatePromptScheme {
+  version: number;
+  summary: string;
+  fields: TemplatePromptField[];
+  relationships?: TemplatePromptRelationship[];
 }
 
 export interface ExportTemplate {
@@ -61,6 +102,7 @@ export interface ExportTemplate {
     requirementFields: string[];
     rewardFields: string[];
     dialogFields: string[];
+    promptFields?: string[];
     structureSummary: string;
   };
   analysisStatus?: 'pending' | 'ready' | 'fallback' | 'failed';
@@ -69,6 +111,7 @@ export interface ExportTemplate {
   inferredAiGuidance: {
     objectiveFields: string[];
     rewardFields: string[];
+    promptFields?: string[];
     structureSummary: string;
   };
   output: {

@@ -22,6 +22,7 @@ export interface IQuestNode {
   rewardIds: string[];
   exportFields: IQuestNodeExportFields;
   templateValues: Record<string, unknown>;
+  promptValues: Record<string, unknown>;
 }
 
 export interface IQuestExportTarget {
@@ -135,6 +136,7 @@ const QuestNodeSchema = new Schema<IQuestNode>({
   monsterIds: { type: [String], default: [] },
   rewardIds:  { type: [String], default: [] },
   templateValues: { type: Schema.Types.Mixed, default: {} },
+  promptValues: { type: Schema.Types.Mixed, default: {} },
   exportFields: {
     questId:     { type: Number },
     silent:      { type: Boolean, default: true },

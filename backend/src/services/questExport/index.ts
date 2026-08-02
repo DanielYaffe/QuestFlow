@@ -3,7 +3,7 @@ import ExportTemplateModel from '../../models/exportTemplateModel';
 import { buildExportPayload } from './buildExportPayload';
 import { formats } from './formats';
 import { CanonicalNode, ExportFile, Format, ExportResult } from './types';
-import { TemplateAstNode, TemplateFieldSummary } from '../exportTemplates/templateParser';
+import { normalizeTemplatePromptScheme, TemplateAstNode, TemplateFieldSummary, TemplatePromptScheme } from '../exportTemplates/templateParser';
 import yaml from 'js-yaml';
 
 export type { Format, ExportResult } from './types';
@@ -57,7 +57,7 @@ type TemplateLike = {
   structure?: unknown;
   templateAst?: TemplateAstNode;
   fieldSchema?: TemplateFieldSummary[];
-  templateSchema?: { editableFields?: TemplateFieldSummary[] };
+  templateSchema?: { editableFields?: TemplateFieldSummary[]; promptScheme?: TemplatePromptScheme };
 };
 
 function buildDefaultTemplateQuest(node: CanonicalNode): Record<string, unknown> {
@@ -135,14 +135,33 @@ function hasDescendantValue(values: Record<string, unknown> | undefined, path: s
   return Object.keys(values).some((key) => key.startsWith(`${path}.`));
 }
 
+function nodeGeneratedValues(node: CanonicalNode): Record<string, unknown> {
+  return {
+    ...(node.templateValues ?? {}),
+    ...(node.promptValues ?? {}),
+  };
+}
+
+function nodeForTemplateExport(node: CanonicalNode, template: TemplateLike | null): CanonicalNode {
+  const promptScheme = normalizeTemplatePromptScheme(template?.templateSchema?.promptScheme);
+  if (!promptScheme?.fields?.length) return node;
+
+  const promptPaths = new Set(promptScheme.fields.map((field) => field.path));
+  const promptValues = Object.fromEntries(
+    Object.entries(node.promptValues ?? {}).filter(([path]) => promptPaths.has(path)),
+  );
+  return { ...node, promptValues };
+}
+
 function valueForField(
   node: CanonicalNode,
   field: TemplateFieldSummary | undefined,
   path: string,
   original: unknown,
 ): { value: unknown; explicit: boolean; mapped: boolean } {
-  const hasEditedValue = path ? hasOwnValue(node.templateValues, path) : false;
-  const editedValue = hasEditedValue ? node.templateValues?.[path] : undefined;
+  const values = nodeGeneratedValues(node);
+  const hasEditedValue = path ? hasOwnValue(values, path) : false;
+  const editedValue = hasEditedValue ? values[path] : undefined;
   if (hasEditedValue) return { value: editedValue, explicit: true, mapped: false };
 
   const role = field?.gameplayRole;
@@ -212,7 +231,7 @@ function renderTemplateStructure(structure: unknown, node: CanonicalNode, fields
     && structure !== null
     && typeof structure === 'object'
     && !Array.isArray(structure)
-    && hasDescendantValue(node.templateValues, path);
+    && hasDescendantValue(nodeGeneratedValues(node), path);
   if (direct.value !== undefined && !shouldPreferNestedValues) {
     if (!shouldKeepDirectValue(field, direct.value, direct.explicit, direct.mapped)) return undefined;
     const pruned = pruneExportValue(direct.value);
@@ -305,7 +324,7 @@ function renderTemplateXmlNode(
   const elementChildren = ast.children.filter(isXmlElement);
   const numericChildren = elementChildren.filter((child) => /^\d+$/.test(child.attrs.name ?? ''));
   const arrayField = path ? findField(fields, path) : undefined;
-  const arrayValue = path ? node.templateValues?.[path] : undefined;
+  const arrayValue = path ? nodeGeneratedValues(node)[path] : undefined;
 
   if (numericChildren.length > 0 && arrayField) {
     const templateItem = numericChildren[0];
@@ -371,13 +390,14 @@ export async function exportQuestline(
     const mimeType = outputFormat === 'json' ? 'application/json' : outputFormat === 'xml' ? 'application/xml' : 'application/x-yaml';
 
     const files = selectedNodes.map((node) => {
+      const renderNode = nodeForTemplateExport(node, template);
       const filename = `${slugifyTitle(node.title || node.id)}${extension}`;
       const fields = template ? fieldsFromTemplate(template) : [];
       const content = outputFormat === 'xml' && template?.templateAst
-        ? `<?xml version="1.0" encoding="UTF-8"?>\n${renderTemplateXmlNode(template.templateAst, node, fields, '', true) ?? ''}\n`
+        ? `<?xml version="1.0" encoding="UTF-8"?>\n${renderTemplateXmlNode(template.templateAst, renderNode, fields, '', true) ?? ''}\n`
         : template?.structure
-        ? renderObject(renderTemplateStructure(template.structure, node, fields) ?? {}, outputFormat)
-        : renderObject(buildDefaultTemplateQuest(node), outputFormat);
+        ? renderObject(renderTemplateStructure(template.structure, renderNode, fields) ?? {}, outputFormat)
+        : renderObject(buildDefaultTemplateQuest(renderNode), outputFormat);
       return {
         filename,
         content,

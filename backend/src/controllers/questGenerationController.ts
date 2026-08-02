@@ -8,6 +8,7 @@ import QuestlineModel from '../models/questlineModel';
 import QuestStyleModel from '../models/questStyleModel';
 import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVariantConfigModel';
 import ExportTemplateModel from '../models/exportTemplateModel';
+import { normalizeTemplatePromptScheme, TemplatePromptField, TemplatePromptScheme } from '../services/exportTemplates/templateParser';
 
 const BASE_VARIANT_KEYS = new Set(BASE_VARIANT_SEEDS.map((s) => s.key));
 
@@ -112,10 +113,12 @@ interface TemplateContext {
   name: string;
   structure: unknown;
   templateSchema?: {
+    promptScheme?: TemplatePromptScheme;
     generationContract?: {
       requirementRoles?: string[];
       rewardRoles?: string[];
       dialogRoles?: string[];
+      promptRoles?: string[];
       promptSummary?: string;
     };
     summary?: string;
@@ -124,52 +127,135 @@ interface TemplateContext {
     requirementFields?: string[];
     rewardFields?: string[];
     dialogFields?: string[];
+    promptFields?: string[];
     structureSummary?: string;
   };
   inferredAiGuidance?: {
     objectiveFields?: string[];
     rewardFields?: string[];
+    promptFields?: string[];
     structureSummary?: string;
   };
 }
 
-function buildInitialTemplateValues(
-  templateDoc: any,
-  node: { id: string; title: string; body: string; npcIds?: string[] },
-): Record<string, unknown> {
-  const fields = templateDoc?.templateSchema?.editableFields;
-  if (!Array.isArray(fields)) return {};
+type PromptNode = { id: string; title: string; body: string; promptValues?: Record<string, unknown> };
 
-  const values: Record<string, unknown> = {};
-  for (const field of fields) {
-    if (
-      field?.gameplayRole === 'questDialog'
-      && field?.kind === 'array'
-      && typeof field.path === 'string'
-      && shouldSeedDialogField(field.path)
-    ) {
-      values[field.path] = [{
-        id: `${node.id}_${field.path.replace(/[^\w]+/g, '_')}_page_1`,
-        npcId: 0,
-        type: 'ok',
-        prompt: node.body || node.title,
-      }];
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cloneValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function promptTextForNode(node: PromptNode): string {
+  return node.body?.trim() || node.title;
+}
+
+function isPromptTextItemField(path: string): boolean {
+  return /prompt|text|message|description|body|content|script|dialog|dialogue/i.test(path);
+}
+
+function defaultPromptItemValue(valueType: string): unknown {
+  if (valueType === 'number') return 0;
+  if (valueType === 'boolean') return false;
+  return '';
+}
+
+function coercePromptItemValue(value: unknown, valueType: string): unknown {
+  if (valueType === 'number') {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : 0;
+  }
+  if (valueType === 'boolean') {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
+    return Boolean(value);
+  }
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function buildPromptRowFromSchema(field: TemplatePromptField, node: PromptNode, rawRow?: unknown): Record<string, unknown> {
+  const raw = isRecordValue(rawRow) ? rawRow : {};
+  const row: Record<string, unknown> = {};
+  const text = promptTextForNode(node);
+  const primaryTextField = field.textFields[0]
+    ?? field.itemFields.find((item) => isPromptTextItemField(item.path))?.path;
+
+  for (const itemField of field.itemFields) {
+    const rawValue = raw[itemField.path];
+    if (rawValue !== undefined) {
+      row[itemField.path] = coercePromptItemValue(rawValue, itemField.valueType);
+      continue;
     }
+    row[itemField.path] = itemField.path === primaryTextField
+      ? text
+      : defaultPromptItemValue(itemField.valueType);
+  }
+
+  return row;
+}
+
+function normalizePromptValueForField(field: TemplatePromptField, node: PromptNode, rawValue: unknown): unknown {
+  if (rawValue === undefined) return defaultPromptValueForField(field, node);
+
+  if (field.kind === 'array' && field.itemFields.length > 0) {
+    const rawRows = Array.isArray(rawValue) ? rawValue : [rawValue];
+    return rawRows.length
+      ? rawRows.map((row) => buildPromptRowFromSchema(field, node, row))
+      : [buildPromptRowFromSchema(field, node)];
+  }
+
+  return rawValue;
+}
+
+function defaultPromptValueForField(field: TemplatePromptField, node: PromptNode): unknown {
+  if (field.fillSource !== 'ai') return cloneValue(field.defaultValue);
+
+  const text = promptTextForNode(node);
+  if (field.kind === 'array') {
+    if (field.itemFields.length > 0) return [buildPromptRowFromSchema(field, node)];
+    if (field.textFields.length > 0 || field.optionFields.length > 0 || field.referenceFields.length > 0 || field.navigationFields.length > 0 || field.stateFields.length > 0) {
+      const row: Record<string, unknown> = {};
+      const primaryTextField = field.textFields[0] ?? 'text';
+      row[primaryTextField] = text;
+      [...field.optionFields, ...field.referenceFields, ...field.navigationFields, ...field.stateFields].forEach((key) => {
+        row[key] = '';
+      });
+      return [row];
+    }
+    return [text];
+  }
+
+  if (field.kind === 'object') {
+    if (isRecordValue(field.defaultValue)) {
+      const next = cloneValue(field.defaultValue) as Record<string, unknown>;
+      const textKey = field.textFields[0] ?? Object.keys(next).find((key) => typeof next[key] === 'string');
+      if (textKey) next[textKey] = text;
+      return next;
+    }
+    return {};
+  }
+
+  if (field.kind === 'text') return text;
+  return cloneValue(field.defaultValue);
+}
+
+function normalizePromptValues(templateDoc: any, node: PromptNode): Record<string, unknown> {
+  const scheme = normalizeTemplatePromptScheme(templateDoc?.templateSchema?.promptScheme as TemplatePromptScheme | undefined);
+  if (!scheme?.fields?.length) return {};
+
+  const raw = isRecordValue(node.promptValues) ? node.promptValues : {};
+  const values: Record<string, unknown> = {};
+  for (const field of scheme.fields) {
+    if (!field?.path || field.fillSource === 'manual') continue;
+    const rawValue = raw[field.path] ?? raw[field.id];
+    values[field.path] = normalizePromptValueForField(field, node, rawValue);
   }
   return values;
 }
-
-function shouldSeedDialogField(path: string): boolean {
-  const normalized = path.toLowerCase();
-  return normalized === 'dialog'
-    || normalized === 'dialogue'
-    || normalized === 'description'
-    || normalized.endsWith('.dialog')
-    || normalized.endsWith('.dialogue')
-    || normalized.endsWith('.description')
-    || /(^|\.)(start|inprogress|in_progress|progress|complete)\.pages$/.test(normalized);
-}
-
 
 // ---------------------------------------------------------------------------
 // POST /quests/generate — generate objectives + rewards
@@ -419,6 +505,7 @@ function buildGraphPrompt(
   rewards: Reward[],
   characters: GeneratedCharacter[],
   promptSuffix: string,
+  promptScheme?: TemplatePromptScheme,
 ): string {
   const objectiveList = objectives.map((o, i) => `  ${i + 1}. ${o.title} — ${o.description}`).join('\n');
   const rewardList    = rewards.map((r) => `  - id="${r.id}" title="${r.title}"`).join('\n');
@@ -426,6 +513,39 @@ function buildGraphPrompt(
 
   const hasCharacters = characters.length > 0;
   const hasRewards    = rewards.length > 0;
+  const promptSchemeFields = promptScheme?.fields ?? [];
+  const promptSchemeSection = promptSchemeFields.length > 0 ? `
+Template prompt scheme:
+${JSON.stringify({
+  summary: promptScheme?.summary,
+  fields: promptSchemeFields.map((field) => ({
+    id: field.id,
+    path: field.path,
+    label: field.label,
+    mode: field.mode,
+    kind: field.kind,
+    shape: field.shape,
+    itemFields: field.itemFields,
+    textFields: field.textFields,
+    optionFields: field.optionFields,
+    referenceFields: field.referenceFields,
+    navigationFields: field.navigationFields,
+    stateFields: field.stateFields,
+    fillSource: field.fillSource,
+  })),
+  relationships: promptScheme?.relationships ?? [],
+}, null, 2)}
+
+Generate "promptValues" for each node only for AI-filled fields in this prompt scheme.
+Use exact scheme field paths as promptValues keys.
+Values must match each field kind and shape.
+Use each node title as the main topic, with node body and selected generation context as supporting context.
+Use the relationship explanations to keep fields consistent. For example, if the relationship says one child field references another child field, generate values that reference existing values inside the same generated prompt value.
+If relationships mention sequence, branching, terminal state, speaker/reference, control type, or state flags, follow the provided generationGuidance from the analyzed template.
+Do not use a built-in dialogue format. Only use fields and relationships listed in the selected template prompt scheme.
+Do not copy placeholder text, IDs, or example values from the template.
+Leave manual fields empty or omit them.
+` : '';
 
   return `You are a professional game designer creating a quest node graph for a ${genre} game.
 
@@ -443,6 +563,7 @@ ${hasCharacters ? `
 Characters in this story (use their exact IDs when assigning to nodes):
 ${characterList}
 ` : ''}
+${promptSchemeSection}
 ━━━ WHAT A NODE IS ━━━
 A node is a single SCENE in the story — one moment, one location, one decision point.
 Think of it like a chapter in a book or a room in a dungeon.
@@ -490,9 +611,9 @@ Return ONLY valid JSON — no markdown, no explanation, no code fences:
 {
   "title": "3–6 word quest title",
   "nodes": [
-    { "id": "1", "type": "questNode", "variant": "story",    "title": "short action title", "body": "2-3 sentences describing the scene, what the player does, and what is at stake.", "npcIds": ["char-1"], "monsterIds": [], "rewardIds": [] },
-    { "id": "2", "type": "questNode", "variant": "dialogue", "title": "short action title", "body": "2-3 sentences.", "npcIds": ["char-2"], "monsterIds": [], "rewardIds": [] },
-    { "id": "3", "type": "questNode", "variant": "combat",   "title": "short action title", "body": "2-3 sentences.", "npcIds": [], "monsterIds": ["char-3"], "rewardIds": [] }
+    { "id": "1", "type": "questNode", "variant": "story",    "title": "short action title", "body": "2-3 sentences describing the scene, what the player does, and what is at stake.", "npcIds": ["char-1"], "monsterIds": [], "rewardIds": [], "promptValues": {} },
+    { "id": "2", "type": "questNode", "variant": "dialogue", "title": "short action title", "body": "2-3 sentences.", "npcIds": ["char-2"], "monsterIds": [], "rewardIds": [], "promptValues": {} },
+    { "id": "3", "type": "questNode", "variant": "combat",   "title": "short action title", "body": "2-3 sentences.", "npcIds": [], "monsterIds": ["char-3"], "rewardIds": [], "promptValues": {} }
   ],
   "edges": [
     { "id": "e1-2", "source": "1", "target": "2" },
@@ -556,10 +677,11 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     }
 
     // 2. Ask Gemini to generate the graph
-    const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix));
+    const promptScheme = normalizeTemplatePromptScheme((templateDoc?.templateSchema as { promptScheme?: TemplatePromptScheme } | undefined)?.promptScheme);
+    const json = await callGemini(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix, promptScheme));
     const generated = JSON.parse(json) as {
       title: string;
-      nodes: { id: string; type: string; variant: string; title: string; body: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[] }[];
+      nodes: { id: string; type: string; variant: string; title: string; body: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; promptValues?: Record<string, unknown> }[];
       edges: { id: string; source: string; target: string }[];
     };
 
@@ -604,7 +726,8 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
         npcIds:     n.npcIds     ?? [],
         monsterIds: n.monsterIds ?? [],
         rewardIds:  n.rewardIds  ?? [],
-        templateValues: buildInitialTemplateValues(templateDoc, n),
+        templateValues: {},
+        promptValues: normalizePromptValues(templateDoc, n),
         exportFields: {
           questId: parseInt(n.id, 10) || undefined,
           silent: true,
@@ -668,6 +791,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       monsterIds: n.monsterIds.map((id) => charIdMap.get(id)   ?? id),
       rewardIds:  n.rewardIds.map((id)  => rewardIdMap.get(id) ?? id),
       templateValues: n.templateValues ?? {},
+      promptValues: n.promptValues ?? {},
       exportFields: n.exportFields,
     }));
     questline.nodes = remappedNodes as typeof questline.nodes;

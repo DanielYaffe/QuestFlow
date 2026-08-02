@@ -14,6 +14,7 @@ export interface CanonicalNode {
   monsterIds: string[];
   rewardIds: string[];
   templateValues?: Record<string, unknown>;
+  promptValues?: Record<string, unknown>;
   exportFields?: {
     questId?: number;
     silent: boolean;

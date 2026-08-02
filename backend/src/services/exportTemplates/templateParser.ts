@@ -55,16 +55,59 @@ export interface TemplateSchema {
   version: number;
   summary: string;
   editableFields: TemplateFieldSummary[];
+  promptScheme: TemplatePromptScheme;
   generationContract: {
     requirementRoles: string[];
     rewardRoles: string[];
     dialogRoles: string[];
+    promptRoles: string[];
     promptSummary: string;
   };
   exportBindings: Array<{
     path: string;
     source: 'node.title' | 'node.exportFields' | 'node.templateValues' | 'graph.incomingEdges' | 'template.default';
   }>;
+}
+
+export type PromptFieldMode = 'monologue' | 'dialogue' | 'promptText' | 'grouped' | 'mixed';
+
+export interface TemplatePromptField {
+  id: string;
+  path: string;
+  label: string;
+  mode: PromptFieldMode;
+  kind: TemplateFieldKind;
+  shape: TemplateFieldShape;
+  control: TemplateControl;
+  itemFields: Array<{
+    path: string;
+    label: string;
+    valueType: 'string' | 'number' | 'boolean';
+  }>;
+  textFields: string[];
+  optionFields: string[];
+  referenceFields: string[];
+  navigationFields: string[];
+  stateFields: string[];
+  defaultValue?: unknown;
+  fillSource: 'ai' | 'manual' | 'templateDefault';
+  description: string;
+}
+
+export interface TemplatePromptRelationship {
+  fieldPath: string;
+  relationType: string;
+  relatedFields: string[];
+  explanation: string;
+  generationGuidance: string;
+  required: boolean;
+}
+
+export interface TemplatePromptScheme {
+  version: number;
+  summary: string;
+  fields: TemplatePromptField[];
+  relationships: TemplatePromptRelationship[];
 }
 
 export interface TemplateAstElement {
@@ -96,19 +139,25 @@ export interface ParsedTemplate {
     requirementFields: string[];
     rewardFields: string[];
     dialogFields: string[];
+    promptFields: string[];
     structureSummary: string;
   };
   inferredAiGuidance: {
     objectiveFields: string[];
     rewardFields: string[];
+    promptFields: string[];
     structureSummary: string;
   };
+}
+
+function isBooleanLikeString(value: unknown): boolean {
+  return typeof value === 'string' && /^(true|false)$/i.test(value.trim());
 }
 
 function getKind(value: unknown): TemplateFieldKind {
   if (Array.isArray(value)) return 'array';
   if (typeof value === 'number') return 'number';
-  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'boolean' || isBooleanLikeString(value)) return 'boolean';
   if (value !== null && typeof value === 'object') return 'object';
   return 'text';
 }
@@ -134,12 +183,14 @@ function toFriendlyLabel(path: string): string {
 
 function inferRole(path: string): GameplayRole {
   const normalized = path.toLowerCase();
-  if (
-    /dialog|dialogue|conversation/.test(normalized)
-    || /(^|\.)(start|inprogress|in_progress|progress|complete)\.pages($|\.)/.test(normalized)
-    || /(^|\.)pages($|\.)/.test(normalized)
-  ) return 'questDialog';
+  const leaf = leafName(path);
   if (/quest.*id|questid|^id$/.test(normalized)) return 'questId';
+  if (/name|title/.test(normalized)) return 'questName';
+  if (isPromptMetadataLeaf(leaf)) return 'other';
+  if (
+    isPromptContainerPath(normalized)
+    || isPromptTextLeaf(leaf)
+  ) return 'questDialog';
   if (/ongoing.*quest|ongoingquest/.test(normalized)) return 'ongoingQuestRequirement';
   if (/completed.*quest|completedquest|pre.*quest|prereq|require.*quest/.test(normalized)) return 'completedQuestRequirement';
   if (/daily|repeat|silent|flag/.test(normalized)) return 'questFlag';
@@ -150,7 +201,6 @@ function inferRole(path: string): GameplayRole {
   if (/kill|monster|mob|defeat|combat/.test(normalized)) return 'combatRequirement';
   if (/collect|item|quantity|drop|reactor/.test(normalized)) return 'collectionRequirement';
   if (/requirement|objective|task/.test(normalized)) return 'requirement';
-  if (/name|title/.test(normalized)) return 'questName';
   return 'other';
 }
 
@@ -230,6 +280,25 @@ function makeField(path: string, kind: TemplateFieldKind, value?: unknown, itemS
   };
 }
 
+function inferArrayItemSchema(items: unknown[]): TemplateFieldSummary['itemSchema'] {
+  const byPath = new Map<string, NonNullable<TemplateFieldSummary['itemSchema']>[number]>();
+  for (const item of items) {
+    if (!isPlainObject(item)) continue;
+    for (const [itemKey, itemValue] of Object.entries(item)) {
+      if (byPath.has(itemKey)) continue;
+      const valueType = toScalarValueType(getKind(itemValue));
+      if (!valueType) continue;
+      byPath.set(itemKey, {
+        path: itemKey,
+        label: toFriendlyLabel(itemKey),
+        valueType,
+        required: false,
+      });
+    }
+  }
+  return byPath.size > 0 ? [...byPath.values()] : undefined;
+}
+
 function walkFields(value: unknown, prefix = ''): TemplateFieldSummary[] {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return prefix ? [makeField(prefix, getKind(value), value)] : [];
@@ -239,17 +308,7 @@ function walkFields(value: unknown, prefix = ''): TemplateFieldSummary[] {
   return Object.entries(objectValue).flatMap(([key, child]) => {
     const path = prefix ? `${prefix}.${key}` : key;
     const kind = getKind(child);
-    const itemSchema = Array.isArray(child) && child[0] && typeof child[0] === 'object'
-      ? Object.entries(child[0] as Record<string, unknown>).flatMap(([itemKey, itemValue]) => {
-        const valueType = toScalarValueType(getKind(itemValue));
-        return valueType ? [{
-          path: itemKey,
-          label: toFriendlyLabel(itemKey),
-          valueType,
-          required: false,
-        }] : [];
-      })
-      : undefined;
+    const itemSchema = Array.isArray(child) ? inferArrayItemSchema(child) : undefined;
     const current = makeField(path, kind, child, itemSchema);
     if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
       return [current, ...walkFields(child, path)];
@@ -336,19 +395,21 @@ function xmlAstToStructure(element: TemplateAstElement): unknown {
 }
 
 function inferXmlItemSchema(children: TemplateAstElement[]): TemplateFieldSummary['itemSchema'] {
-  const sample = children.find((child) => /^\d+$/.test(child.attrs.name ?? ''));
-  if (!sample) return undefined;
-  return sample.children
-    .filter((child): child is TemplateAstElement => child.type === 'element' && child.attrs.name !== undefined && 'value' in child.attrs)
-    .flatMap((child) => {
+  const byPath = new Map<string, NonNullable<TemplateFieldSummary['itemSchema']>[number]>();
+  for (const row of children.filter((child) => /^\d+$/.test(child.attrs.name ?? ''))) {
+    for (const child of row.children) {
+      if (child.type !== 'element' || child.attrs.name === undefined || !('value' in child.attrs) || byPath.has(child.attrs.name)) continue;
       const valueType = toScalarValueType(getKind(xmlScalarValue(child)));
-      return valueType ? [{
+      if (!valueType) continue;
+      byPath.set(child.attrs.name, {
         path: child.attrs.name,
         label: toFriendlyLabel(child.attrs.name),
         valueType,
         required: false,
-      }] : [];
-    });
+      });
+    }
+  }
+  return byPath.size > 0 ? [...byPath.values()] : undefined;
 }
 
 function walkXmlFields(element: TemplateAstElement, parentPath = '', isRoot = true): TemplateFieldSummary[] {
@@ -392,16 +453,20 @@ function buildSchema(fields: TemplateFieldSummary[]): TemplateSchema {
   const requirementFields = fields.filter((field) => field.gameplayRole.includes('Requirement')).map((field) => field.path);
   const rewardFields = fields.filter((field) => field.gameplayRole.includes('Reward') || field.gameplayRole === 'reward').map((field) => field.path);
   const dialogFields = fields.filter((field) => field.gameplayRole === 'questDialog').map((field) => field.path);
+  const promptScheme = buildPromptScheme(fields);
+  const promptFields = promptScheme.fields.map((field) => field.path);
   const structureSummary = fields.map((field) => `${field.label} (${field.path}, ${field.gameplayRole})`).join(', ');
 
   return {
     version: 1,
     summary: structureSummary || 'No editable fields detected',
     editableFields: fields,
+    promptScheme,
     generationContract: {
       requirementRoles: requirementFields,
       rewardRoles: rewardFields,
       dialogRoles: dialogFields,
+      promptRoles: promptFields,
       promptSummary: structureSummary,
     },
     exportBindings: fields.map((field) => ({
@@ -414,6 +479,166 @@ function buildSchema(fields: TemplateFieldSummary[]): TemplateSchema {
         ? 'template.default'
         : 'node.templateValues',
     })),
+  };
+}
+
+function leafName(path: string): string {
+  return path.replace(/\[\]/g, '').split('.').pop()?.toLowerCase() ?? path.toLowerCase();
+}
+
+function includesAny(value: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(value));
+}
+
+const PROMPT_TEXT_PATTERNS = [
+  /prompt/,
+  /caption/,
+  /body/,
+  /content/,
+  /^text$/,
+  /description/,
+  /message/,
+];
+
+const CONTROL_PATTERNS = [/type/, /kind/, /mode/, /choice/, /option/, /branch/, /flag/, /state/, /status/];
+const REFERENCE_PATTERNS = [/speaker/, /actor/, /character/, /entity/, /ref/, /owner/];
+const NAVIGATION_PATTERNS = [/next/, /prev/, /previous/, /target/, /goto/, /link/];
+const STATE_PATTERNS = [/accept/, /accepted/, /complete/, /completed/, /finish/, /finished/, /end/, /done/, /state/, /status/];
+const PROMPT_CONTAINER_PATTERNS = [/dialog/, /dialogue/, /conversation/, /monologue/, /script/, /page/, /pages/];
+const PROMPT_METADATA_LEAVES = new Set([
+  'id',
+  'name',
+  'title',
+  'type',
+  'kind',
+  'mode',
+  'npcid',
+  'npc',
+  'speakerid',
+  'speaker',
+  'characterid',
+  'character',
+  'next',
+  'prev',
+  'previous',
+  'yes',
+  'no',
+  'accept',
+  'accepted',
+  'complete',
+  'completed',
+  'end',
+  'done',
+]);
+
+function isPromptMetadataLeaf(leaf: string): boolean {
+  return PROMPT_METADATA_LEAVES.has(leaf.replace(/[_-]/g, '').toLowerCase());
+}
+
+function isPromptTextLeaf(leaf: string): boolean {
+  return includesAny(leaf, PROMPT_TEXT_PATTERNS);
+}
+
+function isPromptContainerPath(path: string): boolean {
+  return path
+    .replace(/\[\]/g, '')
+    .split('.')
+    .some((part) => includesAny(part, PROMPT_CONTAINER_PATTERNS));
+}
+
+function promptModeForField(field: TemplateFieldSummary): PromptFieldMode {
+  const normalized = field.path.toLowerCase();
+  const itemNames = field.itemSchema?.map((item) => item.path.toLowerCase()) ?? [];
+  if (includesAny(normalized, [/monologue/])) return 'monologue';
+  if (includesAny(normalized, [/dialog|dialogue|conversation/])) return 'dialogue';
+  if (field.kind === 'array' && itemNames.length === 0) return 'monologue';
+  if (field.kind === 'array' && itemNames.some((item) => includesAny(item, CONTROL_PATTERNS))) return 'dialogue';
+  if (field.kind === 'array') return 'mixed';
+  if (field.kind === 'object') return 'grouped';
+  return 'promptText';
+}
+
+function classifyItemFields(field: TemplateFieldSummary, patterns: RegExp[]): string[] {
+  return (field.itemSchema ?? [])
+    .filter((item) => includesAny(item.path.toLowerCase(), patterns))
+    .map((item) => item.path);
+}
+
+function isPromptCandidate(field: TemplateFieldSummary): boolean {
+  const normalized = field.path.toLowerCase();
+  const leaf = leafName(field.path);
+  const itemNames = field.itemSchema?.map((item) => item.path.toLowerCase()) ?? [];
+  if (isPromptMetadataLeaf(leaf)) return false;
+  if (field.kind === 'array' && itemNames.some((name) => includesAny(name, PROMPT_TEXT_PATTERNS))) return true;
+  if (field.gameplayRole === 'questDialog' && (field.kind === 'array' || field.kind === 'object' || isPromptTextLeaf(leaf))) return true;
+  if (isPromptTextLeaf(leaf)) return true;
+  if ((field.kind === 'array' || field.kind === 'object') && isPromptContainerPath(normalized)) return true;
+  return false;
+}
+
+function promptFieldId(path: string): string {
+  return path.replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '') || 'prompt';
+}
+
+function buildPromptScheme(fields: TemplateFieldSummary[]): TemplatePromptScheme {
+  const promptFields = normalizePromptFields(fields.filter(isPromptCandidate)).map((field) => {
+    const textFields = classifyItemFields(field, PROMPT_TEXT_PATTERNS);
+    const itemFields = (field.itemSchema ?? []).map((item) => ({
+      path: item.path,
+      label: item.label,
+      valueType: item.valueType,
+    }));
+    return {
+      id: promptFieldId(field.path),
+      path: field.path,
+      label: field.label,
+      mode: promptModeForField(field),
+      kind: field.kind,
+      shape: field.shape,
+      control: field.control,
+      itemFields,
+      textFields,
+      optionFields: classifyItemFields(field, CONTROL_PATTERNS),
+      referenceFields: classifyItemFields(field, REFERENCE_PATTERNS),
+      navigationFields: classifyItemFields(field, NAVIGATION_PATTERNS),
+      stateFields: classifyItemFields(field, STATE_PATTERNS),
+      defaultValue: cloneDefaultValue(field.defaultValue),
+      fillSource: field.fillSource === 'templateDefault' ? 'templateDefault' : field.fillSource === 'manual' ? 'manual' : 'ai',
+      description: `Prompt-capable field "${field.path}" detected from template structure.`,
+    } satisfies TemplatePromptField;
+  });
+
+  return {
+    version: 1,
+    summary: promptFields.length
+      ? promptFields.map((field) => `${field.label} (${field.mode})`).join(', ')
+      : 'No prompt-capable fields detected',
+    fields: promptFields,
+    relationships: [],
+  };
+}
+
+export function normalizePromptFields<T extends { path: string; kind?: TemplateFieldKind }>(fields: T[]): T[] {
+  return fields.filter((field) => {
+    const leaf = leafName(field.path);
+    if (isPromptMetadataLeaf(leaf)) return false;
+    return field.kind !== 'object'
+      || !fields.some((candidate) => candidate.path !== field.path && candidate.path.startsWith(`${field.path}.`));
+  });
+}
+
+export function normalizeTemplatePromptScheme(scheme?: TemplatePromptScheme): TemplatePromptScheme | undefined {
+  if (!scheme) return undefined;
+  const fields = normalizePromptFields(scheme.fields);
+  const fieldPaths = new Set(fields.map((field) => field.path));
+  const relationships = Array.isArray(scheme.relationships)
+    ? scheme.relationships.filter((relationship) => fieldPaths.has(relationship.fieldPath))
+    : [];
+
+  return {
+    ...scheme,
+    fields,
+    relationships,
   };
 }
 
@@ -451,6 +676,7 @@ export function parseTemplate(raw: string, explicitFormat?: TemplateFormat): Par
   const requirementFields = fieldSchema.filter((field) => field.gameplayRole.includes('Requirement')).map((field) => field.path);
   const rewardFields = fieldSchema.filter((field) => field.gameplayRole.includes('Reward') || field.gameplayRole === 'reward').map((field) => field.path);
   const dialogFields = fieldSchema.filter((field) => field.gameplayRole === 'questDialog').map((field) => field.path);
+  const promptFields = templateSchema.promptScheme.fields.map((field) => field.path);
   const structureSummary = templateSchema.summary;
 
   return {
@@ -463,11 +689,13 @@ export function parseTemplate(raw: string, explicitFormat?: TemplateFormat): Par
       requirementFields,
       rewardFields,
       dialogFields,
+      promptFields,
       structureSummary,
     },
     inferredAiGuidance: {
       objectiveFields: requirementFields,
       rewardFields,
+      promptFields,
       structureSummary,
     },
   };

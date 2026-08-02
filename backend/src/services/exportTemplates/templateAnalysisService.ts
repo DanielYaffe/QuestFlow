@@ -4,7 +4,10 @@ import {
   GameplayRole,
   ParsedTemplate,
   TemplateFieldSummary,
+  TemplatePromptRelationship,
+  TemplatePromptScheme,
   TemplateSchema,
+  normalizeTemplatePromptScheme,
 } from './templateParser';
 
 const VALID_ROLES = new Set<GameplayRole>([
@@ -59,11 +62,13 @@ function schemaSummaryFromSchema(schema: TemplateSchema): ParsedTemplate['schema
   const dialogFields = schema.editableFields
     .filter((field) => field.gameplayRole === 'questDialog')
     .map((field) => field.path);
+  const promptFields = schema.promptScheme?.fields?.map((field) => field.path) ?? dialogFields;
 
   return {
     requirementFields,
     rewardFields,
     dialogFields,
+    promptFields,
     structureSummary: schema.summary,
   };
 }
@@ -72,6 +77,7 @@ function guidanceFromSummary(summary: ParsedTemplate['schemaSummary']): ParsedTe
   return {
     objectiveFields: summary.requirementFields,
     rewardFields: summary.rewardFields,
+    promptFields: summary.promptFields,
     structureSummary: summary.structureSummary,
   };
 }
@@ -99,13 +105,27 @@ Input format: ${parsed.format}
 Parser-created schema fields. These paths, field kinds, controls, and item schemas are already the source of truth:
 ${JSON.stringify(parsed.fieldSchema.map(compactField), null, 2)}
 
+Parser-created prompt scheme candidates. The parser only detects structure; you must analyze semantic relationships between these fields:
+${JSON.stringify(parsed.templateSchema.promptScheme, null, 2)}
+
 Return ONLY valid JSON. Do not include markdown.
 
-You may improve only labels, descriptions, gameplayRole, fillSource, required, and generationContract.
+You may improve only labels, descriptions, gameplayRole, fillSource, required, generationContract, and promptScheme.relationships.
 You must not invent new field paths. Use only paths from the detected editable fields.
 You must not change field paths, nesting, kind, valueType, control, shape, defaultValue, or itemSchema. The parser owns the form structure, including date controls and recursive list/object fields.
 Do not copy placeholder IDs, item values, monster values, amounts, or example text as answers.
-If a field is under requirements.complete, that does not automatically mean dialog. It is dialog only when it clearly represents dialogue pages/conversation/script text.
+Do not assume field names from one example template. A prompt/dialog/monologue role must come from field meaning or structure: player-facing text, ordered text arrays, prompt-like object arrays, speaker/reference fields, navigation/choice fields, or state/control flags.
+Do not use a fixed relationship contract from examples. Infer relationships only from the detected field names, itemSchema, shapes, and defaults in this template.
+
+For promptScheme.relationships:
+- Describe how fields inside each prompt/dialog/monologue structure relate to each other.
+- Use fieldPath for the prompt field path, such as a list/object path from the prompt scheme.
+- relatedFields must contain only child field names from that prompt field's itemFields, or the fieldPath itself for scalar prompt fields.
+- itemFields is the complete neutral list of child fields. The categorized lists like textFields, navigationFields, stateFields, optionFields, and referenceFields are hints only.
+- relationType should be generic and semantic, such as "sequence", "branch", "speaker-reference", "text-content", "state-flag", "control-type", "terminal-state", or another concise type inferred from the template.
+- explanation should describe the relationship in plain language.
+- generationGuidance should tell quest generation how to fill those related fields consistently.
+- If no relationship is clear, return an empty relationships array instead of guessing.
 
 Allowed gameplayRole values:
 questName, questId, questFlag, preQuest, ongoingQuestRequirement, completedQuestRequirement, requirement, combatRequirement, collectionRequirement, reward, itemReward, currencyReward, experienceReward, questDialog, other
@@ -127,7 +147,20 @@ Return this shape:
     "requirementRoles": ["field paths relevant to quest requirements"],
     "rewardRoles": ["field paths relevant to rewards"],
     "dialogRoles": ["field paths relevant to dialog"],
+    "promptRoles": ["field paths relevant to player-facing prompt generation"],
     "promptSummary": "compact prompt guidance for quest generation"
+  },
+  "promptScheme": {
+    "relationships": [
+      {
+        "fieldPath": "existing.prompt.field.path",
+        "relationType": "semantic relationship type",
+        "relatedFields": ["childFieldName"],
+        "explanation": "How these fields relate in this template",
+        "generationGuidance": "How generation should fill them consistently",
+        "required": true
+      }
+    ]
   }
 }`;
 }
@@ -203,18 +236,77 @@ function validateAiSchema(raw: any, fallback: TemplateSchema): TemplateSchema {
     dialogRoles: Array.isArray(raw.generationContract?.dialogRoles)
       ? raw.generationContract.dialogRoles.filter((path: unknown) => typeof path === 'string' && fallbackByPath.has(path))
       : editableFields.filter((field) => field.gameplayRole === 'questDialog').map((field) => field.path),
+    promptRoles: Array.isArray(raw.generationContract?.promptRoles)
+      ? raw.generationContract.promptRoles.filter((path: unknown) => typeof path === 'string' && fallbackByPath.has(path))
+      : fallback.promptScheme.fields.map((field) => field.path),
     promptSummary: typeof raw.generationContract?.promptSummary === 'string' && raw.generationContract.promptSummary.trim()
       ? raw.generationContract.promptSummary.trim()
       : summary,
   };
 
+  const promptScheme = mergePromptSchemeRelationships(fallback.promptScheme, raw.promptScheme);
+
   return {
     ...fallback,
     summary,
     editableFields,
+    promptScheme,
     generationContract,
     exportBindings: fallback.exportBindings,
   };
+}
+
+function mergePromptSchemeRelationships(
+  fallback: TemplatePromptScheme,
+  rawPromptScheme: unknown,
+): TemplatePromptScheme {
+  const validFieldByPath = new Map(fallback.fields.map((field) => [field.path, field]));
+  const rawRelationships = rawPromptScheme
+    && typeof rawPromptScheme === 'object'
+    && Array.isArray((rawPromptScheme as { relationships?: unknown }).relationships)
+    ? (rawPromptScheme as { relationships: unknown[] }).relationships
+    : [];
+
+  const relationships: TemplatePromptRelationship[] = rawRelationships.flatMap((raw) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const value = raw as Record<string, unknown>;
+    const fieldPath = typeof value.fieldPath === 'string' ? value.fieldPath : '';
+    const promptField = validFieldByPath.get(fieldPath);
+    if (!promptField) return [];
+
+    const itemFieldNames = new Set([
+      ...promptField.itemFields.map((field) => field.path),
+      ...promptField.textFields,
+      ...promptField.optionFields,
+      ...promptField.referenceFields,
+      ...promptField.navigationFields,
+      ...promptField.stateFields,
+    ]);
+    const relatedFields = Array.isArray(value.relatedFields)
+      ? value.relatedFields.filter((field): field is string => {
+        if (typeof field !== 'string') return false;
+        return field === fieldPath || itemFieldNames.has(field);
+      })
+      : [];
+
+    if (relatedFields.length === 0) return [];
+
+    return [{
+      fieldPath,
+      relationType: typeof value.relationType === 'string' && value.relationType.trim()
+        ? value.relationType.trim()
+        : 'relationship',
+      relatedFields,
+      explanation: typeof value.explanation === 'string' ? value.explanation.trim() : '',
+      generationGuidance: typeof value.generationGuidance === 'string' ? value.generationGuidance.trim() : '',
+      required: typeof value.required === 'boolean' ? value.required : false,
+    }];
+  });
+
+  return normalizeTemplatePromptScheme({
+    ...fallback,
+    relationships,
+  }) ?? fallback;
 }
 
 export async function analyzeTemplate(

@@ -4,7 +4,7 @@ import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
 import { motion, AnimatePresence } from 'motion/react';
 import { NodeVariant, QuestExportFields } from '../../../types/quest';
 import { fetchCharacters, fetchRewards, Character, Reward } from '../../../api/projectSidebarApi';
-import { TemplateFieldsEditor, getTemplateFieldSchema } from './TemplateFieldsEditor';
+import { TemplateFieldsEditor, getTemplateFieldSchema, getTemplatePromptFieldSchema } from './TemplateFieldsEditor';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,6 +19,7 @@ export interface NodeSnapshot {
   rewardIds: string[];
   exportFields?: QuestExportFields;
   templateValues?: Record<string, unknown>;
+  promptValues?: Record<string, unknown>;
 }
 
 interface NodeEditSidebarProps {
@@ -371,6 +372,10 @@ function templateValuesEqual(a?: Record<string, unknown>, b?: Record<string, unk
   return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
 }
 
+function promptValuesEqual(a?: Record<string, unknown>, b?: Record<string, unknown>) {
+  return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+}
+
 export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, onApply }: NodeEditSidebarProps) {
   const { configs, getConfig } = useVariantConfigs();
   const [phase, setPhase] = useState<Phase>('edit');
@@ -382,6 +387,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
   const [rewardIds,  setRewardIds]  = useState<string[]>([]);
   const [exportFields, setExportFields] = useState<QuestExportFields>(DEFAULT_EXPORT_FIELDS);
   const [templateValues, setTemplateValues] = useState<Record<string, unknown>>({});
+  const [promptValues, setPromptValues] = useState<Record<string, unknown>>({});
   const [width,      setWidth]      = useState(DEFAULT_WIDTH);
 
   const [characters,       setCharacters]       = useState<Character[]>([]);
@@ -404,6 +410,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
       setRewardIds(node.rewardIds ?? []);
       setExportFields(normalizeExportFields(node.exportFields));
       setTemplateValues(node.templateValues ?? {});
+      setPromptValues(node.promptValues ?? {});
       setPhase('edit');
     }
   }, [node]);
@@ -457,19 +464,22 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
       !arraysEqual([...monsterIds].sort(), [...(node.monsterIds ?? [])].sort()) ||
       !arraysEqual([...rewardIds].sort(),  [...(node.rewardIds ?? [])].sort()) ||
       !exportFieldsEqual(exportFields, node.exportFields) ||
-      !templateValuesEqual(templateValues, node.templateValues)
+      !templateValuesEqual(templateValues, node.templateValues) ||
+      !promptValuesEqual(promptValues, node.promptValues)
     );
 
   const handleClose = () => { setPhase('edit'); onClose(); };
   const handleApply = () => {
-    onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds, exportFields, templateValues });
+    onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds, exportFields, templateValues, promptValues });
     setPhase('edit');
     onClose();
   };
 
   const getCharName   = (id: string) => characters.find((c) => c.id === id)?.name   ?? id;
   const getRewardName = (id: string) => rewards.find((r)    => r.id === id)?.title  ?? id;
-  const templateFieldSchema = getTemplateFieldSchema(template);
+  const promptFieldSchema = getTemplatePromptFieldSchema(template);
+  const promptFieldPaths = new Set(promptFieldSchema.map((field) => field.path));
+  const templateFieldSchema = getTemplateFieldSchema(template).filter((field) => !promptFieldPaths.has(field.path));
 
   return (
     <AnimatePresence>
@@ -606,6 +616,20 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
                   onToggle={toggleReward}
                   loading={!rewardsLoaded}
                 />
+
+                {promptFieldSchema.length > 0 && (
+                  <TemplateFieldsEditor
+                    template={template ?? null}
+                    fields={promptFieldSchema}
+                    title={title}
+                    heading="Prompt Scheme"
+                    helpText="Generated player-facing prompt values for this quest, based on the selected template analysis."
+                    exportFields={exportFields}
+                    templateValues={promptValues}
+                    onExportFieldsChange={setExportFields}
+                    onTemplateValuesChange={setPromptValues}
+                  />
+                )}
 
                 {templateFieldSchema.length > 0 && (
                   <TemplateFieldsEditor
@@ -842,6 +866,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, template, onClose, 
               </div>
             )}
           </motion.div>
+
         </>
       )}
     </AnimatePresence>

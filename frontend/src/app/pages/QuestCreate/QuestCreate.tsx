@@ -46,6 +46,10 @@ const DEFAULT_WIZARD_STATE: WizardState = {
   error: null,
 };
 
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function loadDraftState(): WizardState {
   try {
     const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
@@ -55,6 +59,12 @@ function loadDraftState(): WizardState {
       ...DEFAULT_WIZARD_STATE,
       ...parsed,
       templates: [],
+      objectives: asArray(parsed.objectives),
+      selectedObjectives: asArray(parsed.selectedObjectives),
+      rewards: asArray(parsed.rewards),
+      selectedRewards: asArray(parsed.selectedRewards),
+      characters: asArray(parsed.characters),
+      selectedCharacters: asArray(parsed.selectedCharacters),
       isLoadingObjectives: false,
       isLoadingCharacters: false,
       error: null,
@@ -87,11 +97,13 @@ export function QuestCreate() {
     setState((s) => ({ ...s, isLoadingObjectives: true, error: null }));
     try {
       const result = await generateObjectives(state.storyInput, state.selectedGenre, state.selectedTemplateId || undefined);
+      const objectives = Array.isArray(result.objectives) ? result.objectives : [];
+      const rewards = Array.isArray(result.rewards) ? result.rewards : [];
       setState((s) => ({
         ...s,
         isLoadingObjectives: false,
-        objectives: result.objectives,
-        rewards: result.rewards,
+        objectives,
+        rewards,
         selectedObjectives: [],
         selectedRewards: [],
         step: 3,
@@ -109,11 +121,12 @@ export function QuestCreate() {
     setState((s) => ({ ...s, isLoadingCharacters: true, error: null }));
     try {
       const result = await generateCharacters(state.storyInput, state.selectedGenre);
+      const characters = Array.isArray(result.characters) ? result.characters : [];
       setState((s) => ({
         ...s,
         isLoadingCharacters: false,
-        characters: result.characters,
-        selectedCharacters: result.characters.map((c) => c.id),
+        characters,
+        selectedCharacters: characters.map((c) => c.id),
         step: 4,
       }));
     } catch (err) {
@@ -129,11 +142,12 @@ export function QuestCreate() {
     setState((s) => ({ ...s, isLoadingCharacters: true, error: null }));
     try {
       const result = await generateCharacters(state.storyInput, state.selectedGenre);
+      const characters = Array.isArray(result.characters) ? result.characters : [];
       setState((s) => ({
         ...s,
         isLoadingCharacters: false,
-        characters: result.characters,
-        selectedCharacters: result.characters.map((c) => c.id),
+        characters,
+        selectedCharacters: characters.map((c) => c.id),
       }));
     } catch (err) {
       setState((s) => ({

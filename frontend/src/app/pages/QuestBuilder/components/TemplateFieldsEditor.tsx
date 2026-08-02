@@ -1,5 +1,5 @@
-import React from 'react';
-import { X } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { TemplateFieldSummary, TemplateSchema } from '../../../api/exportTemplateApi';
 import { QuestExportFields } from '../../../types/quest';
 
@@ -27,6 +27,9 @@ interface TemplateFieldsEditorProps {
   template: TemplateRef | null;
   fields: TemplateFieldSummary[];
   title: string;
+  heading?: string;
+  helpText?: string;
+  surface?: 'section' | 'modal';
   exportFields: QuestExportFields;
   templateValues: Record<string, unknown>;
   onExportFieldsChange: React.Dispatch<React.SetStateAction<QuestExportFields>>;
@@ -35,6 +38,140 @@ interface TemplateFieldsEditorProps {
 
 function isTemplateSnapshot(value: unknown): value is { fieldSchema?: TemplateFieldSummary[]; templateSchema?: TemplateSchema } {
   return value !== null && typeof value === 'object';
+}
+
+type TemplateItemField = NonNullable<TemplateFieldSummary['itemSchema']>[number];
+
+function scalarValueType(value: unknown): TemplateItemField['valueType'] | undefined {
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'string' && /^(true|false)$/i.test(value.trim())) return 'boolean';
+  if (typeof value === 'string' || value === null || value === undefined) return 'string';
+  return undefined;
+}
+
+function mergeItemSchemas(...schemas: Array<TemplateFieldSummary['itemSchema'] | undefined>): TemplateFieldSummary['itemSchema'] {
+  const byPath = new Map<string, TemplateItemField>();
+  schemas.forEach((schema) => {
+    schema?.forEach((field) => {
+      if (!field.path) return;
+      const existing = byPath.get(field.path);
+      if (existing && existing.valueType === 'string' && field.valueType !== 'string') {
+        byPath.set(field.path, { ...existing, valueType: field.valueType });
+        return;
+      }
+      if (existing) return;
+      byPath.set(field.path, field);
+    });
+  });
+  return byPath.size ? [...byPath.values()] : undefined;
+}
+
+function inferItemSchemaFromRows(value: unknown): TemplateFieldSummary['itemSchema'] {
+  if (!Array.isArray(value)) return undefined;
+  const byPath = new Map<string, TemplateItemField>();
+  value.forEach((row) => {
+    if (!isRecordValue(row)) return;
+    Object.entries(row).forEach(([key, child]) => {
+      if (byPath.has(key)) return;
+      const valueType = scalarValueType(child);
+      if (!valueType) return;
+      byPath.set(key, {
+        path: key,
+        label: toFieldLabel(key),
+        valueType,
+        required: false,
+      });
+    });
+  });
+  return byPath.size ? [...byPath.values()] : undefined;
+}
+
+function itemSchemaFromPromptField(field: NonNullable<TemplateSchema['promptScheme']>['fields'][number]): TemplateFieldSummary['itemSchema'] {
+  return field.itemFields?.map((item) => ({
+    path: item.path,
+    label: item.label || toFieldLabel(item.path),
+    valueType: item.valueType,
+    required: false,
+  }));
+}
+
+function hydrateFieldSchema(field: TemplateFieldSummary): TemplateFieldSummary {
+  const itemSchema = mergeItemSchemas(field.itemSchema, inferItemSchemaFromRows(field.defaultValue));
+  if (typeof field.defaultValue === 'string' && /^(true|false)$/i.test(field.defaultValue.trim())) {
+    return {
+      ...field,
+      kind: 'boolean',
+      valueType: 'boolean',
+      control: 'checkbox',
+      itemSchema,
+    };
+  }
+  return itemSchema ? { ...field, itemSchema } : field;
+}
+
+function leafName(path: string) {
+  return path.replace(/\[\]/g, '').split('.').pop()?.replace(/[_-]/g, '').toLowerCase() ?? '';
+}
+
+function toFieldLabel(path: string) {
+  const leaf = path.replace(/\[\]/g, '').split('.').pop() ?? path;
+  return leaf
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function isPromptLikeField(path: string) {
+  return /prompt|text|message|description|body|content|script|dialog|dialogue/i.test(path);
+}
+
+function isTruthyValue(value: unknown) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
+  return Boolean(value);
+}
+
+function emptyValueForItemField(field: TemplateItemField): string | number | boolean {
+  if (field.valueType === 'number') return 0;
+  if (field.valueType === 'boolean') return false;
+  return '';
+}
+
+function isPromptMetadataPath(path: string) {
+  return new Set([
+    'id',
+    'name',
+    'title',
+    'type',
+    'kind',
+    'mode',
+    'npcid',
+    'npc',
+    'speakerid',
+    'speaker',
+    'characterid',
+    'character',
+    'next',
+    'prev',
+    'previous',
+    'yes',
+    'no',
+    'accept',
+    'accepted',
+    'complete',
+    'completed',
+    'end',
+    'done',
+  ]).has(leafName(path));
+}
+
+function normalizePromptFieldPaths<T extends { path: string; kind?: TemplateFieldSummary['kind'] }>(fields: T[]): T[] {
+  return fields.filter((field) => {
+    if (isPromptMetadataPath(field.path)) return false;
+    return field.kind !== 'object'
+      || !fields.some((candidate) => candidate.path !== field.path && candidate.path.startsWith(`${field.path}.`));
+  });
 }
 
 function defaultValueForKind(kind: TemplateFieldSummary['kind']): unknown {
@@ -172,9 +309,9 @@ function emptyValueForField(field: TemplateFieldSummary): unknown {
 export function getTemplateFieldSchema(template?: TemplateRef | null): TemplateFieldSummary[] {
   if (!isTemplateSnapshot(template?.snapshot)) return [];
 
-  const fields = template.snapshot.templateSchema?.editableFields?.length
+  const fields = (template.snapshot.templateSchema?.editableFields?.length
     ? template.snapshot.templateSchema.editableFields
-    : template.snapshot.fieldSchema ?? [];
+    : template.snapshot.fieldSchema ?? []).map(hydrateFieldSchema);
 
   const arrayParents = new Set(
     fields
@@ -197,15 +334,64 @@ export function getTemplateFieldSchema(template?: TemplateRef | null): TemplateF
   });
 }
 
+export function getTemplatePromptFieldSchema(template?: TemplateRef | null): TemplateFieldSummary[] {
+  if (!isTemplateSnapshot(template?.snapshot)) return [];
+  const fields = (template.snapshot.templateSchema?.editableFields?.length
+    ? template.snapshot.templateSchema.editableFields
+    : template.snapshot.fieldSchema ?? []).map(hydrateFieldSchema);
+  const byPath = new Map(fields.map((field) => [field.path, field]));
+  const promptFields = normalizePromptFieldPaths(template.snapshot.templateSchema?.promptScheme?.fields ?? []);
+
+  return promptFields.flatMap((promptField) => {
+    const existing = byPath.get(promptField.path);
+    const mergedItemSchema = mergeItemSchemas(
+      existing?.itemSchema,
+      itemSchemaFromPromptField(promptField),
+      inferItemSchemaFromRows(promptField.defaultValue),
+    );
+    if (existing) {
+      return [{
+        ...existing,
+        label: promptField.label || existing.label,
+        description: promptField.description || existing.description,
+        control: existing.control === 'dialogFlow' ? (mergedItemSchema?.length ? 'rows' : 'json') : existing.control,
+        itemSchema: mergedItemSchema,
+        fillSource: promptField.fillSource ?? existing.fillSource,
+      }];
+    }
+    if (!promptField.path) return [];
+    return [{
+      path: promptField.path,
+      templatePath: promptField.path,
+      label: promptField.label,
+      kind: promptField.kind,
+      valueType: promptField.kind === 'text' ? 'string' : promptField.kind,
+      control: promptField.control ?? 'text',
+      shape: promptField.shape ?? 'scalar',
+      gameplayRole: 'questDialog',
+      fillSource: promptField.fillSource ?? 'ai',
+      required: false,
+      description: promptField.description ?? `Prompt field "${promptField.path}" detected from template scheme.`,
+      defaultValue: promptField.defaultValue,
+      itemSchema: mergedItemSchema,
+    } satisfies TemplateFieldSummary];
+  });
+}
+
 export function TemplateFieldsEditor({
   template,
   fields,
   title,
+  heading = 'Template Fields',
+  helpText,
+  surface = 'section',
   exportFields,
   templateValues,
   onExportFieldsChange,
   onTemplateValuesChange,
 }: TemplateFieldsEditorProps) {
+  const [sectionOpen, setSectionOpen] = useState(surface === 'modal');
+
   const updateTemplateValue = (path: string, value: unknown) => {
     onTemplateValuesChange((prev) => ({ ...prev, [path]: value }));
   };
@@ -422,7 +608,7 @@ export function TemplateFieldsEditor({
     if (field.kind === 'boolean' || field.control === 'checkbox') {
       return (
         <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
-          <input type="checkbox" checked={Boolean(current)} onChange={(e) => updateTemplateFieldValue(field, e.target.checked)} className="accent-purple-600" />
+          <input type="checkbox" checked={isTruthyValue(current)} onChange={(e) => updateTemplateFieldValue(field, e.target.checked)} className="accent-purple-600" />
           Enabled
         </label>
       );
@@ -435,28 +621,82 @@ export function TemplateFieldsEditor({
     }
     if (field.kind === 'array' && field.itemSchema?.length) {
       const rows = Array.isArray(current) ? current as Record<string, unknown>[] : [];
+      const cardLayout = field.itemSchema.length > 4 || field.itemSchema.some((itemField) => isPromptLikeField(itemField.path));
+      const updateRow = (rowIndex: number, itemField: TemplateItemField, rawValue: string | boolean) => {
+        const value = itemField.valueType === 'number'
+          ? Number(rawValue) || 0
+          : itemField.valueType === 'boolean'
+            ? Boolean(rawValue)
+            : String(rawValue);
+        updateArrayField(path, rows.map((item, index) => index === rowIndex ? { ...item, [itemField.path]: value } : item));
+      };
+      const renderItemField = (row: Record<string, unknown>, rowIndex: number, itemField: TemplateItemField) => {
+        const value = row[itemField.path] ?? emptyValueForItemField(itemField);
+        const promptField = isPromptLikeField(itemField.path);
+        if (itemField.valueType === 'boolean') {
+          return (
+            <label className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={isTruthyValue(value)}
+                onChange={(e) => updateRow(rowIndex, itemField, e.target.checked)}
+                className="accent-purple-600"
+              />
+              {itemField.label}
+            </label>
+          );
+        }
+        if (promptField) {
+          return (
+            <textarea
+              rows={4}
+              placeholder={itemField.label}
+              value={String(value ?? '')}
+              onChange={(e) => updateRow(rowIndex, itemField, e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm leading-relaxed focus:outline-none focus:border-purple-500 resize-y"
+            />
+          );
+        }
+        return (
+          <input
+            type={itemField.valueType === 'number' ? 'number' : 'text'}
+            placeholder={itemField.label}
+            value={String(value ?? '')}
+            onChange={(e) => updateRow(rowIndex, itemField, e.target.value)}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+          />
+        );
+      };
+
       return (
         <div className="space-y-2">
-          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${field.itemSchema.length}, minmax(0, 1fr)) auto` }}>
-            {field.itemSchema.map((itemField) => <span key={itemField.path} className="text-[10px] uppercase tracking-wide text-zinc-500">{itemField.label}</span>)}
-            <span />
-          </div>
           {rows.length === 0 && <p className="text-xs text-zinc-600 italic">No rows yet</p>}
-          {rows.map((row, rowIndex) => (
+          {!cardLayout && (
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${field.itemSchema.length}, minmax(0, 1fr)) auto` }}>
+              {field.itemSchema.map((itemField) => <span key={itemField.path} className="text-[10px] uppercase tracking-wide text-zinc-500">{itemField.label}</span>)}
+              <span />
+            </div>
+          )}
+          {rows.map((row, rowIndex) => cardLayout ? (
+            <div key={rowIndex} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-medium text-zinc-400">Row {rowIndex + 1}</span>
+                <button type="button" onClick={() => updateArrayField(path, rows.filter((_, index) => index !== rowIndex))} className="text-xs text-red-300 hover:text-red-200">
+                  Remove row
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {field.itemSchema!.map((itemField) => (
+                  <div key={itemField.path} className={isPromptLikeField(itemField.path) ? 'sm:col-span-2' : ''}>
+                    <label className="text-[10px] uppercase tracking-wide text-zinc-500 mb-1 block">{itemField.label}</label>
+                    {renderItemField(row, rowIndex, itemField)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
             <div key={rowIndex} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${field.itemSchema!.length}, minmax(0, 1fr)) auto` }}>
-              {field.itemSchema!.map((itemField) => (
-                <input
-                  key={itemField.path}
-                  type={itemField.valueType === 'number' ? 'number' : 'text'}
-                  placeholder={itemField.label}
-                  value={String(row[itemField.path] ?? '')}
-                  onChange={(e) => {
-                    const value = itemField.valueType === 'number' ? Number(e.target.value) || 0 : e.target.value;
-                    updateArrayField(path, rows.map((item, index) => index === rowIndex ? { ...item, [itemField.path]: value } : item));
-                  }}
-                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
-                />
-              ))}
+              {field.itemSchema!.map((itemField) => <div key={itemField.path}>{renderItemField(row, rowIndex, itemField)}</div>)}
               <button type="button" onClick={() => updateArrayField(path, rows.filter((_, index) => index !== rowIndex))} className="px-3 py-2 text-zinc-500 hover:text-red-300 hover:bg-red-950/30 rounded-lg">
                 <X className="w-4 h-4" />
               </button>
@@ -464,7 +704,7 @@ export function TemplateFieldsEditor({
           ))}
           <button
             type="button"
-            onClick={() => updateArrayField(path, [...rows, Object.fromEntries(field.itemSchema!.map((itemField) => [itemField.path, itemField.valueType === 'number' ? 0 : '']))])}
+            onClick={() => updateArrayField(path, [...rows, Object.fromEntries(field.itemSchema!.map((itemField) => [itemField.path, emptyValueForItemField(itemField)]))])}
             className="text-xs text-purple-300 hover:text-purple-200"
           >
             Add row
@@ -512,15 +752,31 @@ export function TemplateFieldsEditor({
   };
 
   return (
-    <div className="border-t border-zinc-800 pt-5 space-y-4">
-      <div>
-        <h3 className="text-white text-sm font-semibold">Template Fields</h3>
-        <p className="text-zinc-500 text-xs mt-1">
-          Editing values for {template?.name}. These values override template placeholders in export.
-        </p>
-      </div>
+    <div className={`${surface === 'section' ? 'border-t border-zinc-800 pt-5' : ''} space-y-4`}>
+      {surface === 'section' ? (
+        <button
+          type="button"
+          onClick={() => setSectionOpen((open) => !open)}
+          className="w-full flex items-center justify-between gap-3 text-left"
+        >
+          <span>
+            <span className="block text-white text-sm font-semibold">{heading}</span>
+            <span className="block text-zinc-500 text-xs mt-1">
+              {helpText ?? `Editing values for ${template?.name}. These values override template placeholders in export.`}
+            </span>
+          </span>
+          {sectionOpen ? <ChevronUp className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
+        </button>
+      ) : (
+        <div>
+          <h3 className="text-white text-sm font-semibold">{heading}</h3>
+          <p className="text-zinc-500 text-xs mt-1">
+            {helpText ?? `Editing values for ${template?.name}. These values override template placeholders in export.`}
+          </p>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 gap-3">
+      {sectionOpen && <div className="grid grid-cols-1 gap-3">
         {fields.map((field) => {
           const current = isGraphQuestField(field)
             ? getSchemaDefaultValue(field)
@@ -536,7 +792,7 @@ export function TemplateFieldsEditor({
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }

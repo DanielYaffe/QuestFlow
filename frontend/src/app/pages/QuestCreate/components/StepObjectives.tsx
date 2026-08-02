@@ -17,10 +17,10 @@ interface StepObjectivesProps {
 }
 
 export function StepObjectives({
-  objectives,
-  rewards,
-  selectedObjectives,
-  selectedRewards,
+  objectives = [],
+  rewards = [],
+  selectedObjectives = [],
+  selectedRewards = [],
   onToggleObjective,
   onToggleReward,
   onSelectAllObjectives,

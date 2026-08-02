@@ -95,6 +95,7 @@ export function buildExportPayload(questline: IQuestline): CanonicalExport {
     monsterIds: (n.monsterIds ?? []).map(remap),
     rewardIds:  (n.rewardIds  ?? []).map(remap),
     ...(Object.keys(n.templateValues ?? {}).length > 0 ? { templateValues: n.templateValues } : {}),
+    ...(Object.keys(n.promptValues ?? {}).length > 0 ? { promptValues: n.promptValues } : {}),
     exportFields: n.exportFields,
   }));
 

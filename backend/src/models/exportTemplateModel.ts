@@ -21,6 +21,7 @@ export interface IExportTemplate extends Document {
     requirementFields: string[];
     rewardFields: string[];
     dialogFields: string[];
+    promptFields: string[];
     structureSummary: string;
   };
   analysisStatus: 'pending' | 'ready' | 'fallback' | 'failed';
@@ -29,6 +30,7 @@ export interface IExportTemplate extends Document {
   inferredAiGuidance: {
     objectiveFields: string[];
     rewardFields: string[];
+    promptFields: string[];
     structureSummary: string;
   };
   output: {
@@ -57,6 +59,7 @@ const ExportTemplateSchema = new Schema<IExportTemplate>(
       requirementFields: { type: [String], default: [] },
       rewardFields:      { type: [String], default: [] },
       dialogFields:      { type: [String], default: [] },
+      promptFields:      { type: [String], default: [] },
       structureSummary:  { type: String, default: '' },
     },
     analysisStatus:       { type: String, enum: ['pending', 'ready', 'fallback', 'failed'], default: 'fallback' },
@@ -65,6 +68,7 @@ const ExportTemplateSchema = new Schema<IExportTemplate>(
     inferredAiGuidance: {
       objectiveFields:   { type: [String], default: [] },
       rewardFields:      { type: [String], default: [] },
+      promptFields:      { type: [String], default: [] },
       structureSummary:  { type: String, default: '' },
     },
     output: {

@@ -16,6 +16,7 @@ export type QuestNodeData = Record<string, unknown> & {
   variant?: NodeVariant;
   exportFields?: QuestExportFields;
   templateValues?: Record<string, unknown>;
+  promptValues?: Record<string, unknown>;
   layoutDirection?: 'TB' | 'LR';
   npcIds?: string[];
   monsterIds?: string[];
