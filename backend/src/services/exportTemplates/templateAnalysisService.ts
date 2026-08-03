@@ -34,6 +34,12 @@ type AnalysisResult = {
   analyzedAt: Date;
 };
 
+type TemplateGenerationContract = TemplateSchema['generationContract'];
+
+type ExistingHintContext = {
+  generationContract?: Partial<TemplateGenerationContract>;
+};
+
 function stripJsonFences(text: string): string {
   return text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
 }
@@ -90,7 +96,8 @@ function compactField(field: TemplateFieldSummary) {
   };
 }
 
-function buildAnalysisPrompt(templateName: string, parsed: ParsedTemplate): string {
+function buildAnalysisPrompt(templateName: string, parsed: ParsedTemplate, existing?: ExistingHintContext): string {
+  const existingContract = existing?.generationContract;
   return `You analyze quest export templates.
 
 Template name: ${templateName}
@@ -99,6 +106,14 @@ Input format: ${parsed.format}
 Parser-created schema fields. These paths, field kinds, controls, and item schemas are already the source of truth:
 ${JSON.stringify(parsed.fieldSchema.map(compactField), null, 2)}
 
+Existing user examples and hints. Treat userExamples as high-priority corrections:
+${JSON.stringify({
+  fieldHints: existingContract?.fieldHints ?? [],
+  relationshipHints: existingContract?.relationshipHints ?? [],
+  generationHints: existingContract?.generationHints ?? [],
+  userExamples: existingContract?.userExamples ?? [],
+}, null, 2)}
+
 Return ONLY valid JSON. Do not include markdown.
 
 You may improve only labels, descriptions, gameplayRole, fillSource, required, and generationContract.
@@ -106,6 +121,8 @@ You must not invent new field paths. Use only paths from the detected editable f
 You must not change field paths, nesting, kind, valueType, control, shape, defaultValue, or itemSchema. The parser owns the form structure, including date controls and recursive list/object fields.
 Do not copy placeholder IDs, item values, monster values, amounts, or example text as answers.
 If a field is under requirements.complete, that does not automatically mean dialog. It is dialog only when it clearly represents dialogue pages/conversation/script text.
+For array item fields, refer to item fields by appending [] before the child path, for example "pages[].id". Only use those item paths when the parent array and child item path exist in the parser schema.
+Infer relationships generically. A relationship means one field stores a value that references, controls, or changes another field. Do not assume a specific game template. Only describe relationships that are supported by the detected fields or existing user examples.
 
 Allowed gameplayRole values:
 questName, questId, questFlag, preQuest, ongoingQuestRequirement, completedQuestRequirement, requirement, combatRequirement, collectionRequirement, reward, itemReward, currencyReward, experienceReward, questDialog, other
@@ -127,7 +144,24 @@ Return this shape:
     "requirementRoles": ["field paths relevant to quest requirements"],
     "rewardRoles": ["field paths relevant to rewards"],
     "dialogRoles": ["field paths relevant to dialog"],
-    "promptSummary": "compact prompt guidance for quest generation"
+    "promptSummary": "compact prompt guidance for quest generation",
+    "fieldHints": [
+      {
+        "path": "existing.path or existing.array[].itemPath",
+        "meaning": "what this field means in the game/template",
+        "generationUse": "how quest generation should fill or avoid this field"
+      }
+    ],
+    "relationshipHints": [
+      {
+        "kind": "reference",
+        "from": "existing.array[].field",
+        "to": "existing.array[].idField",
+        "meaning": "how these fields are connected"
+      }
+    ],
+    "generationHints": ["short template-specific generation instruction"],
+    "userExamples": ["preserve existing user examples exactly"]
   }
 }`;
 }
@@ -170,7 +204,7 @@ function normalizeFillSourceForPath(
   return proposed;
 }
 
-function validateAiSchema(raw: any, fallback: TemplateSchema): TemplateSchema {
+function validateAiSchema(raw: any, fallback: TemplateSchema, existing?: ExistingHintContext): TemplateSchema {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.editableFields)) {
     throw new Error('AI template analysis did not return editableFields');
   }
@@ -193,7 +227,7 @@ function validateAiSchema(raw: any, fallback: TemplateSchema): TemplateSchema {
     ? raw.summary.trim()
     : fallback.summary;
 
-  const generationContract = {
+  const generationContract: TemplateGenerationContract = {
     requirementRoles: Array.isArray(raw.generationContract?.requirementRoles)
       ? raw.generationContract.requirementRoles.filter((path: unknown) => typeof path === 'string' && fallbackByPath.has(path))
       : editableFields.filter((field) => field.gameplayRole.includes('Requirement') || field.gameplayRole === 'requirement').map((field) => field.path),
@@ -206,6 +240,18 @@ function validateAiSchema(raw: any, fallback: TemplateSchema): TemplateSchema {
     promptSummary: typeof raw.generationContract?.promptSummary === 'string' && raw.generationContract.promptSummary.trim()
       ? raw.generationContract.promptSummary.trim()
       : summary,
+    fieldHints: Array.isArray(raw.generationContract?.fieldHints)
+      ? normalizeFieldHints(raw.generationContract.fieldHints, fallback)
+      : normalizeFieldHints(existing?.generationContract?.fieldHints, fallback),
+    relationshipHints: Array.isArray(raw.generationContract?.relationshipHints)
+      ? normalizeRelationshipHints(raw.generationContract.relationshipHints, fallback)
+      : normalizeRelationshipHints(existing?.generationContract?.relationshipHints, fallback),
+    generationHints: Array.isArray(raw.generationContract?.generationHints)
+      ? normalizeStringList(raw.generationContract.generationHints)
+      : normalizeStringList(existing?.generationContract?.generationHints),
+    userExamples: Array.isArray(raw.generationContract?.userExamples)
+      ? normalizeStringList(raw.generationContract.userExamples)
+      : normalizeStringList(existing?.generationContract?.userExamples),
   };
 
   return {
@@ -220,15 +266,19 @@ function validateAiSchema(raw: any, fallback: TemplateSchema): TemplateSchema {
 export async function analyzeTemplate(
   templateName: string,
   parsed: ParsedTemplate,
-  options: { forceAi?: boolean } = {},
+  options: { forceAi?: boolean; skipAi?: boolean; existingSchema?: ExistingHintContext } = {},
 ): Promise<AnalysisResult> {
+  if (options.skipAi) {
+    return fallbackResult(mergeExistingHintsIntoFallback(parsed, options.existingSchema));
+  }
+
   if (!hasGenApiKey()) {
-    return fallbackResult(parsed, 'AI provider API key is not configured; using parser fallback.');
+    return fallbackResult(mergeExistingHintsIntoFallback(parsed, options.existingSchema), 'AI provider API key is not configured; using parser fallback.');
   }
 
   try {
-    const rawJson = stripJsonFences(await complete(buildAnalysisPrompt(templateName, parsed)));
-    const aiSchema = validateAiSchema(JSON.parse(rawJson), parsed.templateSchema);
+    const rawJson = stripJsonFences(await complete(buildAnalysisPrompt(templateName, parsed, options.existingSchema)));
+    const aiSchema = validateAiSchema(JSON.parse(rawJson), parsed.templateSchema, options.existingSchema);
     const schemaSummary = schemaSummaryFromSchema(aiSchema);
     return {
       templateSchema: aiSchema,
@@ -240,6 +290,73 @@ export async function analyzeTemplate(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI template analysis failed';
-    return fallbackResult(parsed, options.forceAi ? message : message);
+    return fallbackResult(mergeExistingHintsIntoFallback(parsed, options.existingSchema), options.forceAi ? message : message);
   }
+}
+
+function normalizeStringList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim());
+}
+
+function allowedHintPaths(schema: TemplateSchema): Set<string> {
+  const paths = new Set(schema.editableFields.map((field) => field.path));
+  for (const field of schema.editableFields) {
+    for (const item of field.itemSchema ?? []) {
+      paths.add(`${field.path}[].${item.path}`);
+    }
+  }
+  return paths;
+}
+
+function normalizeFieldHints(raw: unknown, fallback: TemplateSchema): TemplateGenerationContract['fieldHints'] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = allowedHintPaths(fallback);
+  const seen = new Set<string>();
+  return raw.flatMap((hint) => {
+    const path = typeof hint?.path === 'string' ? hint.path.trim() : '';
+    if (!allowed.has(path) || seen.has(path)) return [];
+    const meaning = typeof hint?.meaning === 'string' ? hint.meaning.trim() : '';
+    const generationUse = typeof hint?.generationUse === 'string' ? hint.generationUse.trim() : '';
+    if (!meaning && !generationUse) return [];
+    seen.add(path);
+    return [{ path, meaning, generationUse }];
+  });
+}
+
+function normalizeRelationshipHints(raw: unknown, fallback: TemplateSchema): TemplateGenerationContract['relationshipHints'] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = allowedHintPaths(fallback);
+  const validKinds = new Set(['reference', 'branch', 'sequence', 'state', 'other']);
+  const seen = new Set<string>();
+  return raw.flatMap((hint) => {
+    const from = typeof hint?.from === 'string' ? hint.from.trim() : '';
+    const to = typeof hint?.to === 'string' ? hint.to.trim() : '';
+    if (!allowed.has(from) || !allowed.has(to)) return [];
+    const kind = validKinds.has(hint?.kind) ? hint.kind as TemplateGenerationContract['relationshipHints'][number]['kind'] : 'other';
+    const meaning = typeof hint?.meaning === 'string' ? hint.meaning.trim() : '';
+    const key = `${kind}:${from}:${to}`;
+    if (!meaning || seen.has(key)) return [];
+    seen.add(key);
+    return [{ kind, from, to, meaning }];
+  });
+}
+
+function mergeExistingHintsIntoFallback(parsed: ParsedTemplate, existing?: ExistingHintContext): ParsedTemplate {
+  if (!existing?.generationContract) return parsed;
+  const fallback = parsed.templateSchema;
+  const generationContract: TemplateGenerationContract = {
+    ...fallback.generationContract,
+    fieldHints: normalizeFieldHints(existing.generationContract.fieldHints, fallback),
+    relationshipHints: normalizeRelationshipHints(existing.generationContract.relationshipHints, fallback),
+    generationHints: normalizeStringList(existing.generationContract.generationHints),
+    userExamples: normalizeStringList(existing.generationContract.userExamples),
+  };
+  return {
+    ...parsed,
+    templateSchema: {
+      ...fallback,
+      generationContract,
+    },
+  };
 }

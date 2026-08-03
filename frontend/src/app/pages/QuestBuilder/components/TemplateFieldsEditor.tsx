@@ -1,7 +1,8 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Maximize2, X } from 'lucide-react';
 import { TemplateFieldSummary, TemplateSchema } from '../../../api/exportTemplateApi';
 import { QuestExportFields } from '../../../types/quest';
+import { DialogFlowEditorDialog } from './DialogFlowEditorDialog';
 
 type QuestDialogPage = {
   id: string;
@@ -33,8 +34,18 @@ interface TemplateFieldsEditorProps {
   onTemplateValuesChange: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
 }
 
+type TemplateFieldGroup = {
+  key: string;
+  label: string;
+  fields: TemplateFieldSummary[];
+};
+
 function isTemplateSnapshot(value: unknown): value is { fieldSchema?: TemplateFieldSummary[]; templateSchema?: TemplateSchema } {
   return value !== null && typeof value === 'object';
+}
+
+function getTemplateSchema(template?: TemplateRef | null): TemplateSchema | undefined {
+  return isTemplateSnapshot(template?.snapshot) ? template.snapshot.templateSchema : undefined;
 }
 
 function defaultValueForKind(kind: TemplateFieldSummary['kind']): unknown {
@@ -169,6 +180,22 @@ function emptyValueForField(field: TemplateFieldSummary): unknown {
   return defaultValueForKind(field.kind);
 }
 
+function groupTemplateFields(fields: TemplateFieldSummary[]): TemplateFieldGroup[] {
+  const groups = new Map<string, TemplateFieldSummary[]>();
+  for (const field of fields) {
+    const key = field.path.split('.')[0] || 'quest';
+    groups.set(key, [...(groups.get(key) ?? []), field]);
+  }
+  return [...groups.entries()].map(([key, groupFields]) => ({
+    key,
+    label: key
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase()),
+    fields: groupFields,
+  }));
+}
+
 export function getTemplateFieldSchema(template?: TemplateRef | null): TemplateFieldSummary[] {
   if (!isTemplateSnapshot(template?.snapshot)) return [];
 
@@ -208,6 +235,15 @@ export function TemplateFieldsEditor({
 }: TemplateFieldsEditorProps) {
   const updateTemplateValue = (path: string, value: unknown) => {
     onTemplateValuesChange((prev) => ({ ...prev, [path]: value }));
+  };
+  const fieldGroups = React.useMemo(() => groupTemplateFields(fields), [fields]);
+  const templateSchema = getTemplateSchema(template);
+  const [expandedSections, setExpandedSections] = React.useState<Record<string, boolean>>({});
+  const [dialogField, setDialogField] = React.useState<TemplateFieldSummary | null>(null);
+
+  const isSectionExpanded = (key: string, index: number) => expandedSections[key] ?? index === 0;
+  const toggleSection = (key: string, index: number) => {
+    setExpandedSections((prev) => ({ ...prev, [key]: !(prev[key] ?? index === 0) }));
   };
 
   const updateTemplateFieldValue = (field: TemplateFieldSummary, value: unknown) => {
@@ -369,53 +405,24 @@ export function TemplateFieldsEditor({
     }
     if (field.control === 'dialogFlow') {
       const pages = normalizeDialogPages(current);
-      const updatePage = (index: number, updates: Partial<QuestDialogPage>) => {
-        updateTemplateValue(path, pages.map((page, pageIndex) => pageIndex === index ? { ...page, ...updates } : page));
-      };
+      const promptCount = pages.filter((page) => page.prompt.trim()).length;
       return (
-        <div className="space-y-3">
-          {pages.length === 0 && <p className="text-xs text-steel-500 italic">No dialog pages yet</p>}
-          {pages.map((page, index) => (
-            <div key={`${page.id}-${index}`} className="rounded-lg border border-steel-700 bg-steel-950/60 p-3 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <input value={page.id} onChange={(e) => updatePage(index, { id: e.target.value })} placeholder="Page ID" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
-                <input type="number" value={page.npcId || ''} onChange={(e) => updatePage(index, { npcId: Number(e.target.value) || 0 })} placeholder="NPC ID" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                <select value={page.type ?? 'ok'} onChange={(e) => updatePage(index, { type: e.target.value as QuestDialogPage['type'] })} className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse">
-                  <option value="ok">OK</option>
-                  <option value="next">Next</option>
-                  <option value="nextPrev">Next/Prev</option>
-                  <option value="yesNo">Yes/No</option>
-                </select>
-                <input value={page.next ?? ''} onChange={(e) => updatePage(index, { next: e.target.value || undefined })} placeholder="Next" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
-                <input value={page.prev ?? ''} onChange={(e) => updatePage(index, { prev: e.target.value || undefined })} placeholder="Prev" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
-                <input value={page.yes ?? ''} onChange={(e) => updatePage(index, { yes: e.target.value || undefined })} placeholder="Yes" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
-                <input value={page.no ?? ''} onChange={(e) => updatePage(index, { no: e.target.value || undefined })} placeholder="No" className="bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />
-              </div>
-              <textarea value={page.prompt} onChange={(e) => updatePage(index, { prompt: e.target.value })} rows={3} placeholder="Dialog prompt" className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse resize-y" />
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap gap-3">
-                  {(['accept', 'complete', 'end'] as const).map((flag) => (
-                    <label key={flag} className="flex items-center gap-1.5 text-xs text-steel-400 capitalize">
-                      <input type="checkbox" checked={Boolean(page[flag])} onChange={(e) => updatePage(index, { [flag]: e.target.checked })} className="accent-pulse" />
-                      {flag}
-                    </label>
-                  ))}
-                </div>
-                <button type="button" onClick={() => updateTemplateValue(path, pages.filter((_, pageIndex) => pageIndex !== index))} className="text-xs text-red-300 hover:text-red-200">
-                  Remove page
-                </button>
-              </div>
+        <div className="rounded-lg border border-steel-700 bg-steel-950/60 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-steel-100 font-medium">{pages.length} dialog pages</p>
+              <p className="text-xs text-steel-500">{promptCount} pages with generated text</p>
             </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => updateTemplateValue(path, [...pages, { id: `page_${pages.length + 1}`, npcId: 0, type: 'ok', prompt: '' }])}
-            className="text-xs text-pulse hover:text-pulse"
-          >
-            Add dialog page
-          </button>
+            <button
+              type="button"
+              onClick={() => setDialogField(field)}
+              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 text-steel-100 rounded-lg text-xs"
+            >
+              <Maximize2 className="w-4 h-4" />
+              Open dialog graph
+            </button>
+          </div>
+          {pages[0]?.prompt && <p className="mt-3 text-xs text-steel-400 line-clamp-2">{pages[0].prompt}</p>}
         </div>
       );
     }
@@ -520,23 +527,56 @@ export function TemplateFieldsEditor({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
-        {fields.map((field) => {
-          const current = isGraphQuestField(field)
-            ? getSchemaDefaultValue(field)
-            : templateValues[field.path] ?? getSchemaDefaultValue(field);
+      <div className="space-y-3">
+        {fieldGroups.map((group, index) => {
+          const expanded = isSectionExpanded(group.key, index);
           return (
-            <div key={field.path}>
-              <label className="text-steel-400 text-xs uppercase tracking-wide mb-1 block">
-                {field.label}
-                <span className="ml-2 normal-case text-steel-500">{field.templatePath ?? field.path}</span>
-              </label>
-              {field.description && <p className="text-steel-500 text-xs mb-2">{field.description}</p>}
-              {renderTemplateFieldInput(field, current)}
-            </div>
+            <section key={group.key} className="rounded-lg border border-steel-700 bg-steel-950/40">
+              <button
+                type="button"
+                onClick={() => toggleSection(group.key, index)}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-steel-800/60"
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  {expanded ? <ChevronDown className="w-4 h-4 text-steel-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-steel-400 shrink-0" />}
+                  <span className="text-steel-100 text-sm font-medium truncate">{group.label}</span>
+                </span>
+                <span className="text-[11px] text-steel-500 shrink-0">{group.fields.length} fields</span>
+              </button>
+
+              {expanded && (
+                <div className="border-t border-steel-700 px-3 py-3 space-y-3">
+                  {group.fields.map((field) => {
+                    const current = isGraphQuestField(field)
+                      ? getSchemaDefaultValue(field)
+                      : templateValues[field.path] ?? getSchemaDefaultValue(field);
+                    return (
+                      <div key={field.path}>
+                        <label className="text-steel-400 text-xs uppercase tracking-wide mb-1 block">
+                          {field.label}
+                          <span className="ml-2 normal-case text-steel-500">{field.templatePath ?? field.path}</span>
+                        </label>
+                        {field.description && <p className="text-steel-500 text-xs mb-2">{field.description}</p>}
+                        {renderTemplateFieldInput(field, current)}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           );
         })}
       </div>
+      <DialogFlowEditorDialog
+        isOpen={Boolean(dialogField)}
+        field={dialogField}
+        templateSchema={templateSchema}
+        value={dialogField ? templateValues[dialogField.path] ?? getSchemaDefaultValue(dialogField) : []}
+        onClose={() => setDialogField(null)}
+        onChange={(next) => {
+          if (dialogField) updateTemplateValue(dialogField.path, next);
+        }}
+      />
     </div>
   );
 }

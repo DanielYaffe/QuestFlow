@@ -7,6 +7,7 @@ import {
   deleteExportTemplate,
   ExportTemplate,
   fetchExportTemplates,
+  TemplateSchema,
   TemplateFormat,
   updateExportTemplate,
 } from '../../../api/exportTemplateApi';
@@ -54,6 +55,11 @@ export function QuestTemplateSettingsCard() {
   const [inputFormat, setInputFormat] = useState<TemplateFormat>('json');
   const [outputFormat, setOutputFormat] = useState<TemplateFormat>('yaml');
   const [rawTemplate, setRawTemplate] = useState(DEFAULT_TEMPLATE);
+  const [hintEditingId, setHintEditingId] = useState<string | null>(null);
+  const [fieldHintsDraft, setFieldHintsDraft] = useState('[]');
+  const [relationshipHintsDraft, setRelationshipHintsDraft] = useState('[]');
+  const [generationHintsDraft, setGenerationHintsDraft] = useState('');
+  const [userExamplesDraft, setUserExamplesDraft] = useState('');
 
   const sortedTemplates = useMemo(
     () => [...templates].sort((a, b) => Number(b.isBuiltIn) - Number(a.isBuiltIn) || a.name.localeCompare(b.name)),
@@ -119,10 +125,10 @@ export function QuestTemplateSettingsCard() {
     setRawTemplate(template.rawTemplate);
   };
 
-  const handleAnalyze = async (template: ExportTemplate) => {
+  const handleAnalyze = async (template: ExportTemplate, schemaOverride?: Partial<TemplateSchema>) => {
     setAnalyzingId(template._id);
     try {
-      const updated = await analyzeExportTemplate(template._id);
+      const updated = await analyzeExportTemplate(template._id, schemaOverride);
       setTemplates((prev) => prev.map((item) => item._id === template._id ? updated : item));
       toast.success(updated.analysisStatus === 'ready' ? 'Template analyzed by AI' : 'Template saved with parser fallback');
     } catch (err: any) {
@@ -140,6 +146,68 @@ export function QuestTemplateSettingsCard() {
     } catch {
       toast.error('Failed to delete template');
     }
+  };
+
+  const startHintEdit = (template: ExportTemplate) => {
+    const contract = template.templateSchema?.generationContract;
+    setHintEditingId(template._id);
+    setFieldHintsDraft(JSON.stringify(contract?.fieldHints ?? [], null, 2));
+    setRelationshipHintsDraft(JSON.stringify(contract?.relationshipHints ?? [], null, 2));
+    setGenerationHintsDraft((contract?.generationHints ?? []).join('\n'));
+    setUserExamplesDraft((contract?.userExamples ?? []).join('\n'));
+  };
+
+  const contractDraft = (template: ExportTemplate): Partial<TemplateSchema> | null => {
+    try {
+      return {
+        generationContract: {
+          ...(template.templateSchema?.generationContract ?? {
+            requirementRoles: [],
+            rewardRoles: [],
+            dialogRoles: [],
+            promptSummary: '',
+          }),
+          fieldHints: JSON.parse(fieldHintsDraft),
+          relationshipHints: JSON.parse(relationshipHintsDraft),
+          generationHints: generationHintsDraft.split('\n').map((line) => line.trim()).filter(Boolean),
+          userExamples: userExamplesDraft.split('\n').map((line) => line.trim()).filter(Boolean),
+        },
+      };
+    } catch {
+      toast.error('Hint JSON is invalid');
+      return null;
+    }
+  };
+
+  const saveHints = async (template: ExportTemplate) => {
+    const templateSchema = contractDraft(template);
+    if (!templateSchema) return;
+    setIsSaving(true);
+    try {
+      const updated = await updateExportTemplate(template._id, {
+        name: template.name,
+        description: template.description,
+        rawTemplate: template.rawTemplate,
+        inputFormat: template.acceptedInputFormat,
+        defaultOutputFormat: template.defaultOutputFormat,
+        templateSchema,
+        skipAnalysis: true,
+      });
+      setTemplates((prev) => prev.map((item) => item._id === template._id ? updated : item));
+      setHintEditingId(null);
+      toast.success('Template hints saved');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to save hints');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const reanalyzeWithHints = async (template: ExportTemplate) => {
+    const templateSchema = contractDraft(template);
+    if (!templateSchema) return;
+    await handleAnalyze(template, templateSchema);
+    setHintEditingId(null);
   };
 
   return (
@@ -288,6 +356,89 @@ export function QuestTemplateSettingsCard() {
                     </div>
                   )}
                 </div>
+                {!template.isBuiltIn && hintEditingId === template._id ? (
+                  <div className="mt-4 border-t border-steel-700 pt-4 space-y-3">
+                    <div>
+                      <label className="block text-steel-400 text-xs uppercase tracking-wide mb-1">Field Hints JSON</label>
+                      <textarea
+                        value={fieldHintsDraft}
+                        onChange={(event) => setFieldHintsDraft(event.target.value)}
+                        rows={5}
+                        className="w-full bg-steel-950 border border-steel-600 rounded-lg px-3 py-2 text-steel-200 font-mono text-xs focus:outline-none focus:border-pulse"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-steel-400 text-xs uppercase tracking-wide mb-1">Relationship Hints JSON</label>
+                      <textarea
+                        value={relationshipHintsDraft}
+                        onChange={(event) => setRelationshipHintsDraft(event.target.value)}
+                        rows={5}
+                        className="w-full bg-steel-950 border border-steel-600 rounded-lg px-3 py-2 text-steel-200 font-mono text-xs focus:outline-none focus:border-pulse"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-steel-400 text-xs uppercase tracking-wide mb-1">Generation Hints</label>
+                        <textarea
+                          value={generationHintsDraft}
+                          onChange={(event) => setGenerationHintsDraft(event.target.value)}
+                          rows={4}
+                          placeholder="One hint per line"
+                          className="w-full bg-steel-950 border border-steel-600 rounded-lg px-3 py-2 text-steel-200 text-xs focus:outline-none focus:border-pulse"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-steel-400 text-xs uppercase tracking-wide mb-1">User Examples</label>
+                        <textarea
+                          value={userExamplesDraft}
+                          onChange={(event) => setUserExamplesDraft(event.target.value)}
+                          rows={4}
+                          placeholder="One example or correction per line"
+                          className="w-full bg-steel-950 border border-steel-600 rounded-lg px-3 py-2 text-steel-200 text-xs focus:outline-none focus:border-pulse"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => saveHints(template)}
+                        disabled={isSaving}
+                        className="px-3 py-2 bg-volt hover:brightness-95 disabled:opacity-50 text-steel-950 font-semibold rounded-lg text-xs"
+                      >
+                        Save hints
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => reanalyzeWithHints(template)}
+                        disabled={analyzingId === template._id}
+                        className="px-3 py-2 bg-steel-800 hover:bg-steel-700 disabled:opacity-50 text-steel-200 rounded-lg text-xs"
+                      >
+                        Re-analyze with examples
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHintEditingId(null)}
+                        className="px-3 py-2 bg-steel-900 hover:bg-steel-800 text-steel-300 rounded-lg text-xs"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                ) : !template.isBuiltIn ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startHintEdit(template)}
+                      className="text-xs text-pulse hover:text-pulse"
+                    >
+                      Edit generation hints
+                    </button>
+                    <span className="text-xs text-steel-500">
+                      {(template.templateSchema?.generationContract?.fieldHints?.length ?? 0)} field hints,
+                      {' '}{(template.templateSchema?.generationContract?.relationshipHints?.length ?? 0)} relationships
+                    </span>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

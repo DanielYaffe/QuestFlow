@@ -41,6 +41,19 @@ export interface TemplateSchema {
     rewardRoles: string[];
     dialogRoles: string[];
     promptSummary: string;
+    fieldHints?: Array<{
+      path: string;
+      meaning: string;
+      generationUse: string;
+    }>;
+    relationshipHints?: Array<{
+      kind: 'reference' | 'branch' | 'sequence' | 'state' | 'other';
+      from: string;
+      to: string;
+      meaning: string;
+    }>;
+    generationHints?: string[];
+    userExamples?: string[];
   };
 }
 
@@ -84,6 +97,8 @@ export interface SaveExportTemplatePayload {
   rawTemplate: string;
   inputFormat?: TemplateFormat;
   defaultOutputFormat?: TemplateFormat;
+  templateSchema?: Partial<TemplateSchema>;
+  skipAnalysis?: boolean;
 }
 
 export async function fetchExportTemplates(): Promise<ExportTemplate[]> {
@@ -101,8 +116,8 @@ export async function updateExportTemplate(id: string, payload: SaveExportTempla
   return data;
 }
 
-export async function analyzeExportTemplate(id: string): Promise<ExportTemplate> {
-  const { data } = await api.post<ExportTemplate>(`/export-templates/${id}/analyze`);
+export async function analyzeExportTemplate(id: string, templateSchema?: Partial<TemplateSchema>): Promise<ExportTemplate> {
+  const { data } = await api.post<ExportTemplate>(`/export-templates/${id}/analyze`, templateSchema ? { templateSchema } : {});
   return data;
 }
 
