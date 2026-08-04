@@ -50,6 +50,9 @@ export async function createItem(input: {
   description?: string;
   rarity?: ItemRarity;
   tags?: string[];
+  // KB provenance tag ("{gameId}:{entityName}") when this item is materialized
+  // from a knowledge-base entity. '' = not KB-linked.
+  kbRef?: string;
 }): Promise<IItem> {
   return ItemModel.create({
     ownerId: input.ownerId,
@@ -58,6 +61,7 @@ export async function createItem(input: {
     description: input.description ?? '',
     rarity: input.rarity ?? 'common',
     tags: input.tags ?? [],
+    kbRef: input.kbRef ?? '',
   });
 }
 

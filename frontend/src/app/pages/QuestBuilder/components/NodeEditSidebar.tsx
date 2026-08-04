@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull, Sparkles, Loader2, Send } from 'lucide-react';
+import { X, Pencil, GitCompare, Check, ArrowLeft, GripVertical, ChevronDown, ChevronUp, Users, Trophy, Skull, Sparkles, Loader2, Send, BookOpen } from 'lucide-react';
 import { Node, Edge } from '@xyflow/react';
 import { toast } from 'sonner';
 import { useVariantConfigs } from '../../../hooks/useVariantConfigs';
@@ -8,12 +8,26 @@ import { NodeVariant, QuestExportFields, QuestNodeData } from '../../../types/qu
 import { Reward } from '../../../api/projectSidebarApi';
 import { listCharacters, CharacterRecord } from '../../../api/characterApi';
 import { listItems } from '../../../api/itemApi';
-import { requestAiEdit } from '../../../api/questAiEditApi';
+import {
+  Grounding,
+  ProposedDesign,
+  materializeAiEditDesigns,
+  remapRefs,
+  requestAiEdit,
+} from '../../../api/questAiEditApi';
+import { GroundedBadge } from '../../../components/shared/GroundedBadge';
 import { CharacterPicker } from './CharacterPicker';
 import { TemplateFieldsEditor, getTemplateFieldSchema } from './TemplateFieldsEditor';
 
-type AiFieldKey = 'title' | 'body' | 'variant';
-const AI_FIELD_LABEL: Record<AiFieldKey, string> = { title: 'title', body: 'description', variant: 'node type' };
+type AiFieldKey = 'title' | 'body' | 'variant' | 'npcs' | 'monsters' | 'rewards';
+const AI_FIELD_LABEL: Record<AiFieldKey, string> = {
+  title: 'title',
+  body: 'description',
+  variant: 'node type',
+  npcs: 'NPCs',
+  monsters: 'monsters',
+  rewards: 'rewards',
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -228,11 +242,12 @@ function FieldDiffPanel({ label, oldVal, newVal, changed, variantOld, variantNew
 // IdListDiff — before/after chip display for id arrays
 // ---------------------------------------------------------------------------
 
-function IdListDiff({ label, oldIds, newIds, getName, changed }: {
+function IdListDiff({ label, oldIds, newIds, getName, getKbRef, changed }: {
   label: string;
   oldIds: string[];
   newIds: string[];
   getName: (id: string) => string;
+  getKbRef?: (id: string) => string | undefined;
   changed: boolean;
 }) {
   return (
@@ -253,8 +268,9 @@ function IdListDiff({ label, oldIds, newIds, getName, changed }: {
               {ids.length === 0
                 ? <span className="text-xs text-steel-500 italic">None</span>
                 : ids.map((id) => (
-                    <span key={id} className="text-xs bg-steel-800 text-steel-200 border border-steel-600 px-2 py-0.5 rounded-full">
+                    <span key={id} className="inline-flex items-center gap-1 text-xs bg-steel-800 text-steel-200 border border-steel-600 px-2 py-0.5 rounded-full">
                       {getName(id)}
+                      {getKbRef?.(id) && <GroundedBadge entityName={getKbRef(id)} compact />}
                     </span>
                   ))}
             </div>
@@ -262,6 +278,30 @@ function IdListDiff({ label, oldIds, newIds, getName, changed }: {
         ))}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Grounding note — says whether the author's world fed this suggestion. Without
+// it, "no game linked", "game not yours" and "nothing matched" are three
+// different problems that all look like the AI ignoring the knowledge base.
+// ---------------------------------------------------------------------------
+
+function GroundingNote({ grounding }: { grounding: Grounding }) {
+  const where = grounding.gameName ? `“${grounding.gameName}”` : 'your knowledge base';
+  const text = grounding.consulted
+    ? `Drew on ${where} — ${grounding.entityCount} reference${grounding.entityCount !== 1 ? 's' : ''}.`
+    : grounding.reason === 'not-owned'
+      ? 'That knowledge base isn’t available to you — written without it.'
+      : grounding.reason === 'no-matches'
+        ? `Nothing in ${where} matched — written without it.`
+        : 'No knowledge base linked — written without one.';
+
+  return (
+    <p className="flex items-center gap-1.5 text-steel-400 text-[11px]">
+      <BookOpen className={`w-3 h-3 shrink-0 ${grounding.consulted ? 'text-emerald-400' : 'text-steel-500'}`} />
+      {text}
+    </p>
   );
 }
 
@@ -404,6 +444,12 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
   const [aiLoading,     setAiLoading]     = useState(false);
   const [aiError,       setAiError]       = useState<string | null>(null);
   const [aiFields,      setAiFields]      = useState<AiFieldKey[]>([]);
+  // Designs the AI wants to reference that don't exist yet. They live as temp
+  // ids in the draft reference lists and only become documents on Apply, so
+  // abandoning the sidebar writes nothing.
+  const [pendingDesigns, setPendingDesigns] = useState<ProposedDesign[]>([]);
+  const [grounding,      setGrounding]      = useState<Grounding | null>(null);
+  const [applying,       setApplying]       = useState(false);
 
   const [characters,       setCharacters]       = useState<CharacterRecord[]>([]);
   const [rewards,          setRewards]          = useState<Reward[]>([]);
@@ -433,6 +479,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       setAiInstruction('');
       setAiError(null);
       setAiFields([]);
+      setPendingDesigns([]);
+      setGrounding(null);
     }
   }, [node]);
 
@@ -510,6 +558,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
 
   // Combat-like variants show monster picker; all others show NPC picker
   const isCombatVariant = getConfig(variant).iconKey === 'swords' || variant.toLowerCase().includes('combat');
+  const npcsChanged     = !arraysEqual([...npcIds].sort(),     [...(node?.npcIds ?? [])].sort());
+  const monstersChanged = !arraysEqual([...monsterIds].sort(), [...(node?.monsterIds ?? [])].sort());
 
   const hasChanges =
     node !== null && (
@@ -532,14 +582,16 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
     setAiError(null);
     setAiFields([]);
 
-    // Constrain the shared /ai-edit endpoint to a single-node rewrite.
-    const scoped =
-      `Focus ONLY on the quest node with id "${nodeId}" (currently titled "${node.title}"). ` +
-      `Return exactly one updateNode change for node id "${nodeId}" and do NOT add, delete, ` +
-      `connect or modify any other node. Instruction: ${userText}`;
-
     try {
-      const { changes } = await requestAiEdit(questlineId, { instruction: scoped, nodes, edges });
+      // focusNodeId scopes the edit server-side: the prompt then carries this
+      // node's neighbours in full plus a title-only outline of the rest.
+      const { changes, entities, grounding: groundingState } = await requestAiEdit(questlineId, {
+        instruction: userText,
+        nodes,
+        edges,
+        focusNodeId: nodeId,
+      });
+      setGrounding(groundingState ?? null);
       const change = changes.find((c) => c.type === 'updateNode' && c.nodeId === nodeId);
       if (!change || change.type !== 'updateNode') {
         toast('No changes suggested', { description: 'The AI had nothing to change for this step.' });
@@ -552,6 +604,22 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       if (change.after.variant && change.after.variant !== variant) {
         setVariant(change.after.variant as NodeVariant);
         touched.push('variant');
+      }
+
+      // Node references arrive as complete lists — `after` replaces what the
+      // node holds. Designs that don't exist yet stay as temp ids until Apply.
+      if (change.refs) {
+        const { npcIds: nextNpcs, monsterIds: nextMonsters, rewardIds: nextRewards } = change.refs.after;
+        if (!arraysEqual([...nextNpcs].sort(), [...npcIds].sort())) {
+          setNpcIds(nextNpcs); touched.push('npcs');
+        }
+        if (!arraysEqual([...nextMonsters].sort(), [...monsterIds].sort())) {
+          setMonsterIds(nextMonsters); touched.push('monsters');
+        }
+        if (!arraysEqual([...nextRewards].sort(), [...rewardIds].sort())) {
+          setRewardIds(nextRewards); touched.push('rewards');
+        }
+        setPendingDesigns(entities ?? []);
       }
 
       if (touched.length === 0) {
@@ -570,17 +638,54 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
     } finally {
       setAiLoading(false);
     }
-  }, [node, nodeId, aiLoading, questlineId, nodes, edges, title, body, variant]);
+  }, [node, nodeId, aiLoading, questlineId, nodes, edges, title, body, variant, npcIds, monsterIds, rewardIds]);
 
   const handleClose = () => { setPhase('edit'); onClose(); };
-  const handleApply = () => {
-    onApply({ title: title.trim(), body: body.trim(), variant, npcIds, monsterIds, rewardIds, exportFields, templateValues });
+
+  // Apply is the approval moment: any proposed design the draft still references
+  // becomes a real project design here, then its temp id is swapped for the real
+  // one. Closing without applying leaves nothing behind.
+  const handleApply = async () => {
+    if (applying) return;
+    let refs = { npcIds, monsterIds, rewardIds };
+    const needed = pendingDesigns.filter((d) =>
+      [...npcIds, ...monsterIds, ...rewardIds].includes(d.tempId),
+    );
+
+    if (needed.length > 0) {
+      setApplying(true);
+      try {
+        const { ids } = await materializeAiEditDesigns(questlineId, needed);
+        refs = remapRefs(refs, ids);
+      } catch {
+        toast('Couldn’t create the new designs', {
+          description: 'Nothing was changed — please try again.',
+        });
+        return;
+      } finally {
+        setApplying(false);
+      }
+    }
+
+    onApply({ title: title.trim(), body: body.trim(), variant, ...refs, exportFields, templateValues });
     setPhase('edit');
     onClose();
   };
 
-  const getCharName   = (id: string) => characters.find((c) => c._id === id)?.name  ?? id;
-  const getRewardName = (id: string) => rewards.find((r)    => r.id === id)?.title  ?? id;
+  // A temp id has no document yet, so fall back to the proposal's own name —
+  // an id must never reach the author as raw text.
+  const getCharName = (id: string) =>
+    characters.find((c) => c._id === id)?.name
+    ?? pendingDesigns.find((d) => d.tempId === id)?.name
+    ?? id;
+  const getRewardName = (id: string) =>
+    rewards.find((r) => r.id === id)?.title
+    ?? pendingDesigns.find((d) => d.tempId === id)?.name
+    ?? id;
+  const getKbRef = (id: string) =>
+    characters.find((c) => c._id === id)?.kbRef
+    || pendingDesigns.find((d) => d.tempId === id)?.kbRef
+    || undefined;
   const templateFieldSchema = getTemplateFieldSchema(template);
 
   return (
@@ -673,6 +778,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                       AI updated {aiFields.map((f) => AI_FIELD_LABEL[f]).join(', ')}. Tweak below if needed, then Review Changes.
                     </p>
                   )}
+                  {grounding && <GroundingNote grounding={grounding} />}
                 </div>
 
                 {/* Title */}
@@ -958,23 +1064,29 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                   getVariantColor={(key) => getConfig(key).iconColor}
                 />
 
-                {!isCombatVariant && (
+                {/* Both lists are always rendered when they changed, never gated
+                    on the variant: an edit that flips story→combat AND drops an
+                    NPC would otherwise hide the removal, and this diff is the
+                    only guard against a bad detach (docs/adr/0002). */}
+                {(!isCombatVariant || npcsChanged) && (
                   <IdListDiff
                     label="NPCs Involved"
                     oldIds={node.npcIds ?? []}
                     newIds={npcIds}
                     getName={getCharName}
-                    changed={!arraysEqual([...npcIds].sort(), [...(node.npcIds ?? [])].sort())}
+                    getKbRef={getKbRef}
+                    changed={npcsChanged}
                   />
                 )}
 
-                {isCombatVariant && (
+                {(isCombatVariant || monstersChanged) && (
                   <IdListDiff
                     label="Monsters to Defeat"
                     oldIds={node.monsterIds ?? []}
                     newIds={monsterIds}
                     getName={getCharName}
-                    changed={!arraysEqual([...monsterIds].sort(), [...(node.monsterIds ?? [])].sort())}
+                    getKbRef={getKbRef}
+                    changed={monstersChanged}
                   />
                 )}
 
@@ -983,6 +1095,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                   oldIds={node.rewardIds ?? []}
                   newIds={rewardIds}
                   getName={getRewardName}
+                  getKbRef={getKbRef}
                   changed={!arraysEqual([...rewardIds].sort(), [...(node.rewardIds ?? [])].sort())}
                 />
 
@@ -996,10 +1109,13 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                   </button>
                   <button
                     onClick={handleApply}
-                    className="flex-1 px-4 py-3 bg-volt hover:brightness-95 text-steel-950 font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                    disabled={applying}
+                    className="flex-1 px-4 py-3 bg-volt hover:brightness-95 text-steel-950 font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait"
                   >
-                    <Check className="w-4 h-4" />
-                    Apply Changes
+                    {applying
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Check className="w-4 h-4" />}
+                    {applying ? 'Creating designs…' : 'Apply Changes'}
                   </button>
                 </div>
               </div>
