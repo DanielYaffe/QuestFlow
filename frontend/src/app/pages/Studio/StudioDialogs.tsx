@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, Loader2, Sparkles, Upload } from 'lucide-react';
-import { getSprites, getStyles, SpriteRecord, SpriteStyle } from '../../api/spriteApi';
+import { BookOpen, Loader2, Palette, Sparkles, Upload } from 'lucide-react';
+import { getSprites, SpriteRecord, SpriteStyle } from '../../api/spriteApi';
 import { Game, listGames } from '../../api/gameApi';
 import { CHECKER_SM } from '../../utils/spriteStyles';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
@@ -26,7 +26,7 @@ export function SpritePickerDialog({ isOpen, onClose, onPick }: {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="bg-steel-850 border-steel-700 text-steel-100 max-w-2xl w-full">
+      <DialogContent className="bg-steel-850 border-steel-700 text-steel-100 max-w-3xl w-full">
         <DialogHeader>
           <DialogTitle className="text-steel-100 text-lg flex items-center gap-2">
             <Upload className="w-5 h-5 text-pulse" />
@@ -38,7 +38,10 @@ export function SpritePickerDialog({ isOpen, onClose, onPick }: {
         ) : sprites.length === 0 ? (
           <p className="text-steel-400 text-sm py-4">No sprites yet — generate one in the Sprite Generator first.</p>
         ) : (
-          <div className="grid grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1">
+          // auto-rows-min + items-start keep each cell sized by its own
+          // aspect-square wrapper instead of stretching to the row height,
+          // which is what squashed the thumbnails once the gallery grew.
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 auto-rows-min items-start gap-2 max-h-[60vh] overflow-y-auto pr-1">
             {sprites.map((sprite) => (
               <button
                 key={sprite._id}
@@ -47,11 +50,13 @@ export function SpritePickerDialog({ isOpen, onClose, onPick }: {
                   setPicking(sprite._id);
                   try { await onPick(sprite); onClose(); } finally { setPicking(null); }
                 }}
-                className="relative aspect-square rounded-md border border-steel-700 hover:border-volt overflow-hidden transition-colors cursor-pointer disabled:opacity-60"
+                className="relative block w-full rounded-md border border-steel-700 hover:border-volt overflow-hidden transition-colors cursor-pointer disabled:opacity-60"
                 style={CHECKER_SM}
                 title={sprite.userPrompt}
               >
-                <img src={sprite.imageUrl} alt={sprite.userPrompt} loading="lazy" className="w-full h-full object-contain p-1" />
+                <div className="w-full aspect-square">
+                  <img src={sprite.imageUrl} alt={sprite.userPrompt} loading="lazy" className="w-full h-full object-contain p-1" />
+                </div>
                 {picking === sprite._id && (
                   <span className="absolute inset-0 bg-steel-950/60 flex items-center justify-center">
                     <Loader2 className="w-4 h-4 text-pulse animate-spin" />
@@ -66,28 +71,85 @@ export function SpritePickerDialog({ isOpen, onClose, onPick }: {
   );
 }
 
+// --- Style picker (the design's art style, chosen outside the generate flow) ---
+
+export function StylePickerDialog({ isOpen, styles, selectedId, onClose, onSelect }: {
+  isOpen: boolean;
+  styles: SpriteStyle[];
+  selectedId: string;
+  onClose: () => void;
+  onSelect: (styleId: string) => void;
+}) {
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="bg-steel-850 border-steel-700 text-steel-100 max-w-2xl w-full">
+        <DialogHeader>
+          <DialogTitle className="text-steel-100 text-lg flex items-center gap-2">
+            <Palette className="w-5 h-5 text-pulse" />
+            Art style
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-steel-400 text-sm">
+          Every sprite generated for this design is rendered in the chosen style. Change it any
+          time — existing sprites are left alone.
+        </p>
+        {styles.length === 0 ? (
+          <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 text-pulse animate-spin" /></div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 auto-rows-min gap-3 max-h-[55vh] overflow-y-auto pr-1">
+            {styles.map((s) => {
+              const selected = s.id === selectedId;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => { onSelect(s.id); onClose(); }}
+                  className={`flex flex-col gap-2 p-2.5 rounded-md border text-left transition-colors cursor-pointer ${
+                    selected
+                      ? 'border-volt bg-steel-800'
+                      : 'border-steel-700 bg-steel-800/50 hover:border-steel-500 hover:bg-steel-800'
+                  }`}
+                >
+                  <div className="w-full aspect-square rounded overflow-hidden" style={CHECKER_SM}>
+                    <img
+                      src={s.previewImagePath}
+                      alt={s.name}
+                      className="w-full h-full object-contain"
+                      onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+                    />
+                  </div>
+                  <div>
+                    <p className={`text-xs font-semibold leading-tight ${selected ? 'text-volt' : 'text-steel-100'}`}>
+                      {s.name}
+                    </p>
+                    <p className="text-steel-400 text-[11px] mt-0.5 leading-snug line-clamp-2">{s.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // --- Generate sprite (ComfyUI pipeline, auto-attached on completion) -----------
 
-export function GenerateSpriteDialog({ isOpen, initialPrompt, onClose, onSubmit }: {
+export function GenerateSpriteDialog({ isOpen, initialPrompt, style, onClose, onChangeStyle, onSubmit }: {
   isOpen: boolean;
   initialPrompt: string;
+  // The design's style, picked on the sheet — shown here for confirmation only.
+  style: SpriteStyle | null;
   onClose: () => void;
-  onSubmit: (prompt: string, styleId: string) => Promise<void>;
+  onChangeStyle: () => void;
+  onSubmit: (prompt: string) => Promise<void>;
 }) {
-  const [styles, setStyles] = useState<SpriteStyle[]>([]);
-  const [styleId, setStyleId] = useState('');
   const [prompt, setPrompt] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setPrompt(initialPrompt);
-    getStyles()
-      .then((list) => {
-        setStyles(list);
-        setStyleId((current) => current || list[0]?.id || '');
-      })
-      .catch(() => setStyles([]));
   }, [isOpen, initialPrompt]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,7 +157,7 @@ export function GenerateSpriteDialog({ isOpen, initialPrompt, onClose, onSubmit 
     if (!prompt.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await onSubmit(prompt.trim(), styleId);
+      await onSubmit(prompt.trim());
       onClose();
     } finally {
       setSubmitting(false);
@@ -123,18 +185,27 @@ export function GenerateSpriteDialog({ isOpen, initialPrompt, onClose, onSubmit 
               className="w-full bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse text-sm resize-none"
             />
           </div>
-          {styles.length > 0 && (
-            <div>
-              <label className="block text-steel-400 text-sm mb-1">Style</label>
-              <select
-                value={styleId}
-                onChange={(e) => setStyleId(e.target.value)}
-                className="w-full bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-steel-100 focus:outline-none focus:border-pulse text-sm"
+          {style && (
+            <div className="flex items-center gap-2.5 bg-steel-800/60 border border-steel-700 rounded-md px-3 py-2">
+              <div className="w-8 h-8 shrink-0 rounded overflow-hidden" style={CHECKER_SM}>
+                <img
+                  src={style.previewImagePath}
+                  alt=""
+                  className="w-full h-full object-contain"
+                  onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-steel-500 text-[10px] uppercase tracking-wide">Style</p>
+                <p className="text-steel-100 text-xs truncate">{style.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={onChangeStyle}
+                className="ml-auto text-pulse text-xs font-medium hover:underline cursor-pointer"
               >
-                {styles.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+                Change
+              </button>
             </div>
           )}
           <div className="flex justify-end gap-2 pt-1">

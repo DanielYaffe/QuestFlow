@@ -3,8 +3,9 @@ import QuestlineModel from '../models/questlineModel';
 import GameModel from '../models/gameModel';
 import KbDocumentModel from '../models/kbDocumentModel';
 import { ingestDocument, editDocument } from './kbService';
-import { StudioError } from './characterStudioService';
+import { StudioError } from './studioError';
 import { applySpriteTool, SpriteTool } from './generation/spriteTools';
+import { pushVersion, resolveIndex, selectVersion } from './generation/spriteHistory';
 import { uploadBufferToS3, downloadBufferFromS3, deleteFileFromS3 } from '../utils/s3Helper';
 
 // ---------------------------------------------------------------------------
@@ -73,6 +74,7 @@ export async function updateItem(
     description?: string;
     rarity?: ItemRarity;
     tags?: string[];
+    spriteStyleId?: string;
     assets?: IItem['assets'];
   },
 ): Promise<IItem> {
@@ -81,6 +83,7 @@ export async function updateItem(
   if (patch.description !== undefined) item.description = patch.description;
   if (patch.rarity !== undefined) item.rarity = patch.rarity;
   if (patch.tags !== undefined) item.tags = patch.tags;
+  if (patch.spriteStyleId !== undefined) item.spriteStyleId = patch.spriteStyleId;
   if (patch.assets !== undefined) {
     item.assets = patch.assets;
     item.markModified('assets');
@@ -210,19 +213,50 @@ export async function migrateEmbeddedRewardsToItems(): Promise<void> {
 
 // --- Sprite: attach + tools -----------------------------------------------------
 
+/** Append a new sprite version at the history cursor and make it canonical. */
+function commitVersion(item: IItem, newKey: string): Promise<IItem> {
+  const candidates = item.assets.rawSpriteCandidates ?? [];
+  const index = resolveIndex(candidates, item.assets.snappedSpriteS3Key, item.assets.spriteHistoryIndex);
+  // Re-attaching what is already current (a duplicate job callback, or picking
+  // the same gallery sprite twice) must not add a second identical version.
+  const next = candidates[index] === newKey
+    ? { candidates, index }
+    : pushVersion(candidates, index, newKey, MAX_ITEM_SPRITE_CANDIDATES);
+
+  item.assets.rawSpriteCandidates = next.candidates;
+  item.assets.spriteHistoryIndex = next.index;
+  item.assets.snappedSpriteS3Key = newKey;
+  item.markModified('assets');
+  return item.save();
+}
+
 /** Make an existing sprite key the item's canonical sprite (appends to history). */
 export async function attachSpriteKey(
   ownerId: string,
   itemId: string,
   imageKey: string,
 ): Promise<IItem> {
+  if (!imageKey) throw new StudioError('imageKey is required', 400);
   const item = await findOwnedItem(ownerId, itemId);
-  const candidates = [...(item.assets.rawSpriteCandidates ?? []), imageKey];
-  item.assets.rawSpriteCandidates = candidates.slice(-MAX_ITEM_SPRITE_CANDIDATES);
-  item.assets.snappedSpriteS3Key = imageKey;
+  return commitVersion(item, imageKey);
+}
+
+/**
+ * Move the history cursor (undo / redo / history-strip click) — re-points at an
+ * existing version without appending, so the versions ahead stay redoable.
+ */
+export async function selectItemSpriteVersion(
+  ownerId: string,
+  itemId: string,
+  index: number,
+): Promise<IItem> {
+  const item = await findOwnedItem(ownerId, itemId);
+  const key = selectVersion(item.assets.rawSpriteCandidates ?? [], index);
+
+  item.assets.snappedSpriteS3Key = key;
+  item.assets.spriteHistoryIndex = index;
   item.markModified('assets');
-  await item.save();
-  return item;
+  return item.save();
 }
 
 export async function transformItemSprite(
@@ -238,7 +272,7 @@ export async function transformItemSprite(
   const source = await downloadBufferFromS3(sourceKey);
   const output = await applySpriteTool(source, tool, params);
   const newKey = await uploadBufferToS3(output, 'image/png', 'sprites');
-  return attachSpriteKey(ownerId, itemId, newKey);
+  return commitVersion(item, newKey);
 }
 
 // --- Publish to KB ----------------------------------------------------------------
