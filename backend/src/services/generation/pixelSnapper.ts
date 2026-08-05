@@ -47,9 +47,11 @@ export async function snapAndResize(
   // at ~targetSize × targetSize with the subject centred. Without this, the WASM
   // receives the full 1024px rmbg output with no downscale hint and returns the
   // same large image — the subsequent crop then shows only the top-left corner.
+  // Size off the LONG edge: off the short one, a non-square source comes back
+  // longer than the target on its long axis and gets cut off below.
   const { width: srcW, height: srcH } = await sharp(thresholded).metadata();
   if (!srcW || !srcH) throw new Error('Could not read input image dimensions');
-  const pixelSize = Math.max(1, Math.round(Math.min(srcW, srcH) / targetSize));
+  const pixelSize = Math.max(1, Math.round(Math.max(srcW, srcH) / targetSize));
 
   const input = new Uint8Array(thresholded);
   const snapped = wasm.process_image(input, kColors, pixelSize);
@@ -58,15 +60,44 @@ export async function snapAndResize(
   const { width, height } = await sharp(snappedBuf).metadata();
   if (!width || !height) throw new Error('Pixel snapper returned image with no dimensions');
 
-  // Trim the +1 walker-overshoot artifact, then scale up if still short
-  const cropSize = Math.min(width, height, targetSize);
-  const cropped = await sharp(snappedBuf)
-    .extract({ left: 0, top: 0, width: cropSize, height: cropSize })
-    .toBuffer();
+  // The walker can overshoot the grid by a pixel on each axis. Drop that partial
+  // block — but only ever that, never a slice of the sprite itself.
+  const trimW = Math.min(width, Math.max(1, Math.floor(srcW / pixelSize)));
+  const trimH = Math.min(height, Math.max(1, Math.floor(srcH / pixelSize)));
+  let fitted = trimW === width && trimH === height
+    ? snappedBuf
+    : await sharp(snappedBuf)
+      .extract({ left: 0, top: 0, width: trimW, height: trimH })
+      .png()
+      .toBuffer();
 
-  if (cropSize === targetSize) return cropped;
+  // Rounding pixelSize can still leave the snap a few pixels over target
+  // (1024 → 100 snaps to 102): scale the whole sprite down to fit, aspect
+  // intact, rather than cutting the overhang off.
+  if (trimW > targetSize || trimH > targetSize) {
+    fitted = await sharp(fitted)
+      .resize(targetSize, targetSize, { fit: 'inside', kernel: 'nearest' })
+      .png()
+      .toBuffer();
+  }
 
-  return sharp(cropped)
-    .resize(targetSize, targetSize, { kernel: 'nearest' })
+  // Letterbox onto the exact square canvas, so a portrait or landscape subject
+  // keeps its proportions and both of its ends.
+  const { width: fitW, height: fitH } = await sharp(fitted).metadata();
+  if (!fitW || !fitH) throw new Error('Pixel snapper returned image with no dimensions');
+  if (fitW === targetSize && fitH === targetSize) return fitted;
+
+  const padX = targetSize - fitW;
+  const padY = targetSize - fitH;
+  return sharp(fitted)
+    .ensureAlpha()
+    .extend({
+      top: Math.floor(padY / 2),
+      bottom: Math.ceil(padY / 2),
+      left: Math.floor(padX / 2),
+      right: Math.ceil(padX / 2),
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
     .toBuffer();
 }
