@@ -1,8 +1,9 @@
 import React from 'react';
-import { ChevronDown, ChevronRight, Maximize2, X } from 'lucide-react';
+import { ChevronRight, Maximize2, X } from 'lucide-react';
 import { TemplateFieldSummary, TemplateSchema } from '../../../api/exportTemplateApi';
 import { QuestExportFields } from '../../../types/quest';
 import { DialogFlowEditorDialog } from './DialogFlowEditorDialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../components/ui/dialog';
 
 type QuestDialogPage = {
   id: string;
@@ -238,13 +239,9 @@ export function TemplateFieldsEditor({
   };
   const fieldGroups = React.useMemo(() => groupTemplateFields(fields), [fields]);
   const templateSchema = getTemplateSchema(template);
-  const [expandedSections, setExpandedSections] = React.useState<Record<string, boolean>>({});
+  const [openGroupKey, setOpenGroupKey] = React.useState<string | null>(null);
   const [dialogField, setDialogField] = React.useState<TemplateFieldSummary | null>(null);
-
-  const isSectionExpanded = (key: string, index: number) => expandedSections[key] ?? index === 0;
-  const toggleSection = (key: string, index: number) => {
-    setExpandedSections((prev) => ({ ...prev, [key]: !(prev[key] ?? index === 0) }));
-  };
+  const activeGroup = fieldGroups.find((g) => g.key === openGroupKey) ?? null;
 
   const updateTemplateFieldValue = (field: TemplateFieldSummary, value: unknown) => {
     updateTemplateValue(field.path, value);
@@ -435,10 +432,10 @@ export function TemplateFieldsEditor({
       );
     }
     if (field.kind === 'number' || field.control === 'number') {
-      return <input type="number" value={typeof current === 'number' ? current : Number(current) || 0} onChange={(e) => updateTemplateFieldValue(field, Number(e.target.value) || 0)} className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />;
+      return <input type="number" value={typeof current === 'number' ? current : Number(current) || 0} onChange={(e) => updateTemplateFieldValue(field, Number(e.target.value) || 0)} className="w-full max-w-40 bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />;
     }
     if (field.control === 'date') {
-      return <input type="date" value={typeof current === 'string' ? current : ''} onChange={(e) => updateTemplateFieldValue(field, e.target.value)} className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />;
+      return <input type="date" value={typeof current === 'string' ? current : ''} onChange={(e) => updateTemplateFieldValue(field, e.target.value)} className="w-full max-w-40 bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse" />;
     }
     if (field.kind === 'array' && field.itemSchema?.length) {
       const rows = Array.isArray(current) ? current as Record<string, unknown>[] : [];
@@ -527,46 +524,59 @@ export function TemplateFieldsEditor({
         </p>
       </div>
 
-      <div className="space-y-3">
-        {fieldGroups.map((group, index) => {
-          const expanded = isSectionExpanded(group.key, index);
+      <div className="space-y-2">
+        {fieldGroups.map((group) => {
+          const setCount = group.fields.filter((field) => {
+            const current = isGraphQuestField(field)
+              ? getSchemaDefaultValue(field)
+              : templateValues[field.path] ?? getSchemaDefaultValue(field);
+            return JSON.stringify(current) !== JSON.stringify(getSchemaDefaultValue(field));
+          }).length;
           return (
-            <section key={group.key} className="rounded-lg border border-steel-700 bg-steel-950/40">
-              <button
-                type="button"
-                onClick={() => toggleSection(group.key, index)}
-                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-steel-800/60"
-              >
-                <span className="flex items-center gap-2 min-w-0">
-                  {expanded ? <ChevronDown className="w-4 h-4 text-steel-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-steel-400 shrink-0" />}
-                  <span className="text-steel-100 text-sm font-medium truncate">{group.label}</span>
-                </span>
-                <span className="text-[11px] text-steel-500 shrink-0">{group.fields.length} fields</span>
-              </button>
-
-              {expanded && (
-                <div className="border-t border-steel-700 px-3 py-3 space-y-3">
-                  {group.fields.map((field) => {
-                    const current = isGraphQuestField(field)
-                      ? getSchemaDefaultValue(field)
-                      : templateValues[field.path] ?? getSchemaDefaultValue(field);
-                    return (
-                      <div key={field.path}>
-                        <label className="text-steel-400 text-xs uppercase tracking-wide mb-1 block">
-                          {field.label}
-                          <span className="ml-2 normal-case text-steel-500">{field.templatePath ?? field.path}</span>
-                        </label>
-                        {field.description && <p className="text-steel-500 text-xs mb-2">{field.description}</p>}
-                        {renderTemplateFieldInput(field, current)}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+            <button
+              key={group.key}
+              type="button"
+              onClick={() => setOpenGroupKey(group.key)}
+              className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-steel-700 bg-steel-950/40 hover:bg-steel-800/60 text-left"
+            >
+              <span className="text-steel-100 text-sm font-medium truncate">{group.label}</span>
+              <span className="flex items-center gap-2 text-[11px] text-steel-500 shrink-0">
+                {setCount > 0 && <span className="text-pulse">{setCount} set</span>}
+                {group.fields.length} fields
+                <ChevronRight className="w-4 h-4 text-steel-400" />
+              </span>
+            </button>
           );
         })}
       </div>
+
+      <Dialog open={openGroupKey !== null} onOpenChange={(open) => { if (!open) setOpenGroupKey(null); }}>
+        <DialogContent className="bg-steel-850 border-steel-700 text-steel-100 !max-w-4xl w-full max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-steel-100 text-lg">{activeGroup?.label}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {activeGroup?.fields.map((field) => {
+              const current = isGraphQuestField(field)
+                ? getSchemaDefaultValue(field)
+                : templateValues[field.path] ?? getSchemaDefaultValue(field);
+              const isWide = field.kind === 'array' || field.kind === 'object' || field.control === 'json' || field.control === 'rows' || field.control === 'dialogFlow'
+                || field.shape === 'conditionGroup' || field.shape === 'conditionList' || field.shape === 'mixedList';
+              return (
+                <div key={field.path} className={isWide ? 'sm:col-span-2' : ''}>
+                  <label className="text-steel-400 text-xs uppercase tracking-wide mb-1 block">
+                    {field.label}
+                    <span className="ml-2 normal-case text-steel-500">{field.templatePath ?? field.path}</span>
+                  </label>
+                  {field.description && <p className="text-steel-500 text-xs mb-2">{field.description}</p>}
+                  {renderTemplateFieldInput(field, current)}
+                </div>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <DialogFlowEditorDialog
         isOpen={Boolean(dialogField)}
         field={dialogField}
