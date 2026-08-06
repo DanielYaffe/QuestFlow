@@ -166,6 +166,7 @@ export function QuestBuilder() {
   const [searchParams, setSearchParams] = useSearchParams();
   const attachHandledRef = useRef(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportNodeIds, setExportNodeIds] = useState<string[] | null>(null);
   const [isAiEditOpen, setIsAiEditOpen] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -336,6 +337,16 @@ export function QuestBuilder() {
     },
     [setNodes, nodes],
   );
+
+  // Right-click "Export Node": if the clicked node is part of the current
+  // multi-selection, export the whole selection; otherwise just that node.
+  const handleNodeContextExport = useCallback((nodeId: string) => {
+    const current = nodesRef.current;
+    const clicked = current.find((n) => n.id === nodeId);
+    const selectedIds = current.filter((n) => n.selected).map((n) => n.id);
+    setExportNodeIds(clicked?.selected && selectedIds.length > 1 ? selectedIds : [nodeId]);
+    setIsExportOpen(true);
+  }, []);
 
   // Keep the in-memory graph consistent when a character/reward is deleted from
   // the side panel (the backend strips the references; this mirrors it on-screen).
@@ -580,6 +591,7 @@ export function QuestBuilder() {
           onChangeVariant: (variant: NodeVariant) =>
             changeNodeVariant(node.id, variant),
           onEdit: () => openEditSidebar(node.id),
+          onExportNode: () => handleNodeContextExport(node.id),
         },
       })),
     );
@@ -588,6 +600,7 @@ export function QuestBuilder() {
     deleteNode,
     changeNodeVariant,
     openEditSidebar,
+    handleNodeContextExport,
     characterNames,
     rewardNames,
     pushHistory,
@@ -838,6 +851,7 @@ export function QuestBuilder() {
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
+          multiSelectionKeyCode={['Control', 'Meta']}
           fitView
           className="bg-steel-850"
           proOptions={{ hideAttribution: true }}
@@ -856,7 +870,7 @@ export function QuestBuilder() {
 
         <div className="absolute top-4 left-4 bg-steel-850/90 backdrop-blur-sm border border-steel-700 rounded-lg px-4 py-3 z-10">
           <p className="text-steel-400 text-sm">
-            Click a node to edit • Hover for + buttons • Drag to connect paths
+            Click a node to edit • Ctrl+click to multi-select • Right-click to export • Drag to connect paths
           </p>
         </div>
       </div>
@@ -908,8 +922,9 @@ export function QuestBuilder() {
 
       <ExportDialog
         isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
+        onClose={() => { setIsExportOpen(false); setExportNodeIds(null); }}
         questlineId={questlineId}
+        initialSelectedNodeIds={exportNodeIds ?? undefined}
       />
 
       <AIEditPanel

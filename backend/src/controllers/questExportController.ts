@@ -10,9 +10,6 @@ import { decrypt } from '../utils/encryption';
 const formatSchema = z.enum([
   'questflow-json',
   'questflow-yaml',
-  'unity-asset',
-  'unreal-datatable',
-  'godot-tres',
   'template-json',
   'template-yaml',
   'template-xml',
