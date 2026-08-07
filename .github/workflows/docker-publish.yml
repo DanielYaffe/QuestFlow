@@ -7,12 +7,12 @@ name: Build and push images
 # services. The RunPod ComfyUI images in runpod-build/ are not built here: they
 # pull multi-GB checkpoints from Civitai and would not fit a free runner's disk.
 
+# Only published images are built. A merged PR lands as a push to main, which
+# is the trigger below — open PRs build nothing.
 on:
   push:
     branches: [main]
     tags: ["v*"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -52,10 +52,7 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Login is skipped for pull requests: forks have no access to the secrets,
-      # and a PR should be verified without being able to publish anything.
       - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -68,7 +65,6 @@ jobs:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=long
@@ -78,9 +74,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
-          # PRs build to verify the Dockerfile still works, then throw the
-          # result away.
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # amd64 only. The backend image builds Rust to WASM, and doing that
