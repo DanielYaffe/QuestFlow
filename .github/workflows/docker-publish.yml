@@ -77,10 +77,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # amd64 only. The backend image builds Rust to WASM, and doing that
-          # under arm64 QEMU emulation takes the job from minutes to the better
-          # part of an hour. Add linux/arm64 here if you deploy to Graviton or
-          # Apple silicon, and expect the runtime cost.
           platforms: linux/amd64,linux/arm64
           # Without a cache every run recompiles the WASM crate and re-downloads
           # the 168 MB background-removal weights.
