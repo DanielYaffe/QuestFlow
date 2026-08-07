@@ -1,0 +1,6 @@
+# The Dockerfile copies build inputs path by path, so this only exists to keep
+# the uploaded context small — node_modules alone is a few hundred MB.
+node_modules
+dist
+guidelines
+ATTRIBUTIONS.md

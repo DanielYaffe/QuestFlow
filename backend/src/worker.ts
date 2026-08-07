@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { config } from './config/config';
+import { loadManifest } from './config/manifest';
 import './workers/spriteWorker';
 import './workers/kbWorker';
 import './workers/animationWorker';
@@ -12,6 +13,9 @@ const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
 
 mongoose.connect(config.DATABASE_URL).then(async () => {
   console.log('[Worker] MongoDB connected');
+  // This process is the one that actually submits jobs to RunPod, so it needs
+  // the manifest as much as the API does.
+  await loadManifest();
   await kbQueue.upsertJobScheduler(
     KB_RECONCILE_JOB,
     { every: RECONCILE_INTERVAL_MS },

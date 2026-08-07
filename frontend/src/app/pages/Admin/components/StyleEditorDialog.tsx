@@ -6,7 +6,8 @@ import {
   AdminSpriteStyle,
   AdminLora,
   AdminCheckpoint,
-  ComfyModels,
+  RunpodManifest,
+  LORA_ENDPOINT_KEY,
   WorkflowPresetInfo,
   CreateStylePayload,
   UpdateStylePayload,
@@ -30,7 +31,7 @@ interface StyleFormValues {
   previewImagePath: string;
   category: StyleCategory;
   presetId: string;
-  checkpointFilename: string;
+  endpointKey: string;
   promptPrefix: string;
   negativePrompt: string;
   width: number;
@@ -44,13 +45,14 @@ interface StyleFormValues {
   loras: LoraRow[];
 }
 
-// Shown when ComfyUI is offline and its live /object_info lists are unavailable
-const FALLBACK_SAMPLERS = [
+// The canonical lists. There is no /object_info to enumerate what a given
+// ComfyUI build supports any more, so these are curated rather than fetched.
+const SAMPLERS = [
   'euler', 'euler_ancestral', 'heun', 'dpm_2', 'dpm_2_ancestral', 'lms',
   'dpmpp_2s_ancestral', 'dpmpp_sde', 'dpmpp_2m', 'dpmpp_2m_sde', 'dpmpp_3m_sde',
   'ddpm', 'lcm', 'ddim', 'uni_pc', 'uni_pc_bh2',
 ];
-const FALLBACK_SCHEDULERS = [
+const SCHEDULERS = [
   'normal', 'karras', 'exponential', 'sgm_uniform', 'simple', 'ddim_uniform', 'beta',
 ];
 
@@ -62,10 +64,14 @@ interface StyleEditorDialogProps {
   presets: WorkflowPresetInfo[];
   registryLoras: AdminLora[];
   registryCheckpoints: AdminCheckpoint[];
-  comfy: ComfyModels | null;
+  manifest: RunpodManifest | null;
 }
 
-function defaultsFor(style: AdminSpriteStyle | null, presets: WorkflowPresetInfo[]): StyleFormValues {
+function defaultsFor(
+  style: AdminSpriteStyle | null,
+  presets: WorkflowPresetInfo[],
+  manifest: RunpodManifest | null,
+): StyleFormValues {
   if (style) {
     return {
       styleId: style.styleId,
@@ -74,7 +80,7 @@ function defaultsFor(style: AdminSpriteStyle | null, presets: WorkflowPresetInfo
       previewImagePath: style.previewImagePath,
       category: style.category,
       presetId: '', // '' = keep current workflow
-      checkpointFilename: style.checkpointFilename,
+      endpointKey: style.endpointKey,
       promptPrefix: style.promptPrefix,
       negativePrompt: style.negativePrompt,
       width: style.defaultDimensions.width,
@@ -96,7 +102,7 @@ function defaultsFor(style: AdminSpriteStyle | null, presets: WorkflowPresetInfo
     previewImagePath: '',
     category: 'pixel',
     presetId: preset?.presetId ?? '',
-    checkpointFilename: '',
+    endpointKey: Object.keys(manifest?.endpoints ?? {})[0] ?? '',
     promptPrefix: '',
     negativePrompt: 'blurry, low quality, text, watermark, signature, jpeg artifacts',
     width: 1024,
@@ -112,41 +118,57 @@ function defaultsFor(style: AdminSpriteStyle | null, presets: WorkflowPresetInfo
 }
 
 export function StyleEditorDialog({
-  isOpen, onClose, onSaved, style, presets, registryLoras, registryCheckpoints, comfy,
+  isOpen, onClose, onSaved, style, presets, registryLoras, registryCheckpoints, manifest,
 }: StyleEditorDialogProps) {
   const isEdit = style !== null;
 
   const { register, handleSubmit, reset, watch, setValue, control, formState: { isSubmitting, errors } } =
-    useForm<StyleFormValues>({ defaultValues: defaultsFor(style, presets) });
+    useForm<StyleFormValues>({ defaultValues: defaultsFor(style, presets, manifest) });
   const { fields, append, remove } = useFieldArray({ control, name: 'loras' });
 
   useEffect(() => {
-    if (isOpen) reset(defaultsFor(style, presets));
-  }, [isOpen, style, presets, reset]);
+    if (isOpen) reset(defaultsFor(style, presets, manifest));
+  }, [isOpen, style, presets, manifest, reset]);
 
   const presetId = watch('presetId');
   const selectedPreset = presets.find((p) => p.presetId === presetId);
-  // With "keep current workflow" selected, capability comes from the existing style
-  const supportsLoras = selectedPreset ? selectedPreset.supportsLoras : (style?.loras.length ?? 0) > 0 || Boolean(style?.presetId && presets.find((p) => p.presetId === style.presetId)?.supportsLoras);
   const samplerEditable = selectedPreset ? selectedPreset.samplerEditable : true;
 
-  // Only registered models are offered — the registries in the LoRAs /
-  // Checkpoints tabs are the curated catalog, not the raw ComfyUI folder
-  const checkpointOptions = useMemo(
-    () => registryCheckpoints.filter((c) => c.isActive).map((c) => c.filename).sort(),
-    [registryCheckpoints],
-  );
+  // The endpoint decides the model: its image has one checkpoint baked in, and
+  // only the sdxl-lora image contains LoRA files at all.
+  const endpointKey = watch('endpointKey');
+  const endpoint = manifest?.endpoints[endpointKey];
+  const checkpointFilename = endpoint?.checkpoint ?? style?.checkpointFilename ?? '';
+  const endpointHasLoras = endpointKey === LORA_ENDPOINT_KEY;
 
-  const loraOptions = useMemo(
-    () => registryLoras.filter((l) => l.isActive).map((l) => l.filename).sort(),
-    [registryLoras],
-  );
+  // Both must hold: the workflow needs a LoRA node, and the image needs the files
+  const presetSupportsLoras = selectedPreset
+    ? selectedPreset.supportsLoras
+    : (style?.loras.length ?? 0) > 0 || Boolean(style?.presetId && presets.find((p) => p.presetId === style.presetId)?.supportsLoras);
+  const supportsLoras = presetSupportsLoras && endpointHasLoras;
 
-  const samplerOptions = comfy?.reachable && comfy.samplers.length > 0 ? comfy.samplers : FALLBACK_SAMPLERS;
-  const schedulerOptions = comfy?.reachable && comfy.schedulers.length > 0 ? comfy.schedulers : FALLBACK_SCHEDULERS;
+  // Offered LoRAs must be both registered (for the metadata) and actually baked
+  // into the endpoint's image
+  const loraOptions = useMemo(() => {
+    const registered = new Set(registryLoras.filter((l) => l.isActive).map((l) => l.filename));
+    return (endpoint?.loras ?? []).filter((f) => registered.has(f)).sort();
+  }, [registryLoras, endpoint]);
 
-  const checkpointValue = watch('checkpointFilename');
-  const checkpointMissing = Boolean(comfy?.reachable && checkpointValue && !comfy.checkpoints.includes(checkpointValue));
+  // LoRAs in the image that nobody has registered yet — still usable, just
+  // without display name / trigger word / default strengths
+  const unregisteredLoras = useMemo(() => {
+    const registered = new Set(registryLoras.map((l) => l.filename));
+    return (endpoint?.loras ?? []).filter((f) => !registered.has(f)).sort();
+  }, [registryLoras, endpoint]);
+
+  const checkpointMeta = registryCheckpoints.find((c) => c.filename === checkpointFilename);
+
+  // Switching to an endpoint without LoRA files must not leave stale rows behind
+  useEffect(() => {
+    if (!endpointHasLoras && fields.length > 0) {
+      reset((current) => ({ ...current, loras: [] }));
+    }
+  }, [endpointHasLoras, fields.length, reset]);
 
   const applyPresetSampler = (id: string) => {
     const preset = presets.find((p) => p.presetId === id);
@@ -171,7 +193,9 @@ export function StyleEditorDialog({
       description: values.description,
       previewImagePath: values.previewImagePath,
       category: values.category,
-      checkpointFilename: values.checkpointFilename,
+      endpointKey: values.endpointKey,
+      // Not a free choice — it is whatever the endpoint's image has baked in
+      checkpointFilename,
       promptPrefix: values.promptPrefix,
       negativePrompt: values.negativePrompt,
       defaultDimensions: { width: Number(values.width), height: Number(values.height) },
@@ -268,30 +292,35 @@ export function StyleEditorDialog({
           <input {...register('description')} placeholder="Soft watercolor creature art" className={inputCls} />
         </div>
 
-        <div>
-          <label className={labelCls}>
-            Checkpoint
-            {checkpointMissing && (
-              <span className="ml-2 text-amber-400 text-xs inline-flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> not found on ComfyUI
-              </span>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Endpoint</label>
+            <select {...register('endpointKey', { required: true })} className={inputCls}>
+              {!manifest && <option value="">(manifest unavailable)</option>}
+              {Object.keys(manifest?.endpoints ?? {}).map((key) => (
+                <option key={key} value={key}>{key}</option>
+              ))}
+            </select>
+            <p className="text-steel-500 text-xs mt-1">
+              Each endpoint is a separate image with one checkpoint baked in.
+              {endpointHasLoras ? ' This is the only one that contains LoRA files.' : ' It contains no LoRA files.'}
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>
+              Checkpoint <span className="text-steel-500 text-xs">(from the image)</span>
+            </label>
+            <input
+              value={checkpointMeta?.displayName ?? checkpointFilename}
+              readOnly
+              className={`${inputCls} opacity-60 cursor-not-allowed`}
+            />
+            {checkpointFilename && (
+              <p className="text-steel-500 text-xs mt-1 truncate" title={checkpointFilename}>
+                {checkpointMeta ? checkpointFilename : 'No details saved — add them on the Endpoints tab.'}
+              </p>
             )}
-          </label>
-          <input
-            {...register('checkpointFilename', { required: true })}
-            list="admin-checkpoint-options"
-            placeholder="myCheckpoint.safetensors"
-            className={inputCls}
-          />
-          <datalist id="admin-checkpoint-options">
-            {checkpointOptions.map((c) => <option key={c} value={c} />)}
-          </datalist>
-          {errors.checkpointFilename && <p className="text-red-400 text-xs mt-1">Checkpoint is required</p>}
-          <p className="text-steel-500 text-xs mt-1">
-            {checkpointOptions.length > 0
-              ? 'Suggestions come from the Checkpoints registry tab.'
-              : 'No checkpoints registered yet — add them in the Checkpoints tab to get suggestions here.'}
-          </p>
+          </div>
         </div>
 
         {supportsLoras && (
@@ -310,7 +339,7 @@ export function StyleEditorDialog({
             <div className="space-y-2">
               {fields.map((field, i) => {
                 const filename = watch(`loras.${i}.loraFilename`);
-                const missing = Boolean(comfy?.reachable && filename && !comfy.loras.includes(filename));
+                const missing = Boolean(manifest && filename && !endpoint?.loras.includes(filename));
                 return (
                   <div key={field.id} className="grid grid-cols-[1fr_5rem_5rem_7rem_2rem] gap-2 items-center">
                     <div>
@@ -323,7 +352,7 @@ export function StyleEditorDialog({
                       />
                       {missing && (
                         <p className="text-amber-400 text-xs mt-0.5 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" /> not found on ComfyUI
+                          <AlertTriangle className="w-3 h-3" /> not baked into the {endpointKey} image
                         </p>
                       )}
                     </div>
@@ -339,13 +368,21 @@ export function StyleEditorDialog({
             </div>
             <datalist id="admin-lora-options">
               {loraOptions.map((l) => <option key={l} value={l} />)}
+              {unregisteredLoras.map((l) => <option key={l} value={l} />)}
             </datalist>
             <p className="text-steel-500 text-xs mt-1">
-              {loraOptions.length > 0
-                ? 'Suggestions come from the LoRAs registry tab — picking one prefills its default strengths and trigger word.'
-                : 'No LoRAs registered yet — add them in the LoRAs tab to get suggestions and strength prefills here.'}
+              Suggestions are the LoRAs baked into the {endpointKey} image.
+              {loraOptions.length > 0 && ' Registered ones prefill their default strengths and trigger word.'}
+              {unregisteredLoras.length > 0 && ` ${unregisteredLoras.length} deployed LoRA(s) are not in the registry yet.`}
             </p>
           </div>
+        )}
+
+        {presetSupportsLoras && !endpointHasLoras && (
+          <p className="text-steel-500 text-xs flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+            The {endpointKey} image contains no LoRA files — only <code className="text-steel-300">{LORA_ENDPOINT_KEY}</code> can use them.
+          </p>
         )}
 
         <div>
@@ -380,7 +417,7 @@ export function StyleEditorDialog({
             <span>
               <span className="text-steel-200 text-sm block">Remove background</span>
               <span className="text-steel-500 text-xs block mt-0.5">
-                Prompts for a flat background, then cuts it out with RMBG on ComfyUI (needs the ComfyUI-Easy-Use nodes, same as the CB style).
+                Prompts for a flat background, then cuts it out with RMBG on the backend's CPU after generation — no GPU time.
               </span>
             </span>
           </label>
@@ -406,7 +443,7 @@ export function StyleEditorDialog({
             <div>
               <label className={labelCls}>Sampler</label>
               <select {...register('sampler')} className={inputCls}>
-                {[...new Set([watch('sampler'), ...samplerOptions])].filter(Boolean).map((s) => (
+                {[...new Set([watch('sampler'), ...SAMPLERS])].filter(Boolean).map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
@@ -414,7 +451,7 @@ export function StyleEditorDialog({
             <div>
               <label className={labelCls}>Scheduler</label>
               <select {...register('scheduler')} className={inputCls}>
-                {[...new Set([watch('scheduler'), ...schedulerOptions])].filter(Boolean).map((s) => (
+                {[...new Set([watch('scheduler'), ...SCHEDULERS])].filter(Boolean).map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>

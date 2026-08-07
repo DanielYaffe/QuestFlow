@@ -10,7 +10,7 @@ adminRouter.use(requireAdmin);
  * @swagger
  * tags:
  *   name: Admin
- *   description: Admin-only management of sprite styles, checkpoints and LoRAs
+ *   description: Admin-only management of sprite styles, checkpoints, LoRAs and the RunPod manifest
  */
 
 // Workflow presets (read-only catalog used by the style editor)
@@ -40,7 +40,8 @@ adminRouter.delete('/loras/:filename', admin.deleteLora);
 adminRouter.get('/users', admin.getUsers);
 adminRouter.put('/users/:userId/role', admin.setUserRole);
 
-// Model files actually installed on the ComfyUI host
-adminRouter.get('/comfy/models', admin.getComfyModels);
+// Build-time model manifest — what is baked into the deployed RunPod images
+adminRouter.get('/manifest', admin.getManifest);
+adminRouter.post('/manifest/reload', admin.reloadModelManifest);
 
 export default adminRouter;

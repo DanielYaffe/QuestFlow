@@ -1,0 +1,95 @@
+name: Build and push images
+
+# Builds the two application images and pushes them to Docker Hub.
+#
+# The backend image also runs the worker — same image, different CMD (see the
+# worker service in docker-compose.yml) — so two builds cover all three app
+# services. The RunPod ComfyUI images in runpod-build/ are not built here: they
+# pull multi-GB checkpoints from Civitai and would not fit a free runner's disk.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # A newer push makes an in-flight build of the same ref pointless.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    strategy:
+      # One failing image should not cancel the other's build; both results are
+      # more useful than a race to the first error.
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            image: questflow-backend
+          - name: frontend
+            context: ./frontend
+            image: questflow-frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # backend/vendor/pixel-snapper is a submodule and stage 1 of the
+          # backend Dockerfile compiles it with wasm-pack. Without this the
+          # build fails on an empty directory.
+          submodules: recursive
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login is skipped for pull requests: forks have no access to the secrets,
+      # and a PR should be verified without being able to publish anything.
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          # PRs build to verify the Dockerfile still works, then throw the
+          # result away.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # amd64 only. The backend image builds Rust to WASM, and doing that
+          # under arm64 QEMU emulation takes the job from minutes to the better
+          # part of an hour. Add linux/arm64 here if you deploy to Graviton or
+          # Apple silicon, and expect the runtime cost.
+          platforms: linux/amd64,linux/arm64
+          # Without a cache every run recompiles the WASM crate and re-downloads
+          # the 168 MB background-removal weights.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          provenance: false

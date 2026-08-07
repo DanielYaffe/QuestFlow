@@ -3,6 +3,12 @@ import { z } from 'zod';
 
 dotenv.config();
 
+// z.default() only fires when a key is absent. A key that is present but blank
+// (a bare `FOO=` line) parses as '' and silently defeats the default, which for
+// a path or a URL fails much later and much more confusingly.
+const nonEmpty = (fallback: string) =>
+    z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().default(fallback));
+
 const envSchema = z.object({
     DATABASE_URL: z.string().min(1).default('mongodb://localhost:27017/matala1'),
     PORT: z.coerce.number().default(3000),
@@ -27,7 +33,16 @@ const envSchema = z.object({
     GOOGLE_CALLBACK_URL: z.string().default('http://localhost:3000/auth/google/callback'),
     FRONTEND_URL: z.string().default('http://localhost:5173'),
     REDIS_URL: z.string().default('redis://localhost:6379'),
-    COMFYUI_ENDPOINT: z.string().default('http://127.0.0.1:8188'),
+    // --- RunPod Serverless (image generation) ---
+    RUNPOD_API_KEY: z.string().default(''),
+    RUNPOD_API_BASE: nonEmpty('https://api.runpod.ai/v2'),
+    // Where the build-time manifest is hosted. Blank is meaningful here — it
+    // means "skip the URL and use the bundled file" (the local-shim setup).
+    RUNPOD_MANIFEST_URL: z.string().default(''),
+    RUNPOD_MANIFEST_FALLBACK_PATH: nonEmpty('config/manifest.json'),
+    RUNPOD_POLL_INTERVAL_MS: z.coerce.number().default(2_000),
+    // Must comfortably cover a cold start (tens of seconds) plus generation
+    RUNPOD_JOB_TIMEOUT_MS: z.coerce.number().default(300_000),
     // Comma-separated emails promoted to admin ONCE (bootstrap only) — after
     // that, roles are managed from the admin page (/admin/users)
     ADMIN_EMAILS: z

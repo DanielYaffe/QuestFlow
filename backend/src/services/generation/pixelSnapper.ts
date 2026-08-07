@@ -1,5 +1,6 @@
 import path from 'path';
 import sharp from 'sharp';
+import { thresholdAlpha } from './alphaUtils';
 
 type PixelSnapperWasm = {
   process_image: (bytes: Uint8Array, kColors?: number, pixelSizeOverride?: number) => Uint8Array;
@@ -14,24 +15,6 @@ async function getWasm(): Promise<PixelSnapperWasm> {
   const mod = require(pkgPath) as PixelSnapperWasm;
   _wasm = mod;
   return mod;
-}
-
-// Hard-threshold alpha: pixels with alpha < 128 → fully transparent (0),
-// alpha ≥ 128 → fully opaque (255). Eliminates the RMBG-1.4 semi-transparent
-// halo that wastes k-means centroid slots and causes fringe in snapped output.
-async function thresholdAlpha(png: Buffer): Promise<Buffer> {
-  const { data, info } = await sharp(png)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  for (let i = 3; i < data.length; i += 4) {
-    data[i] = data[i] < 128 ? 0 : 255;
-  }
-
-  return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
-    .png()
-    .toBuffer();
 }
 
 export async function snapAndResize(
