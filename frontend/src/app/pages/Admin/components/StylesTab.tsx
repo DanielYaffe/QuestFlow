@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, Star, ArrowUp, ArrowDown, AlertTriangle, Layers } from 'lucide-react';
+import { Plus, Pencil, Trash2, Star, ArrowUp, ArrowDown, AlertTriangle, Layers, PowerOff } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AdminSpriteStyle,
   AdminLora,
   AdminCheckpoint,
-  ComfyModels,
+  RunpodManifest,
   WorkflowPresetInfo,
   updateAdminStyle,
   setDefaultAdminStyle,
@@ -21,7 +21,7 @@ interface StylesTabProps {
   presets: WorkflowPresetInfo[];
   registryLoras: AdminLora[];
   registryCheckpoints: AdminCheckpoint[];
-  comfy: ComfyModels | null;
+  manifest: RunpodManifest | null;
   onChanged: () => void;
 }
 
@@ -33,20 +33,14 @@ function apiError(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export function StylesTab({ styles, presets, registryLoras, registryCheckpoints, comfy, onChanged }: StylesTabProps) {
+export function StylesTab({ styles, presets, registryLoras, registryCheckpoints, manifest, onChanged }: StylesTabProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<AdminSpriteStyle | null>(null);
   const [deleting, setDeleting] = useState<AdminSpriteStyle | null>(null);
 
-  const missingFiles = (style: AdminSpriteStyle): string[] => {
-    if (!comfy?.reachable) return [];
-    const missing: string[] = [];
-    if (!comfy.checkpoints.includes(style.checkpointFilename)) missing.push(style.checkpointFilename);
-    for (const lora of style.loras) {
-      if (!comfy.loras.includes(lora.loraFilename)) missing.push(lora.loraFilename);
-    }
-    return missing;
-  };
+  // `unavailable` comes from the server, which derives it from the same
+  // validation the API enforces — so this cannot drift from what a save or a
+  // generate request will actually accept.
 
   const toggleActive = async (style: AdminSpriteStyle) => {
     try {
@@ -102,11 +96,13 @@ export function StylesTab({ styles, presets, registryLoras, registryCheckpoints,
 
       <div className="space-y-2">
         {styles.map((style, i) => {
-          const missing = missingFiles(style);
+          const problems = style.unavailable;
           return (
             <div
               key={style.styleId}
-              className={`bg-steel-850 border border-steel-700 rounded-md px-4 py-3 flex items-center gap-4 ${style.isActive ? '' : 'opacity-60'}`}
+              className={`bg-steel-850 border rounded-md px-4 py-3 flex items-center gap-4 ${
+                style.isActive ? '' : 'opacity-60'
+              } ${problems.length > 0 ? 'border-amber-500/40' : 'border-steel-700'}`}
             >
               <div className="flex flex-col gap-0.5">
                 <button onClick={() => move(i, -1)} disabled={i === 0} className="text-steel-500 hover:text-steel-200 disabled:opacity-30 cursor-pointer" title="Move up">
@@ -130,13 +126,29 @@ export function StylesTab({ styles, presets, registryLoras, registryCheckpoints,
                   <span className="text-steel-100 text-sm font-medium truncate">{style.name}</span>
                   <code className="text-steel-500 text-xs">{style.styleId}</code>
                   <CategoryChip category={style.category} />
-                  {missing.length > 0 && (
-                    <span className="text-amber-400 text-xs flex items-center gap-1" title={`Missing on ComfyUI: ${missing.join(', ')}`}>
-                      <AlertTriangle className="w-3.5 h-3.5" /> missing files
+                  {/* Two independent states. A style can be both, and the
+                      fixes are different: one is a toggle, the other is a
+                      rebuild or an endpoint change. */}
+                  {problems.length > 0 && (
+                    <span
+                      className="text-amber-400 text-xs flex items-center gap-1"
+                      title={`Not runnable on the current manifest: ${problems.join('; ')}`}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5" /> unavailable
+                    </span>
+                  )}
+                  {!style.isActive && (
+                    <span className="text-steel-400 text-xs flex items-center gap-1" title="Switched off by an admin">
+                      <PowerOff className="w-3.5 h-3.5" /> disabled
                     </span>
                   )}
                 </div>
+                {problems.length > 0 && (
+                  <div className="text-amber-400/80 text-xs mt-1">{problems.join(' · ')}</div>
+                )}
                 <div className="text-steel-400 text-xs truncate mt-0.5">
+                  <span className="text-steel-300">{style.endpointKey}</span>
+                  <span className="text-steel-500"> · </span>
                   {style.checkpointFilename}
                   {style.loras.length > 0 && <span className="text-steel-500"> · {style.loras.length} LoRA{style.loras.length > 1 ? 's' : ''}</span>}
                   {style.removeBackground && <span className="text-steel-500"> · rembg</span>}
@@ -182,7 +194,7 @@ export function StylesTab({ styles, presets, registryLoras, registryCheckpoints,
         presets={presets}
         registryLoras={registryLoras}
         registryCheckpoints={registryCheckpoints}
-        comfy={comfy}
+        manifest={manifest}
       />
 
       <ConfirmModal

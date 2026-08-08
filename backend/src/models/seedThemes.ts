@@ -8,6 +8,13 @@ import {
   WORKFLOW_ANIME_HIRES,
   WORKFLOW_SDXL_STANDARD,
 } from '../config/workflowPresets';
+import { getManifest, LORA_ENDPOINT_KEY } from '../config/manifest';
+import { isStyleRunnable, logStyleAvailability } from '../services/generation/styleAvailability';
+
+// Styles whose endpoint could not be determined. Deliberately not a real key:
+// validateStyleAgainstManifest rejects it, so such a style cannot be made
+// active again until an admin picks a real endpoint.
+const UNASSIGNED_ENDPOINT = 'unassigned';
 
 const GAME_THEMES = [
   {
@@ -145,6 +152,10 @@ const WORKFLOW_SIMPLE_SDXL = WORKFLOW_SDXL_STANDARD;
 // Styles
 // ---------------------------------------------------------------------------
 
+// checkpointFilename is deliberately absent: it is not a free choice any more.
+// Each endpoint's Docker image has exactly one checkpoint baked in, so the seed
+// reads it from the manifest — which also keeps these styles correct against a
+// local ComfyUI, where the filenames differ from production.
 const SPRITE_STYLES = [
   {
     styleId: 'cb_pixel',
@@ -153,7 +164,8 @@ const SPRITE_STYLES = [
     previewImagePath: '/assets/style-previews/cb_pixel.png',
     category: 'pixel' as const,
     baseModel: 'SDXL' as const,
-    checkpointFilename: 'pixelArtDiffusionXL_spriteShaper.safetensors',
+    // The cb LoRA is the whole style, and LoRAs exist only in the sdxl-lora image
+    endpointKey: LORA_ENDPOINT_KEY,
     loras: [
       { loraFilename: 'cb-000006.safetensors', strength: 0.85, strengthClip: 0.8, triggerWord: 'cbstyle' },
     ],
@@ -184,7 +196,7 @@ const SPRITE_STYLES = [
     previewImagePath: '/assets/style-previews/anime_mon.png',
     category: 'illustrated' as const,
     baseModel: 'SDXL' as const,
-    checkpointFilename: 'animagineXL_v3.safetensors',
+    endpointKey: 'illustrious',
     loras: [],
     // Animagine works best with Danbooru-style quality tags; subject is appended after
     promptPrefix: 'creature, monster, full body, white background, masterpiece, best quality, very aesthetic, absurdres,',
@@ -213,13 +225,17 @@ const SPRITE_STYLES = [
     previewImagePath: '/assets/style-previews/dark_fantasy.png',
     category: 'realistic' as const,
     baseModel: 'SDXL' as const,
-    checkpointFilename: 'juggernautXL_v9.safetensors',
+    // No realistic checkpoint among the three endpoints — illustrious is the
+    // closest general-purpose one; the prompt prefix carries the look.
+    endpointKey: 'illustrious',
     loras: [],
     promptPrefix: 'fantasy creature, detailed, dramatic lighting, dark atmosphere, cinematic, highly detailed, 8k uhd,',
     negativePrompt: 'cartoon, anime, pixel art, nsfw, blurry, low quality, text, watermark, signature, jpeg artifacts',
     defaultDimensions: { width: 1024, height: 1024 },
     sampler: { steps: 20, cfg: 7, sampler: 'dpmpp_2m' as const, scheduler: 'karras' as const },
-    workflowTemplate: { ...WORKFLOW_SIMPLE_SDXL, '1': { inputs: { ckpt_name: 'juggernautXL_v9.safetensors' }, class_type: 'CheckpointLoaderSimple', _meta: { title: 'Load Checkpoint' } } },
+    // No checkpoint override: patchWorkflow sets ckpt_name from the style, which
+    // the manifest pins to whatever is baked into the endpoint's image.
+    workflowTemplate: WORKFLOW_SIMPLE_SDXL,
     workflowPatchMap: {
       checkpointNode: '1',
       positivePromptNode: '2',
@@ -239,7 +255,8 @@ const SPRITE_STYLES = [
     previewImagePath: '/assets/style-previews/none.png',
     category: 'raw' as const,
     baseModel: 'SDXL' as const,
-    checkpointFilename: 'sd_xl_base_1.0.safetensors',
+    // Vanilla SDXL — the sdxl-lora image's baked checkpoint, used with no LoRAs
+    endpointKey: LORA_ENDPOINT_KEY,
     loras: [],
     promptPrefix: '',
     negativePrompt: 'blurry, low quality, text, watermark, signature, jpeg artifacts',
@@ -295,21 +312,97 @@ export async function seedThemes(): Promise<void> {
 
   // $setOnInsert only: styles are admin-managed after first boot — re-seeding
   // with $set would clobber edits made through the admin styles page
+  const manifest = getManifest();
   for (const style of SPRITE_STYLES) {
+    const endpoint = manifest.endpoints[style.endpointKey];
+    if (!endpoint) {
+      console.warn(
+        `[seed] skipping style "${style.styleId}" — manifest ${manifest.version} has no "${style.endpointKey}" endpoint`,
+      );
+      continue;
+    }
     await SpriteStyleModel.updateOne(
       { styleId: style.styleId },
-      { $setOnInsert: style },
+      { $setOnInsert: { ...style, checkpointFilename: endpoint.checkpoint } },
       { upsert: true },
     );
   }
 
   // One-off migration: pre-existing cb_pixel docs have rembg baked into their
   // workflow template — mark them removeBackground so the composer keeps
-  // appending the flat-background phrase that gives RMBG a clean cut
+  // appending the flat-background phrase that gives the matte a clean cut
   await SpriteStyleModel.updateOne(
     { styleId: 'cb_pixel', removeBackground: { $exists: false } },
     { $set: { removeBackground: true } },
   );
 
+  await migrateStylesToEndpoints();
+  await logStyleAvailability();
+
   console.log('[seed] themes, checkpoints, loras, and styles seeded');
+}
+
+/**
+ * Assigns an endpoint to styles created before generation moved to RunPod.
+ *
+ * A style's checkpoint is now fixed by whichever image its endpoint runs, so the
+ * only safe mapping is an exact checkpoint match. Anything that does not match
+ * is parked on a sentinel endpoint rather than silently re-pointed at a
+ * different model — that would change what the style produces without anyone
+ * noticing.
+ *
+ * Note this does not touch isActive. Unavailability is derived from the
+ * manifest (see services/generation/styleAvailability.ts), so a parked style is
+ * already hidden from users and flagged in the admin UI; writing isActive here
+ * would destroy the admin's own on/off choice and make the two indistinguishable.
+ */
+async function migrateStylesToEndpoints(): Promise<void> {
+  const manifest = getManifest();
+  const endpointForCheckpoint = new Map(
+    Object.entries(manifest.endpoints).map(([key, endpoint]) => [endpoint.checkpoint, key]),
+  );
+
+  const unassigned = await SpriteStyleModel.find({
+    $or: [{ endpointKey: { $exists: false } }, { endpointKey: '' }],
+  });
+  if (unassigned.length === 0) return;
+
+  const parked: string[] = [];
+
+  for (const style of unassigned) {
+    const matched = endpointForCheckpoint.get(style.checkpointFilename);
+
+    if (matched) {
+      style.endpointKey = matched;
+      await style.save();
+      console.log(`[migrate] style "${style.styleId}" → endpoint "${matched}"`);
+      continue;
+    }
+
+    style.endpointKey = UNASSIGNED_ENDPOINT;
+    await style.save();
+    parked.push(style.styleId);
+    console.warn(
+      `[migrate] style "${style.styleId}" has no endpoint — checkpoint "${style.checkpointFilename}" is not baked into any image in manifest ${manifest.version}. Pick an endpoint for it on /admin/styles.`,
+    );
+  }
+
+  if (parked.length > 0) {
+    console.warn(`[migrate] ${parked.length} style(s) need an endpoint: ${parked.join(', ')}`);
+  }
+
+  // A default nobody can run leaves prompts with no styleId dead in the water
+  const currentDefault = await SpriteStyleModel.findOne({ isDefault: true, isActive: true }).lean();
+  if (!currentDefault || !isStyleRunnable(currentDefault)) {
+    const candidates = await SpriteStyleModel.find({ isActive: true }).sort({ sortOrder: 1 });
+    const replacement = candidates.find(isStyleRunnable);
+    if (replacement && replacement.styleId !== currentDefault?.styleId) {
+      await SpriteStyleModel.updateMany({ isDefault: true }, { $set: { isDefault: false } });
+      replacement.isDefault = true;
+      await replacement.save();
+      console.warn(`[migrate] default style cannot run — promoted "${replacement.styleId}"`);
+    } else if (!replacement) {
+      console.error('[migrate] no runnable style is enabled — generation will fail until one is configured');
+    }
+  }
 }

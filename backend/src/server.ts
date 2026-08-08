@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import bodyParser from "body-parser";
 import { config } from "./config/config";
+import { loadManifest } from "./config/manifest";
 import authRouter from "./routes/authRoute";
 import projectRouter from "./routes/projectRoute";
 import characterRouter from "./routes/characterRoute";
@@ -76,7 +77,7 @@ const initApp = () => {
         } else {
             mongoose
                 .connect(config.DATABASE_URL)
-                .then(() => {
+                .then(async () => {
                     if (process.env.NODE_ENV === 'test' && !mongoose.connection.name.toLowerCase().includes('test')) {
                         const dbName = mongoose.connection.name;
                         return mongoose.connection.close().then(() => {
@@ -84,6 +85,10 @@ const initApp = () => {
                         });
                     }
                     if (process.env.NODE_ENV !== 'test') {
+                        // Awaited, and allowed to reject: without a manifest every
+                        // generation request would go out unvalidated, and the
+                        // endpoint migration in seedThemes needs it loaded.
+                        await loadManifest();
                         seedQuestStyles().catch((err) => console.error('[seed] questStyles failed:', err));
                         seedBaseVariants().catch((err) => console.error('[seed] baseVariants failed:', err));
                         seedThemes().catch((err) => console.error('[seed] themes failed:', err));

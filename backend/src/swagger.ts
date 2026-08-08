@@ -1,3 +1,4 @@
+import path from 'path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { config } from './config/config';
@@ -135,7 +136,11 @@ const options: swaggerJsdoc.Options = {
             },
         },
     },
-    apis: ['./src/routes/*.ts'],
+    // Resolved from this file rather than the working directory, and matching
+    // both extensions: under tsx these are .ts in src/, in a built image they
+    // are .js in dist/. A CWD-relative './src/routes/*.ts' silently produces an
+    // empty spec once the app runs from dist.
+    apis: [path.join(__dirname, 'routes/*.ts'), path.join(__dirname, 'routes/*.js')],
 };
 
 const swaggerSpec = swaggerJsdoc(options);

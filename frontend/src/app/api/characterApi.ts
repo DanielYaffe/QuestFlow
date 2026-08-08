@@ -15,6 +15,8 @@ export interface CharacterAssets {
   spritesheetJsonS3Key: string;
   rotations?: Partial<Record<RotationDirection, string>>;
   targetSizeOverride?: number;
+  // Undo/redo cursor into rawSpriteCandidates.
+  spriteHistoryIndex?: number;
 }
 
 export interface CharacterSpeciesData {
@@ -43,10 +45,14 @@ export interface CharacterRecord {
   portraitUrl: string;
   dialogueTraits: string[];
   speciesData: CharacterSpeciesData;
+  // SpriteStyle.id this design generates in; '' until the user picks one.
+  spriteStyleId?: string;
   assets: CharacterAssets;
   previewUrl?: string;
   // Presigned 8-direction sprites (get-by-id and sprite-transform responses).
   rotationUrls?: Partial<Record<RotationDirection, string>>;
+  // Presigned sprite version history (detail responses only) — powers undo.
+  candidateUrls?: string[];
   isOrphan?: boolean;
   // Questlines referencing this character (list endpoint only).
   usedIn?: { questlineId: string; title: string }[];
@@ -67,6 +73,7 @@ export interface CreateCharacterInput {
   tags?: string[];
   portraitUrl?: string;
   dialogueTraits?: string[];
+  spriteStyleId?: string;
   assets?: Partial<CharacterAssets>;
 }
 
@@ -113,22 +120,29 @@ export async function getCharacterUsage(id: string): Promise<CharacterUsage> {
 
 // --- Design studio ----------------------------------------------------------
 
-const MAX_SPRITE_CANDIDATES = 20;
-
 /**
  * Make a freshly generated sprite the character's canonical sprite (appends to
- * the candidate history). Used by the sprite-job pipeline when a generation
+ * the version history). Used by the sprite-job pipeline when a generation
  * started from the design studio completes — also on reconnect after reload.
  */
 export async function attachSpriteToCharacter(
   characterId: string,
   imageKey: string,
 ): Promise<CharacterRecord> {
-  const current = await getCharacter(characterId);
-  const candidates = [...current.assets.rawSpriteCandidates, imageKey].slice(-MAX_SPRITE_CANDIDATES);
-  return updateCharacter(characterId, {
-    assets: { ...current.assets, snappedSpriteS3Key: imageKey, rawSpriteCandidates: candidates },
-  });
+  const { data } = await api.post<CharacterRecord>(`/characters/${characterId}/sprite/attach`, { imageKey });
+  return data;
+}
+
+/**
+ * Move the sprite history cursor to `index` — undo, redo and history-strip
+ * clicks all go through here. Nothing is appended, so redo stays available.
+ */
+export async function selectCharacterSpriteVersion(
+  id: string,
+  index: number,
+): Promise<CharacterRecord> {
+  const { data } = await api.post<CharacterRecord>(`/characters/${id}/sprite/version`, { index });
+  return data;
 }
 
 // Enqueue PixelLab 8-direction rotation generation from the current sprite.

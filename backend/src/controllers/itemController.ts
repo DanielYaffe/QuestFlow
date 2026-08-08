@@ -13,6 +13,7 @@ import {
   listItems,
   publishItemToKb,
   resolveItemSpriteKey,
+  selectItemSpriteVersion,
   transformItemSprite,
   updateItem,
 } from '../services/itemService';
@@ -28,6 +29,18 @@ async function shape(item: IItem): Promise<Record<string, unknown>> {
   return {
     ...item.toObject(),
     previewUrl: key ? await getPresignedUrl(key) : '',
+  };
+}
+
+/**
+ * Design-sheet shape — adds the presigned sprite version history for the undo
+ * strip. Kept off the list response, which would presign 20 keys per item.
+ */
+async function shapeStudio(item: IItem): Promise<Record<string, unknown>> {
+  const keys = item.assets.rawSpriteCandidates ?? [];
+  return {
+    ...(await shape(item)),
+    candidateUrls: await Promise.all(keys.map((key) => getPresignedUrl(key))),
   };
 }
 
@@ -80,7 +93,7 @@ class ItemController {
     const userId = req.user?._id?.toString();
     if (!userId) return unauthorized(res);
     try {
-      res.json(await shape(await getItem(userId, String(req.params.id))));
+      res.json(await shapeStudio(await getItem(userId, String(req.params.id))));
     } catch (error) {
       serverError(res, error);
     }
@@ -117,7 +130,7 @@ class ItemController {
     }
   }
 
-  // PUT /items/:id — { name?, description?, rarity?, tags?, assets? }
+  // PUT /items/:id — { name?, description?, rarity?, tags?, spriteStyleId?, assets? }
   async update(req: AuthRequest, res: Response) {
     const userId = req.user?._id?.toString();
     if (!userId) return unauthorized(res);
@@ -126,6 +139,7 @@ class ItemController {
       description?: string;
       rarity?: unknown;
       tags?: string[];
+      spriteStyleId?: string;
       assets?: IItem['assets'];
     };
     try {
@@ -134,9 +148,10 @@ class ItemController {
         description: body.description,
         rarity: isItemRarity(body.rarity) ? body.rarity : undefined,
         tags: body.tags,
+        spriteStyleId: body.spriteStyleId,
         assets: body.assets,
       });
-      res.json(await shape(item));
+      res.json(await shapeStudio(item));
     } catch (error) {
       serverError(res, error);
     }
@@ -165,7 +180,24 @@ class ItemController {
       return;
     }
     try {
-      res.json(await shape(await attachSpriteKey(userId, String(req.params.id), imageKey)));
+      res.json(await shapeStudio(await attachSpriteKey(userId, String(req.params.id), imageKey)));
+    } catch (error) {
+      serverError(res, error);
+    }
+  }
+
+  // POST /items/:id/sprite/version — { index }. Moves the sprite history cursor:
+  // undo, redo and history-strip clicks all land here.
+  async spriteVersion(req: AuthRequest, res: Response) {
+    const userId = req.user?._id?.toString();
+    if (!userId) return unauthorized(res);
+    const { index } = req.body as { index?: unknown };
+    if (typeof index !== 'number' || !Number.isInteger(index)) {
+      res.status(400).json({ error: 'index must be an integer' });
+      return;
+    }
+    try {
+      res.json(await shapeStudio(await selectItemSpriteVersion(userId, String(req.params.id), index)));
     } catch (error) {
       serverError(res, error);
     }
@@ -181,7 +213,7 @@ class ItemController {
       return;
     }
     try {
-      res.json(await shape(await transformItemSprite(userId, String(req.params.id), tool, { targetSize })));
+      res.json(await shapeStudio(await transformItemSprite(userId, String(req.params.id), tool, { targetSize })));
     } catch (error) {
       serverError(res, error);
     }

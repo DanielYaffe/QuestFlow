@@ -10,6 +10,8 @@ export type ItemRarity = 'common' | 'rare' | 'epic';
 export interface ItemAssets {
   rawSpriteCandidates: string[];
   snappedSpriteS3Key: string;
+  // Undo/redo cursor into rawSpriteCandidates.
+  spriteHistoryIndex?: number;
 }
 
 export interface ItemRecord {
@@ -22,8 +24,12 @@ export interface ItemRecord {
   // "{gameId}:{entityName}" when published to a knowledge base; '' otherwise.
   kbRef: string;
   kbDocId: string;
+  // SpriteStyle.id this design generates in; '' until the user picks one.
+  spriteStyleId?: string;
   assets: ItemAssets;
   previewUrl?: string;
+  // Presigned sprite version history (detail responses only) — powers undo.
+  candidateUrls?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -62,7 +68,7 @@ export async function createItem(input: {
 
 export async function updateItem(
   id: string,
-  patch: Partial<Pick<ItemRecord, 'name' | 'description' | 'rarity' | 'tags' | 'assets'>>,
+  patch: Partial<Pick<ItemRecord, 'name' | 'description' | 'rarity' | 'tags' | 'spriteStyleId' | 'assets'>>,
 ): Promise<ItemRecord> {
   const { data } = await api.put<ItemRecord>(`/items/${id}`, patch);
   return data;
@@ -84,6 +90,15 @@ export async function transformItemSprite(
   targetSize?: number,
 ): Promise<ItemRecord> {
   const { data } = await api.post<ItemRecord>(`/items/${id}/sprite/transform`, { tool, targetSize });
+  return data;
+}
+
+/**
+ * Move the sprite history cursor to `index` — undo, redo and history-strip
+ * clicks all go through here. Nothing is appended, so redo stays available.
+ */
+export async function selectItemSpriteVersion(id: string, index: number): Promise<ItemRecord> {
+  const { data } = await api.post<ItemRecord>(`/items/${id}/sprite/version`, { index });
   return data;
 }
 

@@ -62,6 +62,9 @@ interface BuilderDockProps {
   onQuestClick: (nodeId: string) => void;
   onCharacterDeleted?: (id: string) => void;
   onRewardDeleted?: (id: string) => void;
+  // A design joined the roster — the canvas keeps its own id→name lookup for
+  // node chips and has to re-read it, or those chips render raw ids.
+  onRosterChanged?: () => void;
 }
 
 // Persistent grid cell that jumps to the Studio to design a new asset. Lives in
@@ -249,7 +252,7 @@ function CharacterLinkDialog({ isOpen, kind, excludeIds, onClose, onPick }: {
 
 // --- Main dock ------------------------------------------------------------------
 
-export function BuilderDock({ questlineId, isOpen, refreshSignal, onQuestClick, onCharacterDeleted, onRewardDeleted }: BuilderDockProps) {
+export function BuilderDock({ questlineId, isOpen, refreshSignal, onQuestClick, onCharacterDeleted, onRewardDeleted, onRosterChanged }: BuilderDockProps) {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<DockTab>('quests');
@@ -403,6 +406,7 @@ export function BuilderDock({ questlineId, isOpen, refreshSignal, onQuestClick, 
     try {
       await createReward(questlineId, { title: item.name, itemId: item._id });
       refreshRewards();
+      onRosterChanged?.();
       toast.success(`${item.name} added to this questline`);
     } catch {
       toast.error('Failed to add item');
@@ -414,6 +418,7 @@ export function BuilderDock({ questlineId, isOpen, refreshSignal, onQuestClick, 
     try {
       await attachCharacter(questlineId, character._id);
       refreshCharacters();
+      onRosterChanged?.();
       toast.success(`${character.name} added to this questline`);
     } catch {
       toast.error('Failed to add character');

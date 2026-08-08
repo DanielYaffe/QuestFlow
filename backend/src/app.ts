@@ -1,4 +1,7 @@
-import { config } from "config/config";
+// Relative, not a baseUrl import: tsc does not rewrite non-relative specifiers,
+// so "config/config" survives into dist and Node then looks for it in
+// node_modules. This is the entrypoint, so it fails before anything else runs.
+import { config } from "./config/config";
 import initApp from "./server";
 
 initApp().then((app) => {

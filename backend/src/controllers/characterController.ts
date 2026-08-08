@@ -1,6 +1,11 @@
 import { Response } from 'express';
 import BaseController from './baseController';
-import CharacterModel, { CharacterKind, ICharacterRotations, ROTATION_DIRECTIONS } from '../models/characterModel';
+import CharacterModel, {
+  CharacterKind,
+  ICharacter,
+  ICharacterRotations,
+  ROTATION_DIRECTIONS,
+} from '../models/characterModel';
 import QuestlineModel from '../models/questlineModel';
 import { resolveProjectId } from '../models/projectModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
@@ -10,6 +15,8 @@ import {
   buildRotationSheet,
   publishToKb,
   transformSprite,
+  attachSpriteKey,
+  selectSpriteVersion,
   SpriteTool,
   StudioError,
 } from '../services/characterStudioService';
@@ -37,6 +44,14 @@ async function signPreview(c: PreviewSource): Promise<string> {
     '';
   if (!candidate) return '';
   return isS3Key(candidate) ? getPresignedUrl(candidate) : candidate;
+}
+
+// Presign the sprite version history so the design sheet can render the undo
+// strip. Detail responses only — never the list, which would presign 20 keys
+// per character.
+async function signCandidates(keys: string[] | undefined): Promise<string[]> {
+  if (!keys?.length) return [];
+  return Promise.all(keys.map((key) => (isS3Key(key) ? getPresignedUrl(key) : key)));
 }
 
 // Presign the 8-direction rotation sprites (design sheet). Empty when none exist.
@@ -134,6 +149,7 @@ class CharacterController extends BaseController {
         ...character,
         previewUrl: await signPreview(character),
         rotationUrls: await signRotations(character.assets?.rotations),
+        candidateUrls: await signCandidates(character.assets?.rawSpriteCandidates),
       });
     } catch (error) {
       this.handleError(res, error);
@@ -157,6 +173,7 @@ class CharacterController extends BaseController {
         tags?: string[];
         portraitUrl?: string;
         dialogueTraits?: string[];
+        spriteStyleId?: string;
         speciesData?: unknown;
         assets?: unknown;
       };
@@ -182,6 +199,7 @@ class CharacterController extends BaseController {
         tags: body.tags ?? [],
         portraitUrl: body.portraitUrl ?? '',
         dialogueTraits: body.dialogueTraits ?? [],
+        spriteStyleId: body.spriteStyleId ?? '',
         ...(body.speciesData ? { speciesData: body.speciesData } : {}),
         ...(body.assets ? { assets: body.assets } : {}),
       });
@@ -214,6 +232,7 @@ class CharacterController extends BaseController {
         tags?: string[];
         portraitUrl?: string;
         dialogueTraits?: string[];
+        spriteStyleId?: string;
         speciesData?: typeof character.speciesData;
         assets?: typeof character.assets;
       };
@@ -224,6 +243,7 @@ class CharacterController extends BaseController {
       if (body.tags !== undefined) character.tags = body.tags;
       if (body.portraitUrl !== undefined) character.portraitUrl = body.portraitUrl;
       if (body.dialogueTraits !== undefined) character.dialogueTraits = body.dialogueTraits;
+      if (body.spriteStyleId !== undefined) character.spriteStyleId = body.spriteStyleId;
       if (body.speciesData !== undefined) character.speciesData = body.speciesData;
       if (body.assets !== undefined) character.assets = body.assets;
       if (body.projectId !== undefined) {
@@ -339,14 +359,62 @@ class CharacterController extends BaseController {
     }
     try {
       const character = await transformSprite(userId, String(req.params.id), tool as SpriteTool, { targetSize });
-      res.json({
-        ...character.toObject(),
-        previewUrl: await signPreview(character),
-        rotationUrls: await signRotations(character.assets?.rotations),
-      });
+      res.json(await this.shapeStudio(character));
     } catch (error) {
       if (!handleStudioError(res, error)) this.handleError(res, error);
     }
+  }
+
+  // POST /characters/:id/sprite/attach — { imageKey }. Promotes an existing
+  // sprite (fresh generation or gallery pick) to canonical, appending a version.
+  async spriteAttach(req: AuthRequest, res: Response) {
+    const userId = req.user?._id?.toString();
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const { imageKey } = req.body as { imageKey?: string };
+    if (!imageKey) {
+      res.status(400).json({ error: 'imageKey is required' });
+      return;
+    }
+    try {
+      const character = await attachSpriteKey(userId, String(req.params.id), imageKey);
+      res.json(await this.shapeStudio(character));
+    } catch (error) {
+      if (!handleStudioError(res, error)) this.handleError(res, error);
+    }
+  }
+
+  // POST /characters/:id/sprite/version — { index }. Moves the sprite history
+  // cursor: undo, redo and history-strip clicks all land here.
+  async spriteVersion(req: AuthRequest, res: Response) {
+    const userId = req.user?._id?.toString();
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const { index } = req.body as { index?: unknown };
+    if (typeof index !== 'number' || !Number.isInteger(index)) {
+      res.status(400).json({ error: 'index must be an integer' });
+      return;
+    }
+    try {
+      const character = await selectSpriteVersion(userId, String(req.params.id), index);
+      res.json(await this.shapeStudio(character));
+    } catch (error) {
+      if (!handleStudioError(res, error)) this.handleError(res, error);
+    }
+  }
+
+  // Design-sheet response shape: presigned preview, rotations and version history.
+  private async shapeStudio(character: ICharacter): Promise<Record<string, unknown>> {
+    return {
+      ...character.toObject(),
+      previewUrl: await signPreview(character),
+      rotationUrls: await signRotations(character.assets?.rotations),
+      candidateUrls: await signCandidates(character.assets?.rawSpriteCandidates),
+    };
   }
 
   // DELETE /characters/:id — owner only. Also strips the character's id from every

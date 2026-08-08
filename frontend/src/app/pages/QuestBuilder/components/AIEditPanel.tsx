@@ -1,13 +1,20 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   X, Wand2, Loader2, Check, Pencil, Plus, Trash2, GitBranch,
-  Send, CheckCheck, XCircle, RotateCcw, ChevronDown, ChevronUp,
+  Send, CheckCheck, XCircle, RotateCcw, ChevronDown, ChevronUp, BookOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Node, Edge } from '@xyflow/react';
 import { toast } from 'sonner';
 import { QuestNodeData } from '../../../types/quest';
-import { AIChange, requestAiEdit } from '../../../api/questAiEditApi';
+import {
+  AIChange,
+  Grounding,
+  ProposedDesign,
+  RefLists,
+  requestAiEdit,
+} from '../../../api/questAiEditApi';
+import { GroundedBadge } from '../../../components/shared/GroundedBadge';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,9 +31,15 @@ interface Exchange {
   id: string;
   instruction: string;
   items: ExchangeItem[];
+  /** Designs these changes would create — resolved only on approval. */
+  entities: ProposedDesign[];
+  grounding: Grounding | null;
   loading: boolean;
   error: string | null;
 }
+
+/** Resolves a reference id to a display name and its KB provenance, if any. */
+type DesignLookup = (id: string) => { name: string; kbRef?: string };
 
 interface AIEditPanelProps {
   isOpen: boolean;
@@ -34,7 +47,9 @@ interface AIEditPanelProps {
   questlineId: string;
   nodes: Node<QuestNodeData>[];
   edges: Edge[];
-  onApplyChanges: (changes: AIChange[]) => void;
+  characterNames: Record<string, string>;
+  rewardNames: Record<string, string>;
+  onApplyChanges: (changes: AIChange[], entities: ProposedDesign[]) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +78,77 @@ function pendingItems(ex: Exchange): ExchangeItem[] {
 
 function getNodeTitle(nodes: Node<QuestNodeData>[], id: string): string {
   return nodes.find((n) => n.id === id)?.data?.title ?? id;
+}
+
+// ---------------------------------------------------------------------------
+// Node reference diff
+//
+// refs carries complete before/after lists, so an id present in `before` and
+// missing from `after` is a detach. Per ADR-0002 this diff is the only guard
+// against the AI removing something it shouldn't — so removals are always shown,
+// never collapsed away.
+// ---------------------------------------------------------------------------
+
+const REF_SLOTS: { key: keyof RefLists; label: string }[] = [
+  { key: 'npcIds', label: 'NPCs' },
+  { key: 'monsterIds', label: 'Monsters' },
+  { key: 'rewardIds', label: 'Rewards' },
+];
+
+function RefChip({
+  id,
+  lookup,
+  removed,
+}: {
+  id: string;
+  lookup: DesignLookup;
+  removed?: boolean;
+}) {
+  const { name, kbRef } = lookup(id);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[11px] ${
+        removed
+          ? 'border-red-800/50 bg-red-950/30 text-red-300 line-through'
+          : 'border-emerald-800/50 bg-emerald-950/30 text-emerald-300'
+      }`}
+    >
+      {name}
+      {kbRef && !removed && <GroundedBadge entityName={kbRef} compact />}
+    </span>
+  );
+}
+
+function RefsDiff({ refs, lookup }: { refs: { before: RefLists; after: RefLists }; lookup: DesignLookup }) {
+  const slots = REF_SLOTS.map(({ key, label }) => {
+    const before = refs.before[key] ?? [];
+    const after = refs.after[key] ?? [];
+    return {
+      label,
+      added: after.filter((id) => !before.includes(id)),
+      removed: before.filter((id) => !after.includes(id)),
+    };
+  }).filter((s) => s.added.length > 0 || s.removed.length > 0);
+
+  if (slots.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5 pt-1">
+      {slots.map(({ label, added, removed }) => (
+        <div key={label} className="space-y-1">
+          <p className="text-steel-400">{label}</p>
+          <div className="flex flex-wrap gap-1">
+            {removed.map((id) => (
+              <RefChip key={`-${id}`} id={id} lookup={lookup} removed />
+            ))}
+            {added.map((id) => (
+              <RefChip key={`+${id}`} id={id} lookup={lookup} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +182,15 @@ function SkeletonCard() {
 // Change card detail
 // ---------------------------------------------------------------------------
 
-function ChangeDetail({ change, nodes }: { change: AIChange; nodes: Node<QuestNodeData>[] }) {
+function ChangeDetail({
+  change,
+  nodes,
+  lookup,
+}: {
+  change: AIChange;
+  nodes: Node<QuestNodeData>[];
+  lookup: DesignLookup;
+}) {
   if (change.type === 'updateNode') {
     const titleChanged   = change.before.title   !== change.after.title;
     const bodyChanged    = change.before.body    !== change.after.body;
@@ -132,6 +226,7 @@ function ChangeDetail({ change, nodes }: { change: AIChange; nodes: Node<QuestNo
             <VariantBadge variant={change.after.variant} />
           </div>
         )}
+        {change.refs && <RefsDiff refs={change.refs} lookup={lookup} />}
       </div>
     );
   }
@@ -149,6 +244,7 @@ function ChangeDetail({ change, nodes }: { change: AIChange; nodes: Node<QuestNo
             </span>
           )}
         </div>
+        {change.refs && <RefsDiff refs={change.refs} lookup={lookup} />}
       </div>
     );
   }
@@ -174,17 +270,48 @@ function ChangeDetail({ change, nodes }: { change: AIChange; nodes: Node<QuestNo
 }
 
 // ---------------------------------------------------------------------------
+// Grounding status — an edit that ignored the author's world looks identical to
+// one that had no world to draw on, so say which happened.
+// ---------------------------------------------------------------------------
+
+function GroundingLine({ grounding }: { grounding: Grounding }) {
+  const text = (() => {
+    if (grounding.consulted) {
+      const where = grounding.gameName ? `“${grounding.gameName}”` : 'your knowledge base';
+      return `Drew on ${where} — ${grounding.entityCount} reference${grounding.entityCount !== 1 ? 's' : ''}.`;
+    }
+    switch (grounding.reason) {
+      case 'not-owned':
+        return 'This questline’s knowledge base isn’t available to you — edited without it.';
+      case 'no-matches':
+        return `Nothing in ${grounding.gameName ? `“${grounding.gameName}”` : 'your knowledge base'} matched — edited without it.`;
+      default:
+        return 'No knowledge base linked — edited without one.';
+    }
+  })();
+
+  return (
+    <p className="flex items-center gap-1.5 text-steel-400 text-[11px] px-1 pt-0.5">
+      <BookOpen className={`w-3 h-3 shrink-0 ${grounding.consulted ? 'text-emerald-400' : 'text-steel-500'}`} />
+      {text}
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Single change card (pending state)
 // ---------------------------------------------------------------------------
 
 function ChangeCard({
   item,
   nodes,
+  lookup,
   onApprove,
   onReject,
 }: {
   item: ExchangeItem;
   nodes: Node<QuestNodeData>[];
+  lookup: DesignLookup;
   onApprove: () => void;
   onReject: () => void;
 }) {
@@ -217,7 +344,7 @@ function ChangeCard({
         </div>
       </div>
 
-      <ChangeDetail change={change} nodes={nodes} />
+      <ChangeDetail change={change} nodes={nodes} lookup={lookup} />
 
       <div className="flex gap-2 pt-1">
         <button
@@ -314,6 +441,7 @@ function PastExchange({ exchange }: { exchange: Exchange }) {
 function ActiveExchange({
   exchange,
   nodes,
+  lookup,
   onApprove,
   onReject,
   onApproveAll,
@@ -322,6 +450,7 @@ function ActiveExchange({
 }: {
   exchange: Exchange;
   nodes: Node<QuestNodeData>[];
+  lookup: DesignLookup;
   onApprove: (index: number) => void;
   onReject: (index: number) => void;
   onApproveAll: () => void;
@@ -406,11 +535,17 @@ function ActiveExchange({
                   key={i}
                   item={item}
                   nodes={nodes}
+                  lookup={lookup}
                   onApprove={() => onApprove(i)}
                   onReject={() => onReject(i)}
                 />
               ) : null,
             )}
+
+          {/* Where the AI's world knowledge came from — or why it had none */}
+          {!exchange.loading && !exchange.error && exchange.grounding && (
+            <GroundingLine grounding={exchange.grounding} />
+          )}
 
           {/* No changes proposed */}
           {!exchange.loading && !exchange.error && exchange.items.length === 0 && (
@@ -434,6 +569,8 @@ export function AIEditPanel({
   questlineId,
   nodes,
   edges,
+  characterNames,
+  rewardNames,
   onApplyChanges,
 }: AIEditPanelProps) {
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
@@ -456,6 +593,17 @@ export function AIEditPanel({
     ? exchanges.slice(0, -1)
     : exchanges;
 
+  // Reference ids resolve against the project's designs; anything still a temp
+  // id belongs to a proposed design that has not been created yet, so it falls
+  // back to the descriptor. Either way an id is never shown raw.
+  const lookup = useCallback<DesignLookup>((id) => {
+    const existing = characterNames[id] ?? rewardNames[id];
+    if (existing) return { name: existing };
+    const proposed = activeExchange?.entities.find((e) => e.tempId === id);
+    if (proposed) return { name: proposed.name, kbRef: proposed.kbRef };
+    return { name: id };
+  }, [characterNames, rewardNames, activeExchange]);
+
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => textareaRef.current?.focus(), 150);
@@ -477,6 +625,8 @@ export function AIEditPanel({
       id,
       instruction: text.trim(),
       items: [],
+      entities: [],
+      grounding: null,
       loading: true,
       error: null,
     };
@@ -489,6 +639,8 @@ export function AIEditPanel({
         ...ex,
         loading: false,
         items: result.changes.map((change) => ({ change, status: 'pending' })),
+        entities: result.entities ?? [],
+        grounding: result.grounding ?? null,
       }));
     } catch (err: unknown) {
       const msg =
@@ -505,7 +657,8 @@ export function AIEditPanel({
   const handleSubmit = () => submitInstruction(instruction);
 
   const handleApprove = useCallback((exchangeId: string, itemIndex: number) => {
-    const approvedChange = exchanges.find((ex) => ex.id === exchangeId)?.items[itemIndex]?.change;
+    const exchange = exchanges.find((ex) => ex.id === exchangeId);
+    const approvedChange = exchange?.items[itemIndex]?.change;
     updateExchange(exchangeId, (ex) => ({
       ...ex,
       items: ex.items.map((item, i) =>
@@ -513,7 +666,7 @@ export function AIEditPanel({
       ),
     }));
     if (approvedChange) {
-      onApplyChanges([approvedChange]);
+      onApplyChanges([approvedChange], exchange?.entities ?? []);
       toast.success(approvedChange.summary, { duration: 3000 });
     }
   }, [exchanges, updateExchange, onApplyChanges]);
@@ -537,7 +690,7 @@ export function AIEditPanel({
       ),
     }));
     if (pendingChanges.length > 0) {
-      onApplyChanges(pendingChanges.map((item) => item.change));
+      onApplyChanges(pendingChanges.map((item) => item.change), exchange?.entities ?? []);
       toast.success(`${pendingChanges.length} change${pendingChanges.length !== 1 ? 's' : ''} applied`);
     }
   }, [exchanges, updateExchange, onApplyChanges]);
@@ -640,6 +793,7 @@ export function AIEditPanel({
               <ActiveExchange
                 exchange={activeExchange}
                 nodes={nodes}
+                lookup={lookup}
                 onApprove={(i) => handleApprove(activeExchange.id, i)}
                 onReject={(i) => handleReject(activeExchange.id, i)}
                 onApproveAll={() => handleApproveAll(activeExchange.id)}
