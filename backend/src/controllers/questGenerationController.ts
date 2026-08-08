@@ -14,6 +14,17 @@ import { resolveProjectId } from '../models/projectModel';
 import { complete } from '../services/ai';
 import { hasGenApiKey } from '../config/ai';
 import { buildReferenceContext, ReferenceEntity } from '../services/generationContext';
+import {
+  loadProjectCharacters,
+  loadProjectRewardTitles,
+  buildProjectCharactersBlock,
+  buildProjectRewardsBlock,
+} from '../services/projectRosterContext';
+import {
+  materializeDesigns,
+  normalizeCharacterKind,
+  ProposedDesign,
+} from '../services/designMaterialization';
 import { ownsGame } from '../services/gameService';
 import { DifficultyBucket } from '../services/structuredParse';
 
@@ -104,72 +115,6 @@ Theme context:
 // Optional soft progression hint from the client ('' / unknown → none).
 function parseProgression(v: unknown): DifficultyBucket | undefined {
   return v === 'early' || v === 'mid' || v === 'late' ? v : undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Project roster context — what the project already has, offered to generation
-// so it reuses existing characters/rewards instead of minting near-duplicates
-// on every run.
-// ---------------------------------------------------------------------------
-
-const ROSTER_LIMIT = 30;
-
-async function loadProjectRewardTitles(userId: string | undefined, projectIdHint: string): Promise<string[]> {
-  if (!userId) return [];
-  try {
-    const projectId = await resolveProjectId(userId, projectIdHint);
-    const items = await ItemModel.find({ projectId })
-      .select('name')
-      .sort({ updatedAt: -1 })
-      .limit(ROSTER_LIMIT)
-      .lean();
-    const titles = items.map((i) => i.name.trim()).filter(Boolean);
-    return [...new Set(titles)];
-  } catch {
-    return [];
-  }
-}
-
-interface ProjectCharacterRef {
-  id: string;
-  name: string;
-  kind: string;
-  lore: string;
-}
-
-async function loadProjectCharacters(userId: string | undefined, projectIdHint: string): Promise<ProjectCharacterRef[]> {
-  if (!userId) return [];
-  try {
-    const projectId = await resolveProjectId(userId, projectIdHint);
-    const docs = await CharacterModel.find({ projectId })
-      .select('name kind lore')
-      .sort({ updatedAt: -1 })
-      .limit(ROSTER_LIMIT)
-      .lean();
-    return docs.map((d) => ({
-      id: d._id.toString(),
-      name: d.name,
-      kind: d.kind,
-      lore: (d.lore ?? '').slice(0, 120),
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function buildProjectRewardsBlock(titles: string[]): string {
-  if (titles.length === 0) return '';
-  return `
-REWARDS THAT ALREADY EXIST IN THIS PROJECT:
-${titles.map((t) => `  - ${t}`).join('\n')}
-Avoid inventing near-duplicates of these. If the story genuinely calls for one of them again, reuse its exact title; otherwise create rewards clearly distinct from this list.`;
-}
-
-function buildProjectCharactersBlock(chars: ProjectCharacterRef[]): string {
-  if (chars.length === 0) return '';
-  return `
-CHARACTERS THAT ALREADY EXIST IN THIS PROJECT (reusable — linking avoids duplicates):
-${chars.map((c) => `  - existingId="${c.id}" name="${c.name}" role="${c.kind}"${c.lore ? ` — ${c.lore}` : ''}`).join('\n')}`;
 }
 
 function isQuotaError(error: unknown): boolean {
@@ -486,17 +431,9 @@ interface GeneratedCharacter {
   existingId?: string;
 }
 
-// Coerce any AI-emitted role to the CharacterModel enum ('npc' | 'monster').
-// Any hostile descriptor maps to 'monster'; everything else defaults to 'npc'.
-function normalizeCharacterRole(role: unknown): GeneratedCharacter['role'] {
-  if (typeof role === 'string') {
-    const normalized = role.toLowerCase().trim();
-    if (normalized === 'monster') return 'monster';
-    if (normalized === 'npc') return 'npc';
-    if (/enemy|boss|antagonist|evil|foe|villain|creature|beast|mob|hostile/.test(normalized)) return 'monster';
-  }
-  return 'npc';
-}
+// Coercion to the CharacterModel enum lives with materialization, so the wizard
+// and the quest editor agree on what counts as hostile.
+const normalizeCharacterRole = normalizeCharacterKind;
 
 function buildCharactersPrompt(story: string, genre: string, themeContext: string, referenceBlock: string, projectBlock: string): string {
   return `You are a professional narrative designer for ${genre} games.
@@ -792,108 +729,60 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     const variantKeys = [...new Set(generated.nodes.map((n) => n.variant ?? 'story'))];
     await ensureVariantConfigsExist(variantKeys);
 
-    // 4. Create standalone Character documents so they appear in the project roster,
-    //    then build temp-id → CharacterModel._id map for node remapping.
-    //    KB-referenced characters (kbRef) link the already-materialized doc when
-    //    one exists in this project instead of creating a duplicate.
-    const charIdMap  = new Map<string, string>(); // "char-1" → mongo _id
-    const rewardIdMap = new Map<string, string>(); // "rew-1"  → mongo _id
-
-    const questlineCharacterIds: string[] = [];
-    const toInsert: { c: GeneratedCharacter; kbRefTag: string }[] = [];
-    for (const c of characters ?? []) {
-      // Explicit reuse of a project character — link it, never duplicate.
-      if (typeof c.existingId === 'string' && mongoose.isValidObjectId(c.existingId)) {
-        const existing = await CharacterModel.findOne({ _id: c.existingId, projectId: resolvedProjectId })
-          .select('_id')
-          .lean();
-        if (existing) {
-          const id = String(existing._id);
-          charIdMap.set(c.id, id);
-          questlineCharacterIds.push(id);
-          continue;
-        }
-      }
-      const kbRefTag = ownedGameId && typeof c.kbRef === 'string' && c.kbRef.trim()
-        ? `${ownedGameId}:${c.kbRef.trim()}`
-        : '';
-      if (kbRefTag) {
-        const existing = await CharacterModel.findOne({ projectId: resolvedProjectId, kbRef: kbRefTag })
-          .select('_id')
-          .lean();
-        if (existing) {
-          const id = String(existing._id);
-          charIdMap.set(c.id, id);
-          questlineCharacterIds.push(id);
-          continue;
-        }
-      }
-      toInsert.push({ c, kbRefTag });
-    }
-
-    const characterDocs = await CharacterModel.insertMany(
-      toInsert.map(({ c, kbRefTag }) => ({
-        ownerId:    userId,
-        projectId:  resolvedProjectId,
-        kind:       c.role, // role is already coerced to 'npc' | 'monster'
+    // 4. Materialize the generated characters and rewards into project designs,
+    //    then build temp-id → _id maps for node remapping. Shared with the quest
+    //    editor's AI edits, so both dedupe identically: an existing project
+    //    design is linked (by id, KB tag, or name) rather than duplicated.
+    const proposals: ProposedDesign[] = [
+      ...(characters ?? []).map((c) => ({
+        tempId:     c.id,
+        kind:       c.role, // already coerced to 'npc' | 'monster'
         name:       c.name,
         appearance: c.appearance,
         lore:       c.background,
-        kbRef:      kbRefTag,
+        kbRef:      c.kbRef,
+        existingId: c.existingId,
       })),
-    );
-    insertedCharacterIds = characterDocs.map((d) => d._id);
-    toInsert.forEach(({ c }, i) => {
-      const mongoId = characterDocs[i]?._id?.toString();
-      if (mongoId) {
-        charIdMap.set(c.id, mongoId);
-        questlineCharacterIds.push(mongoId);
-      }
+      ...(rewards ?? [])
+        .filter((r) => r.title?.trim())
+        .map((r) => ({
+          tempId: r.id,
+          kind:   'item' as const,
+          name:   r.title,
+          kbRef:  r.kbRef,
+        })),
+    ];
+
+    const { designs } = await materializeDesigns({
+      ownerId:   String(userId),
+      projectId: resolvedProjectId,
+      gameId:    ownedGameId,
+      proposals,
     });
 
-    // 4b. Create standalone Item documents for rewards (mirrors characters):
-    //     reuse an existing project item when the kbRef tag or exact title
-    //     matches, otherwise insert a new Item; the questline stores references.
-    const existingItems = await ItemModel.find({ projectId: resolvedProjectId })
-      .select('name kbRef')
-      .lean();
-    const itemByName  = new Map(existingItems.map((i) => [i.name.trim().toLowerCase(), String(i._id)]));
-    const itemByKbRef = new Map(existingItems.filter((i) => i.kbRef).map((i) => [i.kbRef, String(i._id)]));
-
+    const charIdMap   = new Map<string, string>(); // "char-1" → mongo _id
+    const rewardIdMap = new Map<string, string>(); // "rew-1"  → mongo _id
+    const questlineCharacterIds: string[] = [];
     const questlineItemIds: string[] = [];
-    const itemsToInsert: { r: Reward; kbRefTag: string }[] = [];
-    for (const r of rewards ?? []) {
-      if (!r.title?.trim()) continue;
-      const kbRefTag = ownedGameId && typeof r.kbRef === 'string' && r.kbRef.trim()
-        ? `${ownedGameId}:${r.kbRef.trim()}`
-        : '';
-      const existingId = (kbRefTag && itemByKbRef.get(kbRefTag))
-        || itemByName.get(r.title.trim().toLowerCase());
-      if (existingId) {
-        rewardIdMap.set(r.id, existingId);
-        if (!questlineItemIds.includes(existingId)) questlineItemIds.push(existingId);
-        continue;
+
+    for (const d of designs) {
+      if (d.kind === 'item') {
+        rewardIdMap.set(d.tempId, d.id);
+        if (!questlineItemIds.includes(d.id)) questlineItemIds.push(d.id);
+      } else {
+        charIdMap.set(d.tempId, d.id);
+        if (!questlineCharacterIds.includes(d.id)) questlineCharacterIds.push(d.id);
       }
-      itemsToInsert.push({ r, kbRefTag });
     }
 
-    const itemDocs = await ItemModel.insertMany(
-      itemsToInsert.map(({ r, kbRefTag }) => ({
-        ownerId:   userId,
-        projectId: resolvedProjectId,
-        name:      r.title.trim(),
-        kbRef:     kbRefTag,
-      })),
-    );
-    insertedItemIds = itemDocs.map((d) => d._id);
-    itemsToInsert.forEach(({ r }, i) => {
-      const mongoId = itemDocs[i]?._id?.toString();
-      if (mongoId) {
-        rewardIdMap.set(r.id, mongoId);
-        questlineItemIds.push(mongoId);
-        itemByName.set(r.title.trim().toLowerCase(), mongoId);
-      }
-    });
+    // Only designs written just now are rolled back if the questline fails to
+    // persist — linking an existing one must never delete it.
+    insertedCharacterIds = designs
+      .filter((d) => d.created && d.kind !== 'item')
+      .map((d) => new mongoose.Types.ObjectId(d.id));
+    insertedItemIds = designs
+      .filter((d) => d.created && d.kind === 'item')
+      .map((d) => new mongoose.Types.ObjectId(d.id));
 
     const questline = await QuestlineModel.create({
       ownerId:      userId,

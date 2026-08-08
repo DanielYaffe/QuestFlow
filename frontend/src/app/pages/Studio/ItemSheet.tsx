@@ -1,15 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, BookOpen, Download, Gem, Loader2, Maximize2, Scissors, SlidersHorizontal, Sparkles, Trash2, Wand2,
+  ArrowLeft, BookOpen, Download, Gem, Loader2, Maximize2, Sparkles, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   ItemRarity,
   ItemRecord,
+  attachSpriteToItem,
   deleteItem,
   getItem,
   publishItemToKb,
+  selectItemSpriteVersion,
   transformItemSprite,
   updateItem,
 } from '../../api/itemApi';
@@ -17,11 +19,18 @@ import { SpriteTool } from '../../api/characterApi';
 import { generateSprite, SpriteRecord } from '../../api/spriteApi';
 import { useProject } from '../../context/ProjectContext';
 import { useSpriteJobs } from '../../context/SpriteJobContext';
+import { resolveStyle, useSpriteStyles } from '../../hooks/useSpriteStyles';
 import { GroundedBadge } from '../../components/shared/GroundedBadge';
 import { ConfirmModal } from '../../components/shared/ConfirmModal';
-import { CHECKER_STYLE } from '../../utils/spriteStyles';
 import { downloadUrl, fileSlug } from '../../utils/download';
-import { GenerateSpriteDialog, PublishDialog, SpritePickerDialog } from './StudioDialogs';
+import { SpriteToolsPanel } from './SpriteToolsPanel';
+import { resolveHistoryIndex, useUndoShortcut } from './useSpriteHistory';
+import {
+  GenerateSpriteDialog,
+  PublishDialog,
+  SpritePickerDialog,
+  StylePickerDialog,
+} from './StudioDialogs';
 
 // ---------------------------------------------------------------------------
 // Item design sheet — sprite + identity + publish-to-KB for a studio Item.
@@ -78,16 +87,21 @@ export function ItemSheet() {
 
   // Tools
   const [toolBusy, setToolBusy] = useState<SpriteTool | null>(null);
-  const [resizeTarget, setResizeTarget] = useState(64);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [spriteGenBusy, setSpriteGenBusy] = useState(false);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
 
+  const { styles } = useSpriteStyles();
+
+  // Publish responses omit the presigned version history — keep what we have so
+  // the history strip survives.
   const applyItem = useCallback((i: ItemRecord) => {
-    setItem(i);
+    setItem((prev) => ({ ...i, candidateUrls: i.candidateUrls ?? prev?.candidateUrls }));
     setName(i.name);
     setDescription(i.description);
     setRarity(i.rarity);
@@ -107,6 +121,24 @@ export function ItemSheet() {
 
   useEffect(() => { setLoading(true); void refresh(); }, [refresh]);
 
+  // --- Sprite version history ------------------------------------------------
+  const historyUrls = item?.candidateUrls ?? [];
+  const historyIndex = item ? resolveHistoryIndex(item.assets, historyUrls.length) : -1;
+
+  const goToVersion = useCallback(async (index: number) => {
+    if (!item || index < 0 || index >= (item.candidateUrls?.length ?? 0)) return;
+    setHistoryBusy(true);
+    try {
+      applyItem(await selectItemSpriteVersion(item._id, index));
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to switch sprite version'));
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [item, applyItem]);
+
+  useUndoShortcut(historyIndex, goToVersion);
+
   if (loading || !item) {
     return (
       <div className="h-full flex items-center justify-center bg-steel-950">
@@ -115,6 +147,7 @@ export function ItemSheet() {
     );
   }
 
+  const style = resolveStyle(styles, item.spriteStyleId);
   const spriteKey = item.assets.snappedSpriteS3Key
     || item.assets.rawSpriteCandidates[item.assets.rawSpriteCandidates.length - 1]
     || '';
@@ -122,24 +155,21 @@ export function ItemSheet() {
   const handlePickSprite = async (sprite: SpriteRecord) => {
     if (!sprite.imageKey) { toast.error('This sprite has no stored image key'); return; }
     try {
-      const candidates = [...item.assets.rawSpriteCandidates, sprite.imageKey].slice(-20);
-      applyItem(await updateItem(item._id, {
-        assets: { snappedSpriteS3Key: sprite.imageKey, rawSpriteCandidates: candidates },
-      }));
+      applyItem(await attachSpriteToItem(item._id, sprite.imageKey));
       toast.success('Sprite attached');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to attach sprite'));
     }
   };
 
-  const handleTool = async (tool: SpriteTool) => {
+  const handleTool = async (tool: SpriteTool, targetSize: number) => {
     setToolBusy(tool);
     try {
-      applyItem(await transformItemSprite(item._id, tool, tool === 'remove-bg' ? undefined : resizeTarget));
+      applyItem(await transformItemSprite(item._id, tool, tool === 'remove-bg' ? undefined : targetSize));
       toast.success(
-        tool === 'resize' ? `Resized to ${resizeTarget}px`
+        tool === 'resize' ? `Resized to ${targetSize}px`
           : tool === 'remove-bg' ? 'Background removed'
-            : `Pixel-snapped to ${resizeTarget}px`,
+            : `Pixel-snapped to ${targetSize}px`,
       );
     } catch (err) {
       toast.error(errorMessage(err, 'Tool failed'));
@@ -148,9 +178,18 @@ export function ItemSheet() {
     }
   };
 
-  const handleGenerateSprite = async (prompt: string, styleId: string) => {
+  const handleSelectStyle = async (styleId: string) => {
+    if (styleId === item.spriteStyleId) return;
     try {
-      const { jobId } = await generateSprite(prompt, styleId);
+      applyItem(await updateItem(item._id, { spriteStyleId: styleId }));
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to save style'));
+    }
+  };
+
+  const handleGenerateSprite = async (prompt: string) => {
+    try {
+      const { jobId } = await generateSprite(prompt, style?.id ?? '');
       setSpriteGenBusy(true);
       registerJob(jobId, {
         label: `${item.name} sprite`,
@@ -218,8 +257,17 @@ export function ItemSheet() {
       <GenerateSpriteDialog
         isOpen={generateOpen}
         initialPrompt={item.description || item.name}
+        style={style}
         onClose={() => setGenerateOpen(false)}
+        onChangeStyle={() => { setGenerateOpen(false); setStyleOpen(true); }}
         onSubmit={handleGenerateSprite}
+      />
+      <StylePickerDialog
+        isOpen={styleOpen}
+        styles={styles}
+        selectedId={style?.id ?? ''}
+        onClose={() => setStyleOpen(false)}
+        onSelect={(id) => void handleSelectStyle(id)}
       />
       <PublishDialog
         isOpen={publishOpen}
@@ -297,62 +345,22 @@ export function ItemSheet() {
               </button>
             }
           >
-            <div className="flex gap-4">
-              <div className="relative w-40 h-40 shrink-0 rounded-md border border-steel-700 flex items-center justify-center" style={CHECKER_STYLE}>
-                {item.previewUrl ? (
-                  <button
-                    onClick={() => navigate(`/studio/items/${item._id}/sprites`)}
-                    className="w-full h-full flex items-center justify-center cursor-zoom-in"
-                    title="View full-size"
-                  >
-                    <img src={item.previewUrl} alt={item.name} className="max-w-full max-h-full object-contain p-2" style={{ imageRendering: 'pixelated' }} />
-                  </button>
-                ) : (
-                  <p className="text-steel-500 text-xs text-center px-3">No sprite yet — generate one or pick from your gallery</p>
-                )}
-                {spriteGenBusy && (
-                  <div className="absolute inset-0 rounded-md bg-steel-950/70 flex flex-col items-center justify-center gap-1.5">
-                    <Loader2 className="w-5 h-5 text-pulse animate-spin" />
-                    <p className="text-steel-200 text-[11px]">Generating…</p>
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 flex flex-col gap-2">
-                <button
-                  disabled={spriteGenBusy}
-                  onClick={() => setGenerateOpen(true)}
-                  className="flex items-center gap-2 px-3 py-2 bg-volt hover:brightness-95 disabled:opacity-50 text-steel-950 text-xs font-semibold rounded-md transition-[filter] cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Generate sprite
-                </button>
-                <div className="flex items-center gap-2">
-                  <label className="text-steel-400 text-xs shrink-0">Target size</label>
-                  <input
-                    type="number"
-                    min={8}
-                    max={1024}
-                    value={resizeTarget}
-                    onChange={(e) => setResizeTarget(Number(e.target.value))}
-                    className="w-20 bg-steel-800 border border-steel-600 rounded-md px-2 py-1 text-steel-100 text-xs tabular-nums focus:outline-none focus:border-pulse"
-                  />
-                  <span className="text-steel-500 text-xs">px</span>
-                </div>
-                {([
-                  ['resize', 'Resize (pixel-perfect)', SlidersHorizontal],
-                  ['remove-bg', 'Remove background', Scissors],
-                  ['pixel-snap', 'Pixel snap', Wand2],
-                ] as const).map(([tool, label, Icon]) => (
-                  <button
-                    key={tool}
-                    disabled={!spriteKey || toolBusy !== null}
-                    onClick={() => void handleTool(tool)}
-                    className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
-                  >
-                    {toolBusy === tool ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Icon className="w-3.5 h-3.5 text-pulse" />}
-                    {label}
-                  </button>
-                ))}
+            <SpriteToolsPanel
+              name={item.name}
+              previewUrl={item.previewUrl}
+              pixelated
+              onOpenPreview={() => navigate(`/studio/items/${item._id}/sprites`)}
+              style={style}
+              onChangeStyle={() => setStyleOpen(true)}
+              generating={spriteGenBusy}
+              onGenerate={() => setGenerateOpen(true)}
+              hasSprite={Boolean(spriteKey)}
+              toolBusy={toolBusy}
+              onTool={(tool, targetSize) => void handleTool(tool, targetSize)}
+              history={{ urls: historyUrls, index: historyIndex }}
+              historyBusy={historyBusy}
+              onSelectVersion={(index) => void goToVersion(index)}
+              extraActions={
                 <button
                   disabled={!item.previewUrl}
                   onClick={() => void handleDownload()}
@@ -361,8 +369,8 @@ export function ItemSheet() {
                   <Download className="w-3.5 h-3.5 text-pulse" />
                   Download PNG
                 </button>
-              </div>
-            </div>
+              }
+            />
           </Section>
 
           {/* Identity */}

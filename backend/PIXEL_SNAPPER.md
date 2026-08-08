@@ -107,9 +107,10 @@ This starts: backend API (port 3000), worker process, Redis (6379), MongoDB (270
 ComfyUI → 1024×1024 RGBA PNG (background already removed by easy imageRemBg)
   ↓
 snapAndResize(buffer, targetSize)          # pixelSnapper.ts
-  ↓ WASM process_image(bytes, k=16, auto)  # ~0.5-1.5s
-  ↓ sharp.extract 128×128                  # crop +1 walker-overshoot artifact
-  ↓ sharp.resize(targetSize, nearest)      # only if targetSize ≠ 128
+  ↓ WASM process_image(bytes, k=16, ps)    # ~0.5-1.5s; ps = long edge / targetSize
+  ↓ sharp.extract                          # trim the +1 walker-overshoot artifact only
+  ↓ sharp.resize(fit: inside, nearest)     # only if rounding left it over targetSize
+  ↓ sharp.extend (transparent)             # letterbox to exactly targetSize², centred
   ↓
 Upload to S3
 ```

@@ -1,10 +1,36 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"   # Let's Encrypt HTTP challenge + redirect to https
+      - "443:443"
+    environment:
+      # Unset means localhost with a locally-trusted cert — right for dev.
+      QUESTFLOW_DOMAIN: ${QUESTFLOW_DOMAIN:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data     # certificates; persisted to avoid LE rate limits
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # No published ports: the SPA is reached through Caddy. Hitting this
+    # container directly would serve a bundle whose /api calls nothing routes.
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    restart: unless-stopped
+    # Port 3000 is deliberately not published: Caddy reaches it over the compose
+    # network, and the API has no reason to be a second public entrypoint.
     env_file:
       - ./backend/.env
     depends_on:
@@ -16,7 +42,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: tsx src/worker.ts
+    restart: unless-stopped
+    command: node dist/worker.js
     env_file:
       - ./backend/.env
     depends_on:
@@ -24,26 +51,39 @@ services:
       - mongo
       - qdrant
 
+  # The three backing stores bind to the host's loopback only. They are reached
+  # over the compose network by name; publishing them on 0.0.0.0 would put an
+  # unauthenticated Mongo and Redis on the public internet.
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
+    # BullMQ needs noeviction — under the default allkeys-lru, Redis drops
+    # queued jobs under memory pressure (docs/RAG-README.md:150).
+    command: redis-server --maxmemory-policy noeviction
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
 
   mongo:
     image: mongo:7
+    restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
 
   qdrant:
     image: qdrant/qdrant:v1.18.2
+    restart: unless-stopped
     ports:
-      - "6333:6333"   # REST/HTTP (QDRANT_URL)
-      - "6334:6334"   # gRPC (optional)
+      - "127.0.0.1:6333:6333"   # REST/HTTP (QDRANT_URL)
     volumes:
       - qdrant_data:/qdrant/storage
 
 volumes:
   mongo_data:
   qdrant_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

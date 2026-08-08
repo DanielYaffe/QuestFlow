@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { redis } from '../queues/connection';
 import { KbIngestJobData, KbJobData, KB_QUEUE_NAME, KB_RECONCILE_JOB } from '../queues/kbQueue';
-import { qdrant, ensureCollection, deleteDocumentPoints } from '../services/qdrant';
+import { ensureCollection, deleteDocumentPoints, upsertPoints } from '../services/qdrant';
 import { buildPoints } from '../services/kbService';
 import KbDocumentModel from '../models/kbDocumentModel';
 
@@ -10,6 +10,23 @@ import KbDocumentModel from '../models/kbDocumentModel';
 // status to 'ready'. Mirrors the sprite worker pattern. The status gate in
 // ragService means nothing this worker half-writes can reach generation.
 // ---------------------------------------------------------------------------
+
+/**
+ * Qdrant's client reports HTTP failures as bare status text ("Bad Request") and
+ * hides the reason in `data`. Unwrap it, or a dimension/schema error is
+ * indistinguishable from any other 400.
+ */
+function describeError(err: unknown): string {
+  if (err === null || typeof err !== 'object') return 'KB ingestion failed';
+  const e = err as { message?: unknown; status?: unknown; data?: unknown };
+  const base = typeof e.message === 'string' && e.message ? e.message : 'KB ingestion failed';
+  const detail = e.data;
+  if (detail !== undefined && detail !== null) {
+    const text = typeof detail === 'string' ? detail : JSON.stringify(detail);
+    if (text && text !== '{}' && !base.includes(text)) return `${base} — ${text}`;
+  }
+  return typeof e.status === 'number' ? `${base} (HTTP ${e.status})` : base;
+}
 
 async function processKbJob(job: Job<KbIngestJobData>): Promise<void> {
   const { docId, gameId, type, mode } = job.data;
@@ -24,7 +41,7 @@ async function processKbJob(job: Job<KbIngestJobData>): Promise<void> {
   }
 
   const { points, chunkCount, entityCount } = await buildPoints(doc.originalText, gameId, docId, type);
-  await qdrant.upsert(collection, { points, wait: true });
+  await upsertPoints(collection, points);
 
   // The doc may have been deleted (user action or reconciler) while we were
   // embedding — in that case remove the points we just wrote instead of
@@ -59,11 +76,15 @@ export const kbWorker = new Worker<KbJobData>(
     try {
       await processKbJob(ingestJob);
     } catch (err) {
+      // Always log: a document that only fails in Mongo is invisible while
+      // debugging, and the console is where anyone looks first.
+      const message = describeError(err);
+      console.error(`[kbWorker] ${ingestJob.data.mode} failed for doc ${ingestJob.data.docId}: ${message}`);
+
       // Final attempt failed → mark 'failed' so the UI can surface a retry.
       // The reconciler purges its chunks but keeps the row (originalText is
       // the source of truth and must survive for retry).
       if (ingestJob.attemptsMade + 1 >= (ingestJob.opts.attempts ?? 1)) {
-        const message = err instanceof Error ? err.message : 'KB ingestion failed';
         await KbDocumentModel.updateOne(
           { _id: ingestJob.data.docId },
           { $set: { status: 'failed', statusError: message.slice(0, 500) } },

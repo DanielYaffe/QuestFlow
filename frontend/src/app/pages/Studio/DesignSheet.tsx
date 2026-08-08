@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, BookOpen, Compass, Film, Loader2, Maximize2, Plus, Scissors, Skull,
-  SlidersHorizontal, Sparkles, Users, Wand2,
+  ArrowLeft, BookOpen, Compass, Film, Loader2, Maximize2, Plus, Skull,
+  SlidersHorizontal, Sparkles, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -10,9 +10,11 @@ import {
   CharacterSpeciesData,
   ROTATION_DIRECTIONS,
   SpriteTool,
+  attachSpriteToCharacter,
   generateRotations,
   getCharacter,
   publishCharacterToKb,
+  selectCharacterSpriteVersion,
   transformCharacterSprite,
   updateCharacter,
 } from '../../api/characterApi';
@@ -20,9 +22,17 @@ import { AnimationSummary, listAnimations } from '../../api/animationApi';
 import { generateSprite, SpriteRecord } from '../../api/spriteApi';
 import { useProject } from '../../context/ProjectContext';
 import { useSpriteJobs } from '../../context/SpriteJobContext';
+import { resolveStyle, useSpriteStyles } from '../../hooks/useSpriteStyles';
 import { GroundedBadge } from '../../components/shared/GroundedBadge';
-import { CHECKER_SM, CHECKER_STYLE } from '../../utils/spriteStyles';
-import { GenerateSpriteDialog, PublishDialog, SpritePickerDialog } from './StudioDialogs';
+import { CHECKER_SM } from '../../utils/spriteStyles';
+import { SpriteToolsPanel } from './SpriteToolsPanel';
+import { resolveHistoryIndex, useUndoShortcut } from './useSpriteHistory';
+import {
+  GenerateSpriteDialog,
+  PublishDialog,
+  SpritePickerDialog,
+  StylePickerDialog,
+} from './StudioDialogs';
 
 function errorMessage(err: unknown, fallback: string): string {
   if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -83,16 +93,26 @@ export function DesignSheet() {
 
   // Tools
   const [toolBusy, setToolBusy] = useState<SpriteTool | null>(null);
-  const [resizeTarget, setResizeTarget] = useState(64);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [rotationsBusy, setRotationsBusy] = useState(false);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
   const [spriteGenBusy, setSpriteGenBusy] = useState(false);
 
+  const { styles } = useSpriteStyles();
+
+  // Only the studio-shaped responses carry the presigned rotation and version
+  // URLs; plain updates (identity, stats, publish) omit them, so keep the ones
+  // we already have rather than blanking the compass and the history strip.
   const applyCharacter = useCallback((c: CharacterRecord) => {
-    setCharacter(c);
+    setCharacter((prev) => ({
+      ...c,
+      rotationUrls: c.rotationUrls ?? prev?.rotationUrls,
+      candidateUrls: c.candidateUrls ?? prev?.candidateUrls,
+    }));
     setAppearance(c.appearance);
     setLore(c.lore);
     setTags(c.tags.join(', '));
@@ -113,6 +133,24 @@ export function DesignSheet() {
 
   useEffect(() => { setLoading(true); void refresh(); }, [refresh]);
 
+  // --- Sprite version history ------------------------------------------------
+  const historyUrls = character?.candidateUrls ?? [];
+  const historyIndex = character ? resolveHistoryIndex(character.assets, historyUrls.length) : -1;
+
+  const goToVersion = useCallback(async (index: number) => {
+    if (!character || index < 0 || index >= (character.candidateUrls?.length ?? 0)) return;
+    setHistoryBusy(true);
+    try {
+      applyCharacter(await selectCharacterSpriteVersion(character._id, index));
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to switch sprite version'));
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [character, applyCharacter]);
+
+  useUndoShortcut(historyIndex, goToVersion);
+
   if (loading || !character) {
     return (
       <div className="h-full flex items-center justify-center bg-steel-950">
@@ -122,6 +160,7 @@ export function DesignSheet() {
   }
 
   const isMob = character.kind === 'monster';
+  const style = resolveStyle(styles, character.spriteStyleId);
   const spriteKey = character.assets.snappedSpriteS3Key
     || character.assets.rawSpriteCandidates[character.assets.rawSpriteCandidates.length - 1]
     || '';
@@ -130,25 +169,21 @@ export function DesignSheet() {
   const handlePickSprite = async (sprite: SpriteRecord) => {
     if (!sprite.imageKey) { toast.error('This sprite has no stored image key'); return; }
     try {
-      const candidates = [...character.assets.rawSpriteCandidates, sprite.imageKey].slice(-20);
-      const fresh = await updateCharacter(character._id, {
-        assets: { ...character.assets, snappedSpriteS3Key: sprite.imageKey, rawSpriteCandidates: candidates },
-      });
-      applyCharacter({ ...fresh, rotationUrls: character.rotationUrls });
+      applyCharacter(await attachSpriteToCharacter(character._id, sprite.imageKey));
       toast.success('Sprite attached');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to attach sprite'));
     }
   };
 
-  const handleTool = async (tool: SpriteTool) => {
+  const handleTool = async (tool: SpriteTool, targetSize: number) => {
     setToolBusy(tool);
     try {
-      applyCharacter(await transformCharacterSprite(character._id, tool, tool === 'remove-bg' ? undefined : resizeTarget));
+      applyCharacter(await transformCharacterSprite(character._id, tool, tool === 'remove-bg' ? undefined : targetSize));
       toast.success(
-        tool === 'resize' ? `Resized to ${resizeTarget}px`
+        tool === 'resize' ? `Resized to ${targetSize}px`
           : tool === 'remove-bg' ? 'Background removed'
-            : `Pixel-snapped to ${resizeTarget}px`,
+            : `Pixel-snapped to ${targetSize}px`,
       );
     } catch (err) {
       toast.error(errorMessage(err, 'Tool failed'));
@@ -157,9 +192,19 @@ export function DesignSheet() {
     }
   };
 
-  const handleGenerateSprite = async (prompt: string, styleId: string) => {
+  const handleSelectStyle = async (styleId: string) => {
+    if (styleId === character.spriteStyleId) return;
     try {
-      const { jobId } = await generateSprite(prompt, styleId);
+      const fresh = await updateCharacter(character._id, { spriteStyleId: styleId });
+      applyCharacter(fresh);
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to save style'));
+    }
+  };
+
+  const handleGenerateSprite = async (prompt: string) => {
+    try {
+      const { jobId } = await generateSprite(prompt, style?.id ?? '');
       setSpriteGenBusy(true);
       registerJob(jobId, {
         label: `${character.name} sprite`,
@@ -201,7 +246,7 @@ export function DesignSheet() {
         lore,
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       });
-      applyCharacter({ ...fresh, rotationUrls: character.rotationUrls });
+      applyCharacter(fresh);
       toast.success('Saved');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to save'));
@@ -215,7 +260,7 @@ export function DesignSheet() {
     setSavingStats(true);
     try {
       const fresh = await updateCharacter(character._id, { speciesData: species } as Parameters<typeof updateCharacter>[1]);
-      applyCharacter({ ...fresh, rotationUrls: character.rotationUrls });
+      applyCharacter(fresh);
       toast.success('Stats saved');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to save stats'));
@@ -227,7 +272,7 @@ export function DesignSheet() {
   const handlePublish = async (gameId: string) => {
     try {
       const fresh = await publishCharacterToKb(character._id, gameId);
-      applyCharacter({ ...fresh, rotationUrls: character.rotationUrls });
+      applyCharacter(fresh);
       toast.success(`${character.name} published — indexing into the knowledge base`);
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to publish'));
@@ -253,8 +298,17 @@ export function DesignSheet() {
       <GenerateSpriteDialog
         isOpen={generateOpen}
         initialPrompt={character.appearance || character.name}
+        style={style}
         onClose={() => setGenerateOpen(false)}
+        onChangeStyle={() => { setGenerateOpen(false); setStyleOpen(true); }}
         onSubmit={handleGenerateSprite}
+      />
+      <StylePickerDialog
+        isOpen={styleOpen}
+        styles={styles}
+        selectedId={style?.id ?? ''}
+        onClose={() => setStyleOpen(false)}
+        onSelect={(id) => void handleSelectStyle(id)}
       />
       <PublishDialog
         isOpen={publishOpen}
@@ -318,69 +372,21 @@ export function DesignSheet() {
                 </button>
               }
             >
-              <div className="flex gap-4">
-                <div className="relative w-40 h-40 shrink-0 rounded-md border border-steel-700 flex items-center justify-center" style={CHECKER_STYLE}>
-                  {character.previewUrl ? (
-                    <button
-                      onClick={() => navigate(`/studio/${character._id}/sprites?sel=sprite`)}
-                      className="w-full h-full flex items-center justify-center cursor-zoom-in"
-                      title="View full-size"
-                    >
-                      <img src={character.previewUrl} alt={character.name} className="max-w-full max-h-full object-contain p-2" />
-                    </button>
-                  ) : (
-                    <p className="text-steel-500 text-xs text-center px-3">No sprite yet — generate one or pick from your gallery</p>
-                  )}
-                  {spriteGenBusy && (
-                    <div className="absolute inset-0 rounded-md bg-steel-950/70 flex flex-col items-center justify-center gap-1.5">
-                      <Loader2 className="w-5 h-5 text-pulse animate-spin" />
-                      <p className="text-steel-200 text-[11px]">Generating…</p>
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 flex flex-col gap-2">
-                  <button
-                    disabled={spriteGenBusy}
-                    onClick={() => setGenerateOpen(true)}
-                    className="flex items-center gap-2 px-3 py-2 bg-volt hover:brightness-95 disabled:opacity-50 text-steel-950 text-xs font-semibold rounded-md transition-[filter] cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Generate sprite
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <label className="text-steel-400 text-xs shrink-0">Target size</label>
-                    <input
-                      type="number"
-                      min={8}
-                      max={1024}
-                      value={resizeTarget}
-                      onChange={(e) => setResizeTarget(Number(e.target.value))}
-                      className="w-20 bg-steel-800 border border-steel-600 rounded-md px-2 py-1 text-steel-100 text-xs tabular-nums focus:outline-none focus:border-pulse"
-                    />
-                    <span className="text-steel-500 text-xs">px</span>
-                  </div>
-                  {([
-                    ['resize', 'Resize (pixel-perfect)', SlidersHorizontal],
-                    ['remove-bg', 'Remove background', Scissors],
-                    ['pixel-snap', 'Pixel snap', Wand2],
-                  ] as const).map(([tool, label, Icon]) => (
-                    <button
-                      key={tool}
-                      disabled={!spriteKey || toolBusy !== null}
-                      onClick={() => void handleTool(tool)}
-                      className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
-                    >
-                      {toolBusy === tool ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Icon className="w-3.5 h-3.5 text-pulse" />}
-                      {label}
-                    </button>
-                  ))}
-                  <p className="text-steel-500 text-[11px]">
-                    Each tool writes a new version — the previous sprite stays in the candidate history.
-                    Resize grows by whole multiples (padded to the exact size) and snaps to the pixel
-                    grid when shrinking; all tools run locally, no generations spent.
-                  </p>
-                </div>
-              </div>
+              <SpriteToolsPanel
+                name={character.name}
+                previewUrl={character.previewUrl}
+                onOpenPreview={() => navigate(`/studio/${character._id}/sprites?sel=sprite`)}
+                style={style}
+                onChangeStyle={() => setStyleOpen(true)}
+                generating={spriteGenBusy}
+                onGenerate={() => setGenerateOpen(true)}
+                hasSprite={Boolean(spriteKey)}
+                toolBusy={toolBusy}
+                onTool={(tool, targetSize) => void handleTool(tool, targetSize)}
+                history={{ urls: historyUrls, index: historyIndex }}
+                historyBusy={historyBusy}
+                onSelectVersion={(index) => void goToVersion(index)}
+              />
             </Section>
 
             {/* Rotations */}

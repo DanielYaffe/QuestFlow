@@ -3,3 +3,6 @@ dist
 .env
 vendor/pixel-snapper/target
 vendor/pixel-snapper/pkg
+# Fetched inside the image by `npm run fetch:rmbg` — shipping 176 MB of weights
+# through the build context just to overwrite them would be pure waste
+vendor/rmbg/*.onnx

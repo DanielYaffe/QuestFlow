@@ -3,6 +3,8 @@ import { redis } from '../queues/connection';
 import { SpriteJobData, SpriteJobResult } from '../queues/spriteQueue';
 import { composeImagePrompt } from '../services/generation/imagePromptComposer';
 import { generateWithStyle } from '../services/generation/generationService';
+import { removeBackground } from '../services/generation/backgroundRemover';
+import { styleUnavailability, isStyleRunnable } from '../services/generation/styleAvailability';
 import { snapAndResize } from '../services/generation/pixelSnapper';
 import { uploadBufferToS3, getPresignedUrl } from '../utils/s3Helper';
 import SpriteModel from '../models/spriteModel';
@@ -10,10 +12,20 @@ import SpriteStyleModel from '../models/spriteStyleModel';
 
 async function resolveStyle(styleId: string) {
   const style = await SpriteStyleModel.findOne({ styleId, isActive: true }).lean();
-  if (style) return style;
+  if (style) {
+    // The controller already checked this, but a manifest can be reloaded
+    // between enqueue and execution — better a clear failure than a paid-for
+    // job that dies inside ComfyUI.
+    const problems = styleUnavailability(style);
+    if (problems.length > 0) {
+      throw new Error(`Style "${styleId}" cannot run on the current manifest: ${problems.join('; ')}`);
+    }
+    return style;
+  }
+
   const fallback = await SpriteStyleModel.findOne({ isDefault: true, isActive: true }).lean();
-  if (fallback) return fallback;
-  throw new Error('No active sprite styles found in database — run seedThemes first');
+  if (fallback && isStyleRunnable(fallback)) return fallback;
+  throw new Error(`No runnable sprite style for "${styleId}" and no runnable default configured`);
 }
 
 async function processSpriteJob(job: Job<SpriteJobData, SpriteJobResult>): Promise<SpriteJobResult> {
@@ -27,17 +39,28 @@ async function processSpriteJob(job: Job<SpriteJobData, SpriteJobResult>): Promi
     extraNegative: negativePrompt || undefined,
   });
 
+  // Tagged with the style so per-endpoint behaviour (cold starts, queue depth,
+  // failures) is attributable — endpoints scale independently.
+  console.log(`[spriteWorker] job ${job.id} generating style="${style.styleId}" endpoint="${style.endpointKey}"`);
+
   const rawBuffer = await generateWithStyle(
     composed,
     style.workflowTemplate,
     style.workflowPatchMap,
+    style.endpointKey,
   );
 
+  // Post-processing, all CPU-side. Background removal used to be a ComfyUI node
+  // spliced into the workflow; on serverless that meant billed GPU seconds for
+  // a task that runs in about a second here.
+  const cutBuffer = style.removeBackground ? await removeBackground(rawBuffer) : rawBuffer;
+
   // Only pixel-snap styles that opt in via targetSize (e.g. cb_pixel → 64px).
-  // Other styles (anime, realistic, raw) store the full-res ComfyUI output.
+  // Other styles (anime, realistic, raw) store the full-res output.
+  // snapAndResize hard-thresholds alpha itself, so no extra pass when both run.
   const imageBuffer = style.targetSize
-    ? await snapAndResize(rawBuffer, style.targetSize)
-    : rawBuffer;
+    ? await snapAndResize(cutBuffer, style.targetSize)
+    : cutBuffer;
 
   const imageKey = await uploadBufferToS3(imageBuffer, 'image/png', 'sprites');
 
@@ -70,7 +93,10 @@ export const spriteWorker = new Worker<SpriteJobData, SpriteJobResult>(
   processSpriteJob,
   {
     connection: redis,
-    concurrency: 3,
+    // Jobs are almost entirely spent waiting on RunPod, not on local CPU, and
+    // the endpoints queue independently — so a higher concurrency mostly costs
+    // open sockets. The CPU post-processing steps are the only real local work.
+    concurrency: 8,
   },
 );
 

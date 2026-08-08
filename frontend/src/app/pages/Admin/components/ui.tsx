@@ -60,6 +60,15 @@ export function AdminDialog({ isOpen, title, subtitle, onClose, children, wide =
   );
 }
 
+/** Surfaces the API's own error message when it sent one — they are written to be read. */
+export function apiError(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+    if (message) return message;
+  }
+  return fallback;
+}
+
 export function CategoryChip({ category }: { category: string }) {
   const palette: Record<string, string> = {
     pixel: 'bg-emerald-500/15 text-emerald-300',

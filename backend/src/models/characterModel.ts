@@ -30,6 +30,7 @@ export interface ICharacterAssets {
   spritesheetJsonS3Key: string;    // Aseprite frame-tag JSON
   rotations?: ICharacterRotations; // 8-direction sprites (PixelLab output)
   targetSizeOverride?: number;     // overrides style.targetSize when snapping
+  spriteHistoryIndex?: number;     // undo/redo cursor into rawSpriteCandidates
 }
 
 export interface ICharacterSpeciesData {
@@ -64,6 +65,9 @@ export interface ICharacter extends Document {
   // the design studio — republishing edits that doc instead of creating a new
   // one. '' = never published.
   kbDocId: string;
+  // Sprite style this design generates in (SpriteStyle.styleId). '' = unset,
+  // in which case the studio falls back to the default style.
+  spriteStyleId: string;
   // NPC-only
   portraitUrl: string;
   dialogueTraits: string[];
@@ -96,6 +100,7 @@ const AssetsSchema = new Schema<ICharacterAssets>(
     spritesheetJsonS3Key: { type: String, default: '' },
     rotations:            { type: RotationsSchema },
     targetSizeOverride:   { type: Number },
+    spriteHistoryIndex:   { type: Number },
   },
   { _id: false },
 );
@@ -169,6 +174,7 @@ const CharacterSchema = new Schema<ICharacter>(
     tags:           { type: [String], default: [] },
     kbRef:          { type: String, default: '', index: true },
     kbDocId:        { type: String, default: '' },
+    spriteStyleId:  { type: String, default: '' },
     portraitUrl:    { type: String, default: '' },
     dialogueTraits: { type: [String], default: [] },
     speciesData:    { type: SpeciesDataSchema, default: () => ({}) },
