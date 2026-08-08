@@ -165,12 +165,8 @@ interface TemplateContext {
   name: string;
   structure: unknown;
   templateSchema?: {
-    generationContract?: {
-      requirementRoles?: string[];
-      rewardRoles?: string[];
-      dialogRoles?: string[];
-      promptSummary?: string;
-    };
+    editableFields?: TemplateFieldForGeneration[];
+    generationContract?: TemplateGenerationContractForPrompt;
     summary?: string;
   };
   schemaSummary?: {
@@ -186,41 +182,479 @@ interface TemplateContext {
   };
 }
 
+type TemplateGenerationContractForPrompt = {
+  requirementRoles?: string[];
+  rewardRoles?: string[];
+  dialogRoles?: string[];
+  promptSummary?: string;
+  fieldHints?: Array<{
+    path: string;
+    meaning: string;
+    generationUse: string;
+  }>;
+  relationshipHints?: Array<{
+    kind: 'reference' | 'branch' | 'sequence' | 'state' | 'other';
+    from: string;
+    to: string;
+    meaning: string;
+  }>;
+  generationHints?: string[];
+  userExamples?: string[];
+};
+
+interface TemplateFieldForGeneration {
+  path: string;
+  label?: string;
+  kind?: string;
+  control?: string;
+  shape?: string;
+  gameplayRole?: string;
+  fillSource?: string;
+  description?: string;
+  itemSchema?: Array<{
+    path: string;
+    label?: string;
+    valueType?: string;
+  }>;
+}
+
+type GeneratedTemplateValues = Record<string, unknown>;
+
+function templateContextFromDoc(templateDoc: any): TemplateContext | undefined {
+  if (!templateDoc) return undefined;
+  return {
+    id: templateDoc._id.toString(),
+    name: templateDoc.name,
+    structure: templateDoc.structure,
+    templateSchema: templateDoc.templateSchema as TemplateContext['templateSchema'],
+    schemaSummary: templateDoc.schemaSummary,
+    inferredAiGuidance: templateDoc.inferredAiGuidance,
+  };
+}
+
+function compactTemplateField(field: TemplateFieldForGeneration): Record<string, unknown> {
+  return {
+    path: field.path,
+    label: field.label,
+    kind: field.kind,
+    control: field.control,
+    shape: field.shape,
+    gameplayRole: field.gameplayRole,
+    fillSource: field.fillSource,
+    description: field.description,
+    itemSchema: field.itemSchema,
+  };
+}
+
+function compactGenerationContract(contract?: TemplateGenerationContractForPrompt): Record<string, unknown> {
+  if (!contract) return {};
+  return {
+    fieldHints: contract.fieldHints ?? [],
+    relationshipHints: contract.relationshipHints ?? [],
+    generationHints: contract.generationHints ?? [],
+    userExamples: contract.userExamples ?? [],
+  };
+}
+
+function buildTemplateGraphGuidance(template?: TemplateContext): string {
+  if (!template) return '';
+  const fields = Array.isArray(template.templateSchema?.editableFields)
+    ? template.templateSchema.editableFields
+    : [];
+  const contract = template.templateSchema?.generationContract;
+  const dialogFields = fields.filter((field) => field.gameplayRole === 'questDialog' || field.control === 'dialogFlow');
+  const requirementFields = fields.filter((field) => field.gameplayRole?.includes('Requirement') || field.gameplayRole === 'requirement');
+  const rewardFields = fields.filter((field) => field.gameplayRole?.includes('Reward') || field.gameplayRole === 'reward');
+
+  if (!fields.length) return '';
+
+  return `
+ג”ג”ג” SELECTED EXPORT TEMPLATE ג”ג”ג”
+Template name: ${template.name}
+Template generation summary:
+${contract?.promptSummary ?? template.schemaSummary?.structureSummary ?? template.inferredAiGuidance?.structureSummary ?? ''}
+
+Template semantic hints and relationships:
+${JSON.stringify(compactGenerationContract(contract), null, 2)}
+
+Dialog-capable fields:
+${dialogFields.length ? JSON.stringify(dialogFields.map(compactTemplateField), null, 2) : '[]'}
+
+Requirement-capable fields:
+${JSON.stringify(requirementFields.slice(0, 40).map(compactTemplateField), null, 2)}
+
+Reward-capable fields:
+${JSON.stringify(rewardFields.slice(0, 40).map(compactTemplateField), null, 2)}
+
+Template value rules:
+- Each generated node may include "templateValues", an object keyed by exact template field path.
+- Use ONLY field paths listed above. Do not invent paths.
+- For dialog-capable array fields, generate an array of page objects using that field's itemSchema.
+- Use relationshipHints to connect fields. If a relationship says one item field references another item field, its value must match a generated target value in the same array.
+- Use fieldHints and generationHints to decide what each field means and when to fill it.
+- Treat userExamples as high-priority corrections to the template interpretation.
+- Do not copy placeholder IDs or text from the template. Create dialog prompts that match the node title/body and the story.
+- Only fill requirement/reward fields when the chosen field path clearly matches the node's purpose. Leave manual ID fields empty unless reference material gives an exact ID.
+`;
+}
+
 function buildInitialTemplateValues(
   templateDoc: any,
-  node: { id: string; title: string; body: string; npcIds?: string[] },
+  node: { id: string; title: string; body: string; npcIds?: string[]; templateValues?: GeneratedTemplateValues },
 ): Record<string, unknown> {
   const fields = templateDoc?.templateSchema?.editableFields;
   if (!Array.isArray(fields)) return {};
 
-  const values: Record<string, unknown> = {};
+  const values: Record<string, unknown> = sanitizeGeneratedTemplateValues(templateDoc, node.templateValues);
   for (const field of fields) {
     if (
       field?.gameplayRole === 'questDialog'
       && field?.kind === 'array'
       && typeof field.path === 'string'
-      && shouldSeedDialogField(field.path)
+      && field.itemSchema?.length
+      && isEmptyTemplateGeneratedValue(values[field.path])
     ) {
-      values[field.path] = [{
-        id: `${node.id}_${field.path.replace(/[^\w]+/g, '_')}_page_1`,
-        npcId: 0,
-        type: 'ok',
-        prompt: node.body || node.title,
-      }];
+      values[field.path] = buildFallbackDialogPages(templateDoc, field, node);
     }
   }
   return values;
 }
 
-function shouldSeedDialogField(path: string): boolean {
-  const normalized = path.toLowerCase();
-  return normalized === 'dialog'
-    || normalized === 'dialogue'
-    || normalized === 'description'
-    || normalized.endsWith('.dialog')
-    || normalized.endsWith('.dialogue')
-    || normalized.endsWith('.description')
-    || /(^|\.)(start|inprogress|in_progress|progress|complete)\.pages$/.test(normalized);
+function isEmptyTemplateGeneratedValue(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length === 0;
+  return false;
+}
+
+function buildFallbackDialogPages(
+  templateDoc: any,
+  field: TemplateFieldForGeneration,
+  node: { id: string; title: string; body: string; npcIds?: string[] },
+): Record<string, unknown>[] {
+  const itemSchema = field.itemSchema ?? [];
+  const allowedKeys = new Set(itemSchema.map((item) => item.path));
+  const identityKey = identityItemKeyForField(templateDoc, field) ?? itemSchema[0]?.path;
+  const promptKey = promptItemKeyForField(templateDoc, field, identityKey);
+  const pathKey = field.path.replace(/[^\w]+/g, '_');
+  const baseId = `${node.id}_${pathKey}`;
+  const npcId = firstNumericId(node.npcIds) ?? 0;
+  const body = node.body || node.title;
+  const page: Record<string, unknown> = {};
+
+  if (identityKey) page[identityKey] = `${baseId}_page_1`;
+  if (promptKey) page[promptKey] = body;
+
+  for (const item of itemSchema) {
+    if (page[item.path] !== undefined) continue;
+    if (item.valueType === 'number' && /npc/i.test(item.path)) page[item.path] = npcId;
+  }
+
+  return Object.keys(page).length ? [makeDialogPage(allowedKeys, page)] : [];
+}
+
+function makeDialogPage(allowedKeys: Set<string>, page: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(page)) {
+    if (!allowedKeys.has(key) || value === undefined || value === '') continue;
+    cleaned[key] = value;
+  }
+  if (!('prompt' in cleaned) && allowedKeys.has('prompt')) cleaned.prompt = '';
+  return cleaned;
+}
+
+function firstNumericId(values: unknown): number | undefined {
+  if (!Array.isArray(values)) return undefined;
+  for (const value of values) {
+    const match = String(value).match(/\d+/);
+    if (!match) continue;
+    const parsed = Number(match[0]);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function identityItemKeyForField(templateDoc: any, field: TemplateFieldForGeneration): string | undefined {
+  const relationship = relationshipHintsForField(templateDoc, field.path).find((hint) => parseArrayItemPath(hint.to)?.itemPath);
+  return relationship ? parseArrayItemPath(relationship.to)?.itemPath : undefined;
+}
+
+function promptItemKeyForField(templateDoc: any, field: TemplateFieldForGeneration, identityKey?: string): string | undefined {
+  const hints = templateDoc?.templateSchema?.generationContract?.fieldHints;
+  const itemSchema = field.itemSchema ?? [];
+  if (Array.isArray(hints)) {
+    const hinted = hints.find((hint) => {
+      const parsed = typeof hint?.path === 'string' ? parseArrayItemPath(hint.path) : null;
+      if (!parsed || parsed.arrayPath !== field.path) return false;
+      const text = `${hint.meaning ?? ''} ${hint.generationUse ?? ''}`.toLowerCase();
+      return /player-facing|dialog|dialogue|prompt|line|message|speech|text/.test(text);
+    });
+    if (hinted) return parseArrayItemPath(hinted.path)?.itemPath;
+  }
+  return itemSchema.find((item) => item.valueType === 'string' && item.path !== identityKey)?.path;
+}
+
+function relationshipHintsForField(templateDoc: any, fieldPath: string): Array<{ from: string; to: string }> {
+  const hints = templateDoc?.templateSchema?.generationContract?.relationshipHints;
+  if (!Array.isArray(hints)) return [];
+  return hints.filter((hint) => {
+    if (!hint || typeof hint.from !== 'string' || typeof hint.to !== 'string') return false;
+    const from = parseArrayItemPath(hint.from);
+    const to = parseArrayItemPath(hint.to);
+    return Boolean(from && to && from.arrayPath === fieldPath && to.arrayPath === fieldPath);
+  });
+}
+
+function sanitizeGeneratedTemplateValues(templateDoc: any, raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const fields = templateDoc?.templateSchema?.editableFields;
+  if (!Array.isArray(fields)) return {};
+
+  const allowed = new Map<string, TemplateFieldForGeneration>(
+    fields
+      .filter((field: TemplateFieldForGeneration) => typeof field?.path === 'string')
+      .map((field: TemplateFieldForGeneration) => [field.path, field]),
+  );
+
+  const result: Record<string, unknown> = {};
+  for (const [path, value] of Object.entries(raw as Record<string, unknown>)) {
+    const field = allowed.get(path);
+    if (!field) continue;
+    result[path] = sanitizeTemplateValueForField(field, value);
+  }
+  return applyTemplateRelationshipHints(templateDoc, result);
+}
+
+function sanitizeTemplateValueForField(field: TemplateFieldForGeneration, value: unknown): unknown {
+  if (field.kind === 'array') {
+    if (!Array.isArray(value)) return [];
+    if (field.control === 'dialogFlow') return sanitizeDialogPages(field, value);
+    if (field.itemSchema?.length) return sanitizeObjectRows(field, value);
+    return value.filter((item) => ['string', 'number', 'boolean'].includes(typeof item));
+  }
+  if (field.kind === 'number') return Number(value) || 0;
+  if (field.kind === 'boolean') return Boolean(value);
+  if (field.kind === 'object') return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
+}
+
+function sanitizeObjectRows(field: TemplateFieldForGeneration, value: unknown[]): Record<string, unknown>[] {
+  const itemSchema = field.itemSchema ?? [];
+  const allowedKeys = new Set(itemSchema.map((item) => item.path));
+  return value.flatMap((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+    const cleaned: Record<string, unknown> = {};
+    for (const item of itemSchema) {
+      const rawValue = (row as Record<string, unknown>)[item.path];
+      if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+      if (!allowedKeys.has(item.path)) continue;
+      if (item.valueType === 'number') cleaned[item.path] = Number(rawValue) || 0;
+      else if (item.valueType === 'boolean') cleaned[item.path] = Boolean(rawValue);
+      else cleaned[item.path] = String(rawValue);
+    }
+    return Object.keys(cleaned).length ? [cleaned] : [];
+  });
+}
+
+function sanitizeDialogPages(field: TemplateFieldForGeneration, value: unknown[]): Record<string, unknown>[] {
+  const itemSchema = field.itemSchema ?? [];
+  const allowedKeys = new Set(itemSchema.map((item) => item.path));
+  const rows = sanitizeObjectRows(field, value);
+
+  return rows.map((row, index) => {
+    const next: Record<string, unknown> = { ...row };
+    if (allowedKeys.has('id')) next.id = String(row.id || `page_${index + 1}`);
+    return next;
+  });
+}
+
+function applyTemplateRelationshipHints(templateDoc: any, values: Record<string, unknown>): Record<string, unknown> {
+  const hints = relationshipHintsForTemplateValues(templateDoc, values);
+  if (!hints.length) return values;
+
+  const nextValues: Record<string, unknown> = { ...values };
+  const hintsByArrayPath = new Map<string, Array<{ kind?: string; from: string; to: string; meaning?: string }>>();
+  for (const hint of hints) {
+    if (!hint || typeof hint.from !== 'string' || typeof hint.to !== 'string') continue;
+    const from = parseArrayItemPath(hint.from);
+    const to = parseArrayItemPath(hint.to);
+    if (!from || !to || from.arrayPath !== to.arrayPath) continue;
+    hintsByArrayPath.set(from.arrayPath, [...(hintsByArrayPath.get(from.arrayPath) ?? []), hint]);
+    const rows = nextValues[from.arrayPath];
+    if (!Array.isArray(rows)) continue;
+
+    const targetValues = new Set(
+      rows
+        .filter((row) => row && typeof row === 'object' && !Array.isArray(row))
+        .map((row) => (row as Record<string, unknown>)[to.itemPath])
+        .filter((value) => value !== undefined && value !== null && value !== '')
+        .map(String),
+    );
+
+    nextValues[from.arrayPath] = rows.map((row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+      const nextRow: Record<string, unknown> = { ...(row as Record<string, unknown>) };
+      if (from.itemPath in nextRow && !targetValues.has(String(nextRow[from.itemPath]))) {
+        delete nextRow[from.itemPath];
+      }
+      return nextRow;
+    });
+  }
+
+  for (const [arrayPath, arrayHints] of hintsByArrayPath.entries()) {
+    const rows = nextValues[arrayPath];
+    if (Array.isArray(rows)) nextValues[arrayPath] = normalizeGeneratedRelationshipRows(rows, arrayHints);
+  }
+
+  return nextValues;
+}
+
+function relationshipHintsForTemplateValues(
+  templateDoc: any,
+  values: Record<string, unknown>,
+): Array<{ kind?: string; from: string; to: string; meaning?: string }> {
+  const explicitHints = Array.isArray(templateDoc?.templateSchema?.generationContract?.relationshipHints)
+    ? templateDoc.templateSchema.generationContract.relationshipHints.filter((hint: any) => (
+      hint && typeof hint.from === 'string' && typeof hint.to === 'string'
+    ))
+    : [];
+  const inferredHints = inferRelationshipHintsFromArraySchemas(templateDoc, values);
+  const seen = new Set<string>();
+  return [...explicitHints, ...inferredHints].filter((hint) => {
+    const key = `${hint.kind ?? ''}:${hint.from}:${hint.to}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function inferRelationshipHintsFromArraySchemas(
+  templateDoc: any,
+  values: Record<string, unknown>,
+): Array<{ kind?: string; from: string; to: string; meaning?: string }> {
+  const fields = templateDoc?.templateSchema?.editableFields;
+  if (!Array.isArray(fields)) return [];
+
+  return fields.flatMap((field: TemplateFieldForGeneration) => {
+    if (!field?.path || !Array.isArray(values[field.path]) || !Array.isArray(field.itemSchema)) return [];
+    const identityKey = inferIdentityItemKey(field);
+    if (!identityKey) return [];
+
+    return field.itemSchema.flatMap((item) => {
+      if (item.path === identityKey || item.valueType !== 'string') return [];
+      const relationKind = inferRelationshipKindFromItemPath(item.path);
+      if (!relationKind) return [];
+      return [{
+        kind: relationKind,
+        from: `${field.path}[].${item.path}`,
+        to: `${field.path}[].${identityKey}`,
+        meaning: `The ${item.path} field references another ${identityKey} value in the same list.`,
+      }];
+    });
+  });
+}
+
+function inferIdentityItemKey(field: TemplateFieldForGeneration): string | undefined {
+  const items = field.itemSchema ?? [];
+  return items.find((item) => /^id$/i.test(item.path))?.path
+    ?? items.find((item) => /(^|_|\.)id$/i.test(item.path) && item.valueType === 'string')?.path
+    ?? items.find((item) => item.valueType === 'string')?.path;
+}
+
+function inferRelationshipKindFromItemPath(path: string): 'sequence' | 'branch' | undefined {
+  if (/prev|previous|back|backward/i.test(path)) return 'sequence';
+  if (/next|forward/i.test(path)) return 'sequence';
+  if (/^(yes|no)$/i.test(path) || /branch|choice/i.test(path)) return 'branch';
+  return undefined;
+}
+
+function normalizeGeneratedRelationshipRows(
+  rows: unknown[],
+  hints: Array<{ kind?: string; from: string; to: string; meaning?: string }>,
+): unknown[] {
+  if (rows.length <= 1) return rows;
+  const parsedHints = hints.flatMap((hint) => {
+    const from = parseArrayItemPath(hint.from);
+    const to = parseArrayItemPath(hint.to);
+    return from && to ? [{ ...hint, from, to }] : [];
+  });
+  const identityKey = parsedHints.find((hint) => hint.to.itemPath)?.to.itemPath;
+  if (!identityKey) return rows;
+
+  const nextRows = rows.map((row) => (
+    row && typeof row === 'object' && !Array.isArray(row) ? { ...row as Record<string, unknown> } : row
+  ));
+  const idToIndex = new Map<string, number>();
+  nextRows.forEach((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
+    const id = (row as Record<string, unknown>)[identityKey];
+    if (id !== undefined && id !== null && id !== '') idToIndex.set(String(id), index);
+  });
+
+  for (const hint of parsedHints) {
+    if (isReverseRelationshipHint(hint) || !isSequenceForwardRelationshipHint(hint)) continue;
+    const reverseHint = parsedHints.find((candidate) => (
+      candidate !== hint
+      && candidate.to.itemPath === hint.to.itemPath
+      && isReverseRelationshipHint(candidate)
+    ));
+    if (!reverseHint) continue;
+
+    nextRows.forEach((row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return;
+      const sourceId = (row as Record<string, unknown>)[identityKey];
+      const targetId = (row as Record<string, unknown>)[hint.from.itemPath];
+      if (sourceId === undefined || sourceId === null || sourceId === '' || targetId === undefined || targetId === null || targetId === '') return;
+      const targetIndex = idToIndex.get(String(targetId));
+      const targetRow = targetIndex === undefined ? undefined : nextRows[targetIndex];
+      if (!targetRow || typeof targetRow !== 'object' || Array.isArray(targetRow)) return;
+      const targetRecord = targetRow as Record<string, unknown>;
+      if (targetRecord[reverseHint.from.itemPath] === undefined || targetRecord[reverseHint.from.itemPath] === '') {
+        targetRecord[reverseHint.from.itemPath] = String(sourceId);
+      }
+    });
+  }
+
+  const connectedIds = new Set<string>();
+  for (const row of nextRows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const sourceId = (row as Record<string, unknown>)[identityKey];
+    if (sourceId === undefined || sourceId === null || sourceId === '') continue;
+    for (const hint of parsedHints) {
+      const targetId = (row as Record<string, unknown>)[hint.from.itemPath];
+      if (targetId === undefined || targetId === null || targetId === '' || !idToIndex.has(String(targetId))) continue;
+      connectedIds.add(String(sourceId));
+      connectedIds.add(String(targetId));
+    }
+  }
+
+  if (!connectedIds.size) return nextRows;
+  return nextRows.filter((row, index) => {
+    if (index === 0) return true;
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+    const id = (row as Record<string, unknown>)[identityKey];
+    return id !== undefined && id !== null && connectedIds.has(String(id));
+  });
+}
+
+function isReverseRelationshipHint(hint: { from: { itemPath: string }; meaning?: string }): boolean {
+  return /prev|previous|back|backward|reverse/i.test(`${hint.from.itemPath} ${hint.meaning ?? ''}`);
+}
+
+function isSequenceForwardRelationshipHint(hint: { kind?: string; from: { itemPath: string }; meaning?: string }): boolean {
+  if (hint.kind === 'branch') return false;
+  return /next|forward/i.test(`${hint.from.itemPath} ${hint.meaning ?? ''}`);
+}
+
+function parseArrayItemPath(path: string): { arrayPath: string; itemPath: string } | null {
+  const marker = '[].';
+  const index = path.indexOf(marker);
+  if (index === -1) return null;
+  const arrayPath = path.slice(0, index);
+  const itemPath = path.slice(index + marker.length);
+  if (!arrayPath || !itemPath || itemPath.includes('[].')) return null;
+  return { arrayPath, itemPath };
 }
 
 // ---------------------------------------------------------------------------
@@ -264,11 +698,15 @@ ${rewardFields}
 Dialog-related fields detected:
 ${dialogFields}
 
+Template semantic hints and relationships:
+${JSON.stringify(compactGenerationContract(contract), null, 2)}
+
 Your task is to infer gameplay requirements, reward categories, and optional dialog intent that fit this template. The saved schema is the source of truth: do not force a fixed number of objectives or rewards.
 
 Rules:
 - Prefer general gameplay categories, not overly specific prose.
 - Use the detected template schema roles to decide which requirement, reward, and dialog categories make sense.
+- Use fieldHints, relationshipHints, generationHints, and userExamples as the interpretation layer for what fields mean.
 - Do not copy IDs, amounts, concrete item names, monster names, or placeholder values from the template into generated titles.
 - Do not assume the template has combat, collection, item reward, currency reward, experience reward, or dialog fields unless those roles are present above.
 - Reward IDs and item IDs are filled manually later, so do not invent final IDs.${referenceBlock ? `
@@ -547,6 +985,7 @@ function buildGraphPrompt(
   promptSuffix: string,
   themeContext: string,
   referenceBlock: string,
+  template?: TemplateContext,
 ): string {
   const objectiveList = objectives.map((o, i) => `  ${i + 1}. ${o.title} — ${o.description}`).join('\n');
   const rewardList    = rewards.map((r) => `  - id="${r.id}" title="${r.title}"`).join('\n');
@@ -569,7 +1008,7 @@ ${rewardList}
 ${hasCharacters ? `
 Characters in this story (use their exact IDs when assigning to nodes):
 ${characterList}
-` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}
+` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}${buildTemplateGraphGuidance(template)}
 ━━━ WHAT A NODE IS ━━━
 A node is a single SCENE in the story — one moment, one location, one decision point.
 Think of it like a chapter in a book or a room in a dungeon.
@@ -584,6 +1023,7 @@ Each node has a variant that describes the TYPE of scene:
 - Every combat node SHOULD involve the monster characters. Put their IDs in "monsterIds".
 - The final resolution node MUST have the reward IDs in "rewardIds". Mid-quest treasure nodes may also have reward IDs.
 - Use ONLY IDs from the lists above. Leave arrays empty ([]) if none apply.
+- If a selected export template was provided, each node may include "templateValues" keyed by exact template field path.
 
 ━━━ WHAT BRANCHING MEANS ━━━
 Branching means the STORY SPLITS. One scene ends and the player chooses (or the story diverges into) two DIFFERENT continuations.
@@ -617,9 +1057,9 @@ Return ONLY valid JSON — no markdown, no explanation, no code fences:
 {
   "title": "3–6 word quest title",
   "nodes": [
-    { "id": "1", "type": "questNode", "variant": "story",    "title": "short action title", "body": "2-3 sentences describing the scene, what the player does, and what is at stake.", "npcIds": ["char-1"], "monsterIds": [], "rewardIds": [] },
-    { "id": "2", "type": "questNode", "variant": "dialogue", "title": "short action title", "body": "2-3 sentences.", "npcIds": ["char-2"], "monsterIds": [], "rewardIds": [] },
-    { "id": "3", "type": "questNode", "variant": "combat",   "title": "short action title", "body": "2-3 sentences.", "npcIds": [], "monsterIds": ["char-3"], "rewardIds": [] }
+    { "id": "1", "type": "questNode", "variant": "story",    "title": "short action title", "body": "2-3 sentences describing the scene, what the player does, and what is at stake.", "npcIds": ["char-1"], "monsterIds": [], "rewardIds": [], "templateValues": {} },
+    { "id": "2", "type": "questNode", "variant": "dialogue", "title": "short action title", "body": "2-3 sentences.", "npcIds": ["char-2"], "monsterIds": [], "rewardIds": [], "templateValues": {} },
+    { "id": "3", "type": "questNode", "variant": "combat",   "title": "short action title", "body": "2-3 sentences.", "npcIds": [], "monsterIds": ["char-3"], "rewardIds": [], "templateValues": {} }
   ],
   "edges": [
     { "id": "e1-2", "source": "1", "target": "2" },
@@ -718,10 +1158,21 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     }
 
     // 2. Ask the model to generate the graph
-    const json = await complete(buildGraphPrompt(story, genre, objectives, rewards ?? [], characters ?? [], promptSuffix, themeContext, reference.referenceBlock));
+    const templateContext = templateContextFromDoc(templateDoc);
+    const json = await complete(buildGraphPrompt(
+      story,
+      genre,
+      objectives,
+      rewards ?? [],
+      characters ?? [],
+      promptSuffix,
+      themeContext,
+      reference.referenceBlock,
+      templateContext,
+    ));
     const generated = JSON.parse(json) as {
       title: string;
-      nodes: { id: string; type: string; variant: string; title: string; body: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[] }[];
+      nodes: { id: string; type: string; variant: string; title: string; body: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; templateValues?: GeneratedTemplateValues }[];
       edges: { id: string; source: string; target: string }[];
     };
 

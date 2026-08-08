@@ -60,6 +60,19 @@ export interface TemplateSchema {
     rewardRoles: string[];
     dialogRoles: string[];
     promptSummary: string;
+    fieldHints: Array<{
+      path: string;
+      meaning: string;
+      generationUse: string;
+    }>;
+    relationshipHints: Array<{
+      kind: 'reference' | 'branch' | 'sequence' | 'state' | 'other';
+      from: string;
+      to: string;
+      meaning: string;
+    }>;
+    generationHints: string[];
+    userExamples: string[];
   };
   exportBindings: Array<{
     path: string;
@@ -134,23 +147,35 @@ function toFriendlyLabel(path: string): string {
 
 function inferRole(path: string): GameplayRole {
   const normalized = path.toLowerCase();
+  if (/^id$|(^|\.)questid$|(^|\.)quest_id$/.test(normalized)) return 'questId';
+  if (/^name$|(^|\.)title$/.test(normalized)) return 'questName';
   if (
     /dialog|dialogue|conversation/.test(normalized)
     || /(^|\.)(start|inprogress|in_progress|progress|complete)\.pages($|\.)/.test(normalized)
     || /(^|\.)pages($|\.)/.test(normalized)
   ) return 'questDialog';
-  if (/quest.*id|questid|^id$/.test(normalized)) return 'questId';
+  if (/^requirements\.|(^|\.)requirements($|\.)/.test(normalized)) {
+    if (/ongoing.*quest|ongoingquest/.test(normalized)) return 'ongoingQuestRequirement';
+    if (/completed.*quest|completedquest|pre.*quest|prereq|require.*quest/.test(normalized)) return 'completedQuestRequirement';
+    if (/kill|monster|mob|defeat|combat|damage|hit/.test(normalized)) return 'combatRequirement';
+    if (/collect|items?($|\.)|quantity|drop|reactor|fieldenter|npc|job|level|lvmin|lvmax|date|start|end|pet|book|meso|money|buff|interval/.test(normalized)) return 'requirement';
+  }
   if (/ongoing.*quest|ongoingquest/.test(normalized)) return 'ongoingQuestRequirement';
   if (/completed.*quest|completedquest|pre.*quest|prereq|require.*quest/.test(normalized)) return 'completedQuestRequirement';
   if (/daily|repeat|silent|flag/.test(normalized)) return 'questFlag';
+  if (/^rewards\.|(^|\.)rewards($|\.)/.test(normalized)) {
+    if (/item|gainitem|loseitem|pet|book|card/.test(normalized)) return 'itemReward';
+    if (/meso|money|currency|coin|gold|ap|sp/.test(normalized)) return 'currencyReward';
+    if (/(^|\.)exp$|experience/.test(normalized)) return 'experienceReward';
+    return 'reward';
+  }
   if (/reward.*item|items?\[\]|itemreward/.test(normalized)) return 'itemReward';
-  if (/meso|money|currency|coin|gold/.test(normalized)) return 'currencyReward';
-  if (/(^|\.)exp$|experience/.test(normalized)) return 'experienceReward';
+  if (/reward.*(meso|money|currency|coin|gold)/.test(normalized)) return 'currencyReward';
+  if (/reward.*exp|experience.*reward/.test(normalized)) return 'experienceReward';
   if (/reward/.test(normalized)) return 'reward';
   if (/kill|monster|mob|defeat|combat/.test(normalized)) return 'combatRequirement';
   if (/collect|item|quantity|drop|reactor/.test(normalized)) return 'collectionRequirement';
   if (/requirement|objective|task/.test(normalized)) return 'requirement';
-  if (/name|title/.test(normalized)) return 'questName';
   return 'other';
 }
 
@@ -230,6 +255,31 @@ function makeField(path: string, kind: TemplateFieldKind, value?: unknown, itemS
   };
 }
 
+function inferArrayItemSchema(value: unknown[]): TemplateFieldSummary['itemSchema'] {
+  const fieldsByPath = new Map<string, {
+    path: string;
+    label: string;
+    valueType: 'string' | 'number' | 'boolean';
+    required: boolean;
+  }>();
+
+  for (const item of value) {
+    if (!isPlainObject(item)) continue;
+    for (const [itemKey, itemValue] of Object.entries(item)) {
+      const valueType = toScalarValueType(getKind(itemValue));
+      if (!valueType || fieldsByPath.has(itemKey)) continue;
+      fieldsByPath.set(itemKey, {
+        path: itemKey,
+        label: toFriendlyLabel(itemKey),
+        valueType,
+        required: false,
+      });
+    }
+  }
+
+  return fieldsByPath.size ? [...fieldsByPath.values()] : undefined;
+}
+
 function walkFields(value: unknown, prefix = ''): TemplateFieldSummary[] {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return prefix ? [makeField(prefix, getKind(value), value)] : [];
@@ -239,17 +289,7 @@ function walkFields(value: unknown, prefix = ''): TemplateFieldSummary[] {
   return Object.entries(objectValue).flatMap(([key, child]) => {
     const path = prefix ? `${prefix}.${key}` : key;
     const kind = getKind(child);
-    const itemSchema = Array.isArray(child) && child[0] && typeof child[0] === 'object'
-      ? Object.entries(child[0] as Record<string, unknown>).flatMap(([itemKey, itemValue]) => {
-        const valueType = toScalarValueType(getKind(itemValue));
-        return valueType ? [{
-          path: itemKey,
-          label: toFriendlyLabel(itemKey),
-          valueType,
-          required: false,
-        }] : [];
-      })
-      : undefined;
+    const itemSchema = Array.isArray(child) ? inferArrayItemSchema(child) : undefined;
     const current = makeField(path, kind, child, itemSchema);
     if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
       return [current, ...walkFields(child, path)];
@@ -336,19 +376,27 @@ function xmlAstToStructure(element: TemplateAstElement): unknown {
 }
 
 function inferXmlItemSchema(children: TemplateAstElement[]): TemplateFieldSummary['itemSchema'] {
-  const sample = children.find((child) => /^\d+$/.test(child.attrs.name ?? ''));
-  if (!sample) return undefined;
-  return sample.children
-    .filter((child): child is TemplateAstElement => child.type === 'element' && child.attrs.name !== undefined && 'value' in child.attrs)
-    .flatMap((child) => {
+  const fieldsByPath = new Map<string, {
+    path: string;
+    label: string;
+    valueType: 'string' | 'number' | 'boolean';
+    required: boolean;
+  }>();
+  const samples = children.filter((child) => /^\d+$/.test(child.attrs.name ?? ''));
+  for (const sample of samples) {
+    for (const child of sample.children) {
+      if (child.type !== 'element' || child.attrs.name === undefined || !('value' in child.attrs)) continue;
       const valueType = toScalarValueType(getKind(xmlScalarValue(child)));
-      return valueType ? [{
+      if (!valueType || fieldsByPath.has(child.attrs.name)) continue;
+      fieldsByPath.set(child.attrs.name, {
         path: child.attrs.name,
         label: toFriendlyLabel(child.attrs.name),
         valueType,
         required: false,
-      }] : [];
-    });
+      });
+    }
+  }
+  return fieldsByPath.size ? [...fieldsByPath.values()] : undefined;
 }
 
 function walkXmlFields(element: TemplateAstElement, parentPath = '', isRoot = true): TemplateFieldSummary[] {
@@ -389,10 +437,11 @@ function walkXmlFields(element: TemplateAstElement, parentPath = '', isRoot = tr
 }
 
 function buildSchema(fields: TemplateFieldSummary[]): TemplateSchema {
-  const requirementFields = fields.filter((field) => field.gameplayRole.includes('Requirement')).map((field) => field.path);
-  const rewardFields = fields.filter((field) => field.gameplayRole.includes('Reward') || field.gameplayRole === 'reward').map((field) => field.path);
-  const dialogFields = fields.filter((field) => field.gameplayRole === 'questDialog').map((field) => field.path);
-  const structureSummary = fields.map((field) => `${field.label} (${field.path}, ${field.gameplayRole})`).join(', ');
+  const summaryFields = fields.filter((field) => field.kind !== 'object' || field.shape === 'conditionGroup');
+  const requirementFields = summaryFields.filter((field) => field.gameplayRole.includes('Requirement') || field.gameplayRole === 'requirement').map((field) => field.path);
+  const rewardFields = summaryFields.filter((field) => field.gameplayRole.includes('Reward') || field.gameplayRole === 'reward').map((field) => field.path);
+  const dialogFields = summaryFields.filter((field) => field.gameplayRole === 'questDialog').map((field) => field.path);
+  const structureSummary = summaryFields.map((field) => `${field.label} (${field.path}, ${field.gameplayRole})`).join(', ');
 
   return {
     version: 1,
@@ -403,6 +452,10 @@ function buildSchema(fields: TemplateFieldSummary[]): TemplateSchema {
       rewardRoles: rewardFields,
       dialogRoles: dialogFields,
       promptSummary: structureSummary,
+      fieldHints: [],
+      relationshipHints: [],
+      generationHints: [],
+      userExamples: [],
     },
     exportBindings: fields.map((field) => ({
       path: field.path,
@@ -415,6 +468,29 @@ function buildSchema(fields: TemplateFieldSummary[]): TemplateSchema {
         : 'node.templateValues',
     })),
   };
+}
+
+function mergeItemSchemas(fields: TemplateFieldSummary[]): TemplateFieldSummary[] {
+  const dialogPageFields = fields.filter((field) => field.control === 'dialogFlow' && field.kind === 'array');
+  const mergedDialogPageSchema = mergeItemSchemaEntries(dialogPageFields.flatMap((field) => field.itemSchema ?? []));
+
+  if (!mergedDialogPageSchema.length) return fields;
+
+  return fields.map((field) => {
+    if (field.control !== 'dialogFlow' || field.kind !== 'array') return field;
+    return {
+      ...field,
+      itemSchema: mergeItemSchemaEntries([...(field.itemSchema ?? []), ...mergedDialogPageSchema]),
+    };
+  });
+}
+
+function mergeItemSchemaEntries(entries: NonNullable<TemplateFieldSummary['itemSchema']>): NonNullable<TemplateFieldSummary['itemSchema']> {
+  const byPath = new Map<string, NonNullable<TemplateFieldSummary['itemSchema']>[number]>();
+  for (const entry of entries) {
+    if (!byPath.has(entry.path)) byPath.set(entry.path, entry);
+  }
+  return [...byPath.values()];
 }
 
 export function detectTemplateFormat(raw: string, explicit?: TemplateFormat): TemplateFormat {
@@ -442,16 +518,14 @@ export function parseTemplate(raw: string, explicitFormat?: TemplateFormat): Par
     structure = xmlAstToStructure(templateAst);
     fieldSchema = walkXmlFields(templateAst);
   }
+  fieldSchema = mergeItemSchemas(fieldSchema);
 
   if (structure === null || typeof structure !== 'object') {
     throw new Error('Template must describe an object');
   }
 
   const templateSchema = buildSchema(fieldSchema);
-  const requirementFields = fieldSchema.filter((field) => field.gameplayRole.includes('Requirement')).map((field) => field.path);
-  const rewardFields = fieldSchema.filter((field) => field.gameplayRole.includes('Reward') || field.gameplayRole === 'reward').map((field) => field.path);
-  const dialogFields = fieldSchema.filter((field) => field.gameplayRole === 'questDialog').map((field) => field.path);
-  const structureSummary = templateSchema.summary;
+  const { requirementRoles: requirementFields, rewardRoles: rewardFields, dialogRoles: dialogFields, promptSummary: structureSummary } = templateSchema.generationContract;
 
   return {
     format,

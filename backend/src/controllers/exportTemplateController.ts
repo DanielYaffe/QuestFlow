@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import ExportTemplateModel, { seedBuiltInExportTemplates } from '../models/exportTemplateModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
-import { parseTemplate, TemplateFormat } from '../services/exportTemplates/templateParser';
+import { parseTemplate, TemplateFormat, TemplateSchema } from '../services/exportTemplates/templateParser';
 import { analyzeTemplate } from '../services/exportTemplates/templateAnalysisService';
 
 const MIME_BY_FORMAT: Record<TemplateFormat, string> = {
@@ -18,6 +18,13 @@ const EXT_BY_FORMAT: Record<TemplateFormat, string> = {
 
 function normalizeFormat(raw: unknown): TemplateFormat | undefined {
   return raw === 'json' || raw === 'yaml' || raw === 'xml' ? raw : undefined;
+}
+
+function normalizeHintContext(raw: unknown): { generationContract?: Partial<TemplateSchema['generationContract']> } | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const contract = (raw as { generationContract?: unknown }).generationContract;
+  if (!contract || typeof contract !== 'object') return undefined;
+  return { generationContract: contract as Partial<TemplateSchema['generationContract']> };
 }
 
 function toDto(template: any) {
@@ -66,12 +73,14 @@ export async function createExportTemplate(req: AuthRequest, res: Response): Pro
     rawTemplate,
     inputFormat,
     defaultOutputFormat,
+    templateSchema,
   } = req.body as {
     name?: string;
     description?: string;
     rawTemplate?: string;
     inputFormat?: TemplateFormat;
     defaultOutputFormat?: TemplateFormat;
+    templateSchema?: unknown;
   };
 
   if (!userId) {
@@ -87,7 +96,7 @@ export async function createExportTemplate(req: AuthRequest, res: Response): Pro
   try {
     const parsed = parseTemplate(rawTemplate, normalizeFormat(inputFormat));
     const outputFormat = normalizeFormat(defaultOutputFormat) ?? parsed.format;
-    const analysis = await analyzeTemplate(name.trim(), parsed);
+    const analysis = await analyzeTemplate(name.trim(), parsed, { existingSchema: normalizeHintContext(templateSchema) });
     const template = await ExportTemplateModel.create({
       ownerId: userId,
       name: name.trim(),
@@ -133,7 +142,12 @@ export async function updateExportTemplate(req: AuthRequest, res: Response): Pro
     const parsed = parseTemplate(rawTemplate, normalizeFormat(req.body.inputFormat) ?? template.acceptedInputFormat);
     const outputFormat = normalizeFormat(req.body.defaultOutputFormat) ?? template.defaultOutputFormat;
     const nextName = typeof req.body.name === 'string' ? req.body.name.trim() : template.name;
-    const analysis = await analyzeTemplate(nextName, parsed);
+    const existingSchema = normalizeHintContext(req.body.templateSchema)
+      ?? normalizeHintContext(template.templateSchema);
+    const analysis = await analyzeTemplate(nextName, parsed, {
+      existingSchema,
+      skipAi: req.body.skipAnalysis === true,
+    });
 
     template.name = nextName;
     template.description = typeof req.body.description === 'string' ? req.body.description.trim() : template.description;
@@ -175,7 +189,9 @@ export async function analyzeExportTemplate(req: AuthRequest, res: Response): Pr
     }
 
     const parsed = parseTemplate(template.rawTemplate, template.acceptedInputFormat);
-    const analysis = await analyzeTemplate(template.name, parsed, { forceAi: true });
+    const existingSchema = normalizeHintContext(req.body.templateSchema)
+      ?? normalizeHintContext(template.templateSchema);
+    const analysis = await analyzeTemplate(template.name, parsed, { forceAi: true, existingSchema });
     template.structure = parsed.structure;
     template.templateAst = parsed.templateAst;
     template.fieldSchema = parsed.fieldSchema;
