@@ -39,7 +39,10 @@ const envSchema = z.object({
                 .map((e) => e.trim().toLowerCase())
                 .filter((e) => e.length > 0),
         ),
-    ENCRYPTION_KEY: z.string().length(64).default('0'.repeat(64)),
+    ENCRYPTION_KEY: z
+        .string()
+        .regex(/^[0-9a-fA-F]{64}$/, 'ENCRYPTION_KEY must be a 64-character hex string')
+        .default('0'.repeat(64)),
     // --- AI generation (provider-swappable via OpenAI-compatible endpoints) ---
     AI_PROVIDER: z.enum(['gemini', 'openai', 'anthropic', 'groq', 'ollama']).default('gemini'),
     GEN_MODEL: z.string().default('gemini-2.5-flash-lite'),

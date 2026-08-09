@@ -22,6 +22,7 @@ import { ConfirmModal } from '../../components/shared/ConfirmModal';
 import { CHECKER_STYLE } from '../../utils/spriteStyles';
 import { downloadUrl, fileSlug } from '../../utils/download';
 import { GenerateSpriteDialog, PublishDialog, SpritePickerDialog } from './StudioDialogs';
+import { MapleAssetPanel } from './MapleAssetPanel';
 
 // ---------------------------------------------------------------------------
 // Item design sheet — sprite + identity + publish-to-KB for a studio Item.
@@ -426,6 +427,16 @@ export function ItemSheet() {
               </div>
             </div>
           </Section>
+
+          <MapleAssetPanel
+            assetType="item"
+            projectId={item.projectId}
+            recordId={item._id}
+            value={item.maple}
+            onSave={async (maple) => {
+              applyItem(await updateItem(item._id, { maple }));
+            }}
+          />
         </div>
       </main>
     </div>

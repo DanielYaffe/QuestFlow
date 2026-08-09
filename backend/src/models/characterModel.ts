@@ -32,6 +32,16 @@ export interface ICharacterAssets {
   targetSizeOverride?: number;     // overrides style.targetSize when snapping
 }
 
+export interface IMapleAssetMetadata {
+  mapleId: number;
+  exportEnabled: boolean;
+  operation: 'create' | 'patch';
+  nativePath: string;
+  lastExportHash: string;
+  validationWarnings: string[];
+  validationErrors: string[];
+}
+
 export interface ICharacterSpeciesData {
   species_name: string;
   type1: string;
@@ -70,6 +80,7 @@ export interface ICharacter extends Document {
   // Monster-only
   speciesData: ICharacterSpeciesData;
   assets: ICharacterAssets;
+  maple: IMapleAssetMetadata;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -114,6 +125,19 @@ const SpeciesDataSchema = new Schema<ICharacterSpeciesData>(
     base_max_ap:         { type: Number, default: 0 },
     move_tags:           { type: [String], default: [] },
     bestiary_bio:        { type: String, default: '' },
+  },
+  { _id: false },
+);
+
+const MapleAssetMetadataSchema = new Schema<IMapleAssetMetadata>(
+  {
+    mapleId:            { type: Number, default: 0, index: true },
+    exportEnabled:      { type: Boolean, default: false },
+    operation:          { type: String, enum: ['create', 'patch'], default: 'create' },
+    nativePath:         { type: String, default: '' },
+    lastExportHash:     { type: String, default: '' },
+    validationWarnings: { type: [String], default: [] },
+    validationErrors:   { type: [String], default: [] },
   },
   { _id: false },
 );
@@ -173,6 +197,7 @@ const CharacterSchema = new Schema<ICharacter>(
     dialogueTraits: { type: [String], default: [] },
     speciesData:    { type: SpeciesDataSchema, default: () => ({}) },
     assets:         { type: AssetsSchema, default: () => ({}) },
+    maple:          { type: MapleAssetMetadataSchema, default: () => ({}) },
   },
   { timestamps: true },
 );

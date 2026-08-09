@@ -1,4 +1,5 @@
 import api from './axiosInstance';
+import { MapleProjectSettings } from './mapleAssetApi';
 
 export interface ProjectGitSettings {
   repoOwner?: string;
@@ -24,6 +25,7 @@ export interface Project {
   spriteCount?: number;
   characterCount?: number;
   git?: ProjectGitSettings;
+  mapleSettings?: MapleProjectSettings;
   createdAt: string;
   updatedAt: string;
 }
@@ -64,7 +66,7 @@ export async function createProject(
 
 export async function updateProject(
   id: string,
-  patch: Partial<Pick<Project, 'name' | 'description' | 'defaultThemeId' | 'defaultExportFormat' | 'gameId' | 'git'>>,
+  patch: Partial<Pick<Project, 'name' | 'description' | 'defaultThemeId' | 'defaultExportFormat' | 'gameId' | 'git' | 'mapleSettings'>>,
 ): Promise<Project> {
   const { data } = await api.put<Project>(`/projects/${id}`, patch);
   return data;

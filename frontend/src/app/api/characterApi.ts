@@ -1,4 +1,5 @@
 import api from './axiosInstance';
+import { MapleAssetMetadata } from './mapleAssetApi';
 
 export type CharacterKind = 'npc' | 'monster';
 
@@ -54,6 +55,7 @@ export interface CharacterRecord {
   kbRef?: string;
   // KB document id when published from the design studio.
   kbDocId?: string;
+  maple?: MapleAssetMetadata;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,6 +70,7 @@ export interface CreateCharacterInput {
   portraitUrl?: string;
   dialogueTraits?: string[];
   assets?: Partial<CharacterAssets>;
+  maple?: Partial<MapleAssetMetadata>;
 }
 
 export async function listCharacters(params?: {

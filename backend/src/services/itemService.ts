@@ -50,6 +50,7 @@ export async function createItem(input: {
   description?: string;
   rarity?: ItemRarity;
   tags?: string[];
+  maple?: IItem['maple'];
 }): Promise<IItem> {
   return ItemModel.create({
     ownerId: input.ownerId,
@@ -58,6 +59,7 @@ export async function createItem(input: {
     description: input.description ?? '',
     rarity: input.rarity ?? 'common',
     tags: input.tags ?? [],
+    ...(input.maple ? { maple: input.maple } : {}),
   });
 }
 
@@ -70,6 +72,7 @@ export async function updateItem(
     rarity?: ItemRarity;
     tags?: string[];
     assets?: IItem['assets'];
+    maple?: IItem['maple'];
   },
 ): Promise<IItem> {
   const item = await findOwnedItem(ownerId, itemId);
@@ -80,6 +83,10 @@ export async function updateItem(
   if (patch.assets !== undefined) {
     item.assets = patch.assets;
     item.markModified('assets');
+  }
+  if (patch.maple !== undefined) {
+    item.maple = { ...item.maple, ...patch.maple };
+    item.markModified('maple');
   }
   await item.save();
   return item;

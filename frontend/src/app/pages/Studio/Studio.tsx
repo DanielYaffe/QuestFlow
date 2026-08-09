@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Gem, Loader2, Palette, Plus, Skull, Users } from 'lucide-react';
+import { Download, Gem, Loader2, Palette, Plus, Skull, UploadCloud, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { CharacterKind, CharacterRecord, createCharacter, listCharacters } from '../../api/characterApi';
 import { ItemRecord, createItem, listItems } from '../../api/itemApi';
+import { buildMapleAssetPackage, MapleExportMode, pushMapleAssetPackage } from '../../api/mapleAssetApi';
 import { useProject } from '../../context/ProjectContext';
 import { GroundedBadge } from '../../components/shared/GroundedBadge';
 import { CHECKER_SM } from '../../utils/spriteStyles';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { downloadBlob, fileSlug } from '../../utils/download';
 
 // ---------------------------------------------------------------------------
 // Design studio — the visual identity workshop. Mobs and characters come from
@@ -16,6 +18,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../componen
 // ---------------------------------------------------------------------------
 
 type StudioTab = CharacterKind | 'item';
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (typeof err === 'object' && err !== null && 'response' in err) {
+    const response = (err as { response?: { data?: { error?: unknown } } }).response;
+    if (typeof response?.data?.error === 'string') return response.data.error;
+  }
+  return fallback;
+}
 
 const TAB_META: Record<StudioTab, { label: string; singular: string; icon: React.ElementType }> = {
   monster: { label: 'Mobs',       singular: 'Mob',       icon: Skull },
@@ -143,6 +153,8 @@ export function Studio() {
   const [cards, setCards] = useState<DesignCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [exporting, setExporting] = useState<MapleExportMode | null>(null);
+  const [pushing, setPushing] = useState<MapleExportMode | null>(null);
 
   const refresh = useCallback(async () => {
     if (!activeProjectId) return;
@@ -181,6 +193,44 @@ export function Studio() {
   const meta = TAB_META[tab];
   const TabIcon = meta.icon;
 
+  const handleMapleExport = async (mode: MapleExportMode) => {
+    if (!activeProjectId || exporting) return;
+    setExporting(mode);
+    try {
+      const pkg = await buildMapleAssetPackage(activeProjectId, { mode });
+      const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+      downloadBlob(blob, `${fileSlug(pkg.manifest.projectName, 'project')}-maple-build.json`);
+      const errorCount = pkg.manifest.errors.length;
+      if (errorCount > 0) {
+        toast.error(`Maple package downloaded with ${errorCount} validation issue${errorCount === 1 ? '' : 's'}`);
+      } else {
+        toast.success(`Maple package downloaded (${pkg.manifest.assets.length} assets)`);
+      }
+    } catch {
+      toast.error('Failed to build Maple package');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleMaplePush = async (mode: MapleExportMode) => {
+    if (!activeProjectId || pushing) return;
+    setPushing(mode);
+    try {
+      const result = await pushMapleAssetPackage(activeProjectId, { mode });
+      const errorCount = result.manifest.errors.length;
+      if (errorCount > 0) {
+        toast.error(`Pushed with ${errorCount} validation issue${errorCount === 1 ? '' : 's'}`);
+      } else {
+        toast.success(`Pushed ${result.manifest.assets.length} Maple asset${result.manifest.assets.length === 1 ? '' : 's'} to GitHub`);
+      }
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to push Maple package'));
+    } finally {
+      setPushing(null);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-steel-950">
       <NewDesignDialog tab={tab} isOpen={createOpen} onClose={() => setCreateOpen(false)} />
@@ -204,6 +254,53 @@ export function Studio() {
             New {meta.singular}
           </button>
         </div>
+
+        <section className="bg-steel-850 border border-steel-700 rounded-md p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="min-w-0">
+            <h2 className="text-steel-100 text-sm font-semibold">Maple build package</h2>
+            <p className="text-steel-400 text-xs mt-1">
+              Exports enabled NPCs and ETC items as a deterministic handoff package for the external v83 builder/deployer.
+            </p>
+          </div>
+          <div className="sm:ml-auto flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleMapleExport('changed-only')}
+              disabled={!activeProjectId || exporting !== null}
+              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
+            >
+              {exporting === 'changed-only' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 text-pulse" />}
+              Changed only
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleMapleExport('full-snapshot')}
+              disabled={!activeProjectId || exporting !== null}
+              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
+            >
+              {exporting === 'full-snapshot' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 text-pulse" />}
+              Full snapshot
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleMaplePush('changed-only')}
+              disabled={!activeProjectId || pushing !== null}
+              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
+            >
+              {pushing === 'changed-only' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5 text-pulse" />}
+              Push changed
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleMaplePush('full-snapshot')}
+              disabled={!activeProjectId || pushing !== null}
+              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
+            >
+              {pushing === 'full-snapshot' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5 text-pulse" />}
+              Push snapshot
+            </button>
+          </div>
+        </section>
 
         {/* Tabs */}
         <div className="flex gap-1 bg-steel-900 border border-steel-700 rounded-md p-1 self-start">

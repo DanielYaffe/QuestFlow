@@ -14,6 +14,18 @@ export interface IProjectGitSettings {
   defaultFilePath?: string;
 }
 
+export interface IMapleIdRange {
+  min: number;
+  max: number;
+}
+
+export interface IProjectMapleSettings {
+  targetVersion: 'v83';
+  defaultExportMode: 'changed-only' | 'full-snapshot';
+  npcIdRanges: IMapleIdRange[];
+  itemIdRanges: IMapleIdRange[];
+}
+
 export interface IProject extends Document {
   _id: mongoose.Types.ObjectId;
   ownerId: string;
@@ -28,6 +40,7 @@ export interface IProject extends Document {
   // Optional GitHub repository this project's questlines export to. The auth
   // token stays shared at the user level.
   git?: IProjectGitSettings;
+  mapleSettings: IProjectMapleSettings;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,6 +98,24 @@ const ProjectGitSettingsSchema = new Schema<IProjectGitSettings>(
   { _id: false },
 );
 
+const MapleIdRangeSchema = new Schema<IMapleIdRange>(
+  {
+    min: { type: Number, required: true },
+    max: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
+const ProjectMapleSettingsSchema = new Schema<IProjectMapleSettings>(
+  {
+    targetVersion:      { type: String, enum: ['v83'], default: 'v83' },
+    defaultExportMode:  { type: String, enum: ['changed-only', 'full-snapshot'], default: 'changed-only' },
+    npcIdRanges:        { type: [MapleIdRangeSchema], default: [] },
+    itemIdRanges:       { type: [MapleIdRangeSchema], default: [] },
+  },
+  { _id: false },
+);
+
 const ProjectSchema = new Schema<IProject>(
   {
     ownerId:             { type: String, required: true, index: true },
@@ -95,6 +126,7 @@ const ProjectSchema = new Schema<IProject>(
     gameId:              { type: String, default: '' },
     isInbox:             { type: Boolean, default: false },
     git:                 { type: ProjectGitSettingsSchema, default: undefined },
+    mapleSettings:       { type: ProjectMapleSettingsSchema, default: () => ({}) },
   },
   { timestamps: true },
 );

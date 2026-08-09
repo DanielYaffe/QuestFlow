@@ -1,5 +1,6 @@
 import api from './axiosInstance';
 import { SpriteTool } from './characterApi';
+import { MapleAssetMetadata } from './mapleAssetApi';
 
 // Studio item designs (dedicated Item collection). Questline "rewards" are
 // references to these docs (questline.itemIds + node.rewardIds), the same way
@@ -23,6 +24,7 @@ export interface ItemRecord {
   kbRef: string;
   kbDocId: string;
   assets: ItemAssets;
+  maple?: MapleAssetMetadata;
   previewUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -55,6 +57,7 @@ export async function createItem(input: {
   description?: string;
   rarity?: ItemRarity;
   tags?: string[];
+  maple?: Partial<MapleAssetMetadata>;
 }): Promise<ItemRecord> {
   const { data } = await api.post<ItemRecord>('/items', input);
   return data;
@@ -62,7 +65,7 @@ export async function createItem(input: {
 
 export async function updateItem(
   id: string,
-  patch: Partial<Pick<ItemRecord, 'name' | 'description' | 'rarity' | 'tags' | 'assets'>>,
+  patch: Partial<Pick<ItemRecord, 'name' | 'description' | 'rarity' | 'tags' | 'assets' | 'maple'>>,
 ): Promise<ItemRecord> {
   const { data } = await api.put<ItemRecord>(`/items/${id}`, patch);
   return data;

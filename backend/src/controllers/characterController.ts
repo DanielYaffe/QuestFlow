@@ -159,6 +159,7 @@ class CharacterController extends BaseController {
         dialogueTraits?: string[];
         speciesData?: unknown;
         assets?: unknown;
+        maple?: unknown;
       };
 
       if (!body.name?.trim()) {
@@ -184,6 +185,7 @@ class CharacterController extends BaseController {
         dialogueTraits: body.dialogueTraits ?? [],
         ...(body.speciesData ? { speciesData: body.speciesData } : {}),
         ...(body.assets ? { assets: body.assets } : {}),
+        ...(body.maple ? { maple: body.maple } : {}),
       });
 
       res.status(201).json({ ...character.toObject(), previewUrl: await signPreview(character) });
@@ -216,6 +218,7 @@ class CharacterController extends BaseController {
         dialogueTraits?: string[];
         speciesData?: typeof character.speciesData;
         assets?: typeof character.assets;
+        maple?: typeof character.maple;
       };
 
       if (body.name !== undefined) character.name = body.name;
@@ -226,6 +229,7 @@ class CharacterController extends BaseController {
       if (body.dialogueTraits !== undefined) character.dialogueTraits = body.dialogueTraits;
       if (body.speciesData !== undefined) character.speciesData = body.speciesData;
       if (body.assets !== undefined) character.assets = body.assets;
+      if (body.maple !== undefined) character.maple = { ...character.maple, ...body.maple };
       if (body.projectId !== undefined) {
         character.projectId = await resolveProjectId(userId, body.projectId);
       }

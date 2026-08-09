@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { Model } from 'mongoose';
 import { z } from 'zod';
 import BaseController from './baseController';
-import ProjectModel, { ensureInboxProject, IProjectGitSettings } from '../models/projectModel';
+import ProjectModel, { ensureInboxProject, IProjectGitSettings, IProjectMapleSettings } from '../models/projectModel';
 import QuestlineModel from '../models/questlineModel';
 import SpriteModel from '../models/spriteModel';
 import CharacterModel from '../models/characterModel';
@@ -43,6 +43,28 @@ function parseGitSettings(req: AuthRequest, res: Response): IProjectGitSettings 
   const result = gitSettingsSchema.safeParse(req.body.git);
   if (!result.success) {
     res.status(400).json({ error: result.error.issues[0]?.message ?? 'Invalid git settings.' });
+    return undefined;
+  }
+  return result.data;
+}
+
+const mapleIdRangeSchema = z.object({
+  min: z.number().int().positive(),
+  max: z.number().int().positive(),
+}).refine((range) => range.max >= range.min, 'Range max must be greater than or equal to min.');
+
+const mapleSettingsSchema = z.object({
+  targetVersion: z.literal('v83').optional(),
+  defaultExportMode: z.enum(['changed-only', 'full-snapshot']).optional(),
+  npcIdRanges: z.array(mapleIdRangeSchema).optional(),
+  itemIdRanges: z.array(mapleIdRangeSchema).optional(),
+}).partial();
+
+function parseMapleSettings(req: AuthRequest, res: Response): Partial<IProjectMapleSettings> | null | undefined {
+  if (req.body.mapleSettings === undefined || req.body.mapleSettings === null) return null;
+  const result = mapleSettingsSchema.safeParse(req.body.mapleSettings);
+  if (!result.success) {
+    res.status(400).json({ error: result.error.issues[0]?.message ?? 'Invalid Maple settings.' });
     return undefined;
   }
   return result.data;
@@ -181,6 +203,8 @@ class ProjectController extends BaseController {
     }
     const git = parseGitSettings(req, res);
     if (git === undefined) return;
+    const mapleSettings = parseMapleSettings(req, res);
+    if (mapleSettings === undefined) return;
     try {
       const { name, description, defaultThemeId, defaultExportFormat } = req.body as {
         name?: string;
@@ -200,6 +224,7 @@ class ProjectController extends BaseController {
         defaultExportFormat: defaultExportFormat ?? 'json',
         isInbox: false,
         git: git ?? undefined,
+        ...(mapleSettings ? { mapleSettings } : {}),
       });
       res.status(201).json(project);
     } catch (error) {
@@ -212,6 +237,8 @@ class ProjectController extends BaseController {
     const userId = req.user?._id;
     const git = parseGitSettings(req, res);
     if (git === undefined) return;
+    const mapleSettings = parseMapleSettings(req, res);
+    if (mapleSettings === undefined) return;
     try {
       const project = await ProjectModel.findById(req.params.id);
       if (!project) {
@@ -252,6 +279,15 @@ class ProjectController extends BaseController {
           defaultFilePath: git.defaultFilePath ?? existing?.defaultFilePath,
         };
         project.markModified('git');
+      }
+      if (mapleSettings) {
+        project.mapleSettings = {
+          targetVersion: mapleSettings.targetVersion ?? project.mapleSettings?.targetVersion ?? 'v83',
+          defaultExportMode: mapleSettings.defaultExportMode ?? project.mapleSettings?.defaultExportMode ?? 'changed-only',
+          npcIdRanges: mapleSettings.npcIdRanges ?? project.mapleSettings?.npcIdRanges ?? [],
+          itemIdRanges: mapleSettings.itemIdRanges ?? project.mapleSettings?.itemIdRanges ?? [],
+        };
+        project.markModified('mapleSettings');
       }
       await project.save();
       res.json(project);

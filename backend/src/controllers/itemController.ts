@@ -96,6 +96,7 @@ class ItemController {
       description?: string;
       rarity?: unknown;
       tags?: string[];
+      maple?: IItem['maple'];
     };
     if (!body.name?.trim()) {
       res.status(400).json({ error: 'name is required' });
@@ -110,6 +111,7 @@ class ItemController {
         description: body.description,
         rarity: isItemRarity(body.rarity) ? body.rarity : undefined,
         tags: body.tags,
+        maple: body.maple,
       });
       res.status(201).json(await shape(item));
     } catch (error) {
@@ -127,6 +129,7 @@ class ItemController {
       rarity?: unknown;
       tags?: string[];
       assets?: IItem['assets'];
+      maple?: IItem['maple'];
     };
     try {
       const item = await updateItem(userId, String(req.params.id), {
@@ -135,6 +138,7 @@ class ItemController {
         rarity: isItemRarity(body.rarity) ? body.rarity : undefined,
         tags: body.tags,
         assets: body.assets,
+        maple: body.maple,
       });
       res.json(await shape(item));
     } catch (error) {

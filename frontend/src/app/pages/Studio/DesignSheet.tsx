@@ -23,6 +23,7 @@ import { useSpriteJobs } from '../../context/SpriteJobContext';
 import { GroundedBadge } from '../../components/shared/GroundedBadge';
 import { CHECKER_SM, CHECKER_STYLE } from '../../utils/spriteStyles';
 import { GenerateSpriteDialog, PublishDialog, SpritePickerDialog } from './StudioDialogs';
+import { MapleAssetPanel } from './MapleAssetPanel';
 
 function errorMessage(err: unknown, fallback: string): string {
   if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -521,6 +522,19 @@ export function DesignSheet() {
                 </div>
               </div>
             </Section>
+
+            {!isMob && (
+              <MapleAssetPanel
+                assetType="npc"
+                projectId={character.projectId}
+                recordId={character._id}
+                value={character.maple}
+                onSave={async (maple) => {
+                  const fresh = await updateCharacter(character._id, { maple });
+                  applyCharacter({ ...fresh, rotationUrls: character.rotationUrls });
+                }}
+              />
+            )}
 
             {/* Stats — mobs only */}
             {isMob && species && (

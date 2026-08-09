@@ -16,6 +16,16 @@ export interface IItemAssets {
   snappedSpriteS3Key: string;    // user-picked canonical sprite
 }
 
+export interface IMapleAssetMetadata {
+  mapleId: number;
+  exportEnabled: boolean;
+  operation: 'create' | 'patch';
+  nativePath: string;
+  lastExportHash: string;
+  validationWarnings: string[];
+  validationErrors: string[];
+}
+
 export interface IItem extends Document {
   _id: mongoose.Types.ObjectId;
   ownerId: string;
@@ -29,6 +39,7 @@ export interface IItem extends Document {
   // KB document id when published from the design studio. '' = never published.
   kbDocId: string;
   assets: IItemAssets;
+  maple: IMapleAssetMetadata;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +48,19 @@ const ItemAssetsSchema = new Schema<IItemAssets>(
   {
     rawSpriteCandidates: { type: [String], default: [] },
     snappedSpriteS3Key:  { type: String, default: '' },
+  },
+  { _id: false },
+);
+
+const MapleAssetMetadataSchema = new Schema<IMapleAssetMetadata>(
+  {
+    mapleId:            { type: Number, default: 0, index: true },
+    exportEnabled:      { type: Boolean, default: false },
+    operation:          { type: String, enum: ['create', 'patch'], default: 'create' },
+    nativePath:         { type: String, default: '' },
+    lastExportHash:     { type: String, default: '' },
+    validationWarnings: { type: [String], default: [] },
+    validationErrors:   { type: [String], default: [] },
   },
   { _id: false },
 );
@@ -52,6 +76,7 @@ const ItemSchema = new Schema<IItem>(
     kbRef:       { type: String, default: '', index: true },
     kbDocId:     { type: String, default: '' },
     assets:      { type: ItemAssetsSchema, default: () => ({}) },
+    maple:       { type: MapleAssetMetadataSchema, default: () => ({}) },
   },
   { timestamps: true },
 );
