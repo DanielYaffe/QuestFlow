@@ -2,12 +2,6 @@
   "_comment": "User-editable model catalogue. Add new checkpoints/LoRAs here without touching code. See USER_GUIDE.md §8 for examples.",
   "checkpoints": [
     {
-      "id": "pixelart_xl",
-      "name": "Pixel Art Diffusion XL",
-      "file": "pixelArtDiffusionXL_spriteShaper.safetensors",
-      "notes": "primary base for the cb_pixel style"
-    },
-    {
       "id": "sdxl_base",
       "name": "SDXL Base 1.0",
       "file": "sd_xl_base_1.0.safetensors",
@@ -15,13 +9,6 @@
     }
   ],
   "always_on_loras": [
-    {
-      "id": "dmd2",
-      "file": "dmd2_sdxl_4step_lora_fp16.safetensors",
-      "strength": 1.0,
-      "strength_clip": 1.0,
-      "notes": "DMD2 4-step distillation — applied to every condition (matches production)"
-    }
   ],
   "loras_under_test": [
     {
@@ -34,121 +21,31 @@
       "reference_dir": "data/reference_sprites/cb/",
       "notes": "epoch 1",
       "training_dir": "data/training_set/cb/"
-    },
-    {
-      "id": "cb_e2",
-      "name": "CB epoch 2",
-      "file": "CB-new\\cb-000002.safetensors",
-      "trigger_words": "cbstyle",
-      "prompt_prefix": "",
-      "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
-      "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 2",
-      "training_dir": "data/training_set/cb/"
-    },
-    {
-      "id": "cb_e3",
-      "name": "CB epoch 3",
-      "file": "CB-new\\cb-000003.safetensors",
-      "trigger_words": "cbstyle",
-      "prompt_prefix": "",
-      "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
-      "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 3",
-      "training_dir": "data/training_set/cb/"
-    },
-    {
-      "id": "cb_e4",
-      "name": "CB epoch 4",
-      "file": "CB-new\\cb-000004.safetensors",
-      "trigger_words": "cbstyle",
-      "prompt_prefix": "",
-      "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
-      "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 4",
-      "training_dir": "data/training_set/cb/"
-    },
-    {
-      "id": "cb_e5",
-      "name": "CB epoch 5",
-      "file": "CB-new\\cb-000005.safetensors",
-      "trigger_words": "cbstyle",
-      "prompt_prefix": "",
-      "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
-      "reference_dir": "data/reference_sprites/cb/",
-      "notes": "epoch 5",
-      "training_dir": "data/training_set/cb/"
-    },
-    {
-      "id": "cb_final",
-      "name": "CB final",
-      "file": "CB-new\\cb.safetensors",
-      "trigger_words": "cbstyle",
-      "prompt_prefix": "",
-      "negative_prompt": "blurry, low quality, text, watermark, signature, jpeg artifacts",
-      "reference_dir": "data/reference_sprites/cb/",
-      "notes": "final checkpoint shipped to production",
-      "training_dir": "data/training_set/cb/"
     }
   ],
   "conditions": [
     {
-      "id": "pa_xl__no_lora",
-      "checkpoint": "pixelart_xl",
+      "id": "sdxl_base_no_lora",
+      "checkpoint": "sdxl_base",
       "lora": null,
       "strength": 0.0,
       "strength_clip": 0.0
     },
     {
-      "id": "pa_xl__cb_e1_085",
-      "checkpoint": "pixelart_xl",
+      "id": "sdxl_base_ms_mob",
+      "checkpoint": "sdxl_base",
       "lora": "cb_e1",
-      "strength": 0.85,
-      "strength_clip": 0.8
-    },
-    {
-      "id": "pa_xl__cb_e2_085",
-      "checkpoint": "pixelart_xl",
-      "lora": "cb_e2",
-      "strength": 0.85,
-      "strength_clip": 0.8
-    },
-    {
-      "id": "pa_xl__cb_e3_085",
-      "checkpoint": "pixelart_xl",
-      "lora": "cb_e3",
-      "strength": 0.85,
-      "strength_clip": 0.8
-    },
-    {
-      "id": "pa_xl__cb_e4_085",
-      "checkpoint": "pixelart_xl",
-      "lora": "cb_e4",
-      "strength": 0.85,
-      "strength_clip": 0.8
-    },
-    {
-      "id": "pa_xl__cb_e5_085",
-      "checkpoint": "pixelart_xl",
-      "lora": "cb_e5",
-      "strength": 0.85,
-      "strength_clip": 0.8
-    },
-    {
-      "id": "pa_xl__cb_final_085",
-      "checkpoint": "pixelart_xl",
-      "lora": "cb_final",
       "strength": 0.85,
       "strength_clip": 0.8
     }
   ],
   "sampler": {
-    "steps": 4,
-    "cfg": 1.2,
-    "sampler_name": "euler",
+    "steps": 32,
+    "cfg": 6.5,
+    "sampler_name": "euler_anscestral",
     "scheduler": "simple",
     "width": 1024,
     "height": 1024
   },
-  "target_size_px": 64
+  "target_size_px": 128
 }

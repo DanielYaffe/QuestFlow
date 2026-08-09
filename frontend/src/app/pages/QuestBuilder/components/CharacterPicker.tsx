@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Check, X, Search, Plus } from 'lucide-react';
 import { CharacterKind, CharacterRecord } from '../../../api/characterApi';
+import { GroundedBadge } from '../../../components/shared/GroundedBadge';
 
 interface CharacterPickerProps {
   label: string;
@@ -58,6 +59,7 @@ export function CharacterPicker({
                 className="inline-flex items-center gap-1 text-xs bg-steel-800 text-pulse border border-steel-600 px-2 py-0.5 rounded-full"
               >
                 {c.name}
+                {c.kbRef && <GroundedBadge entityName={c.kbRef} compact />}
                 <button type="button" onClick={() => onToggle(id)} className="ml-0.5 hover:text-steel-100 transition-colors">
                   <X className="w-2.5 h-2.5" />
                 </button>
@@ -132,6 +134,7 @@ export function CharacterPicker({
                         : <span className="text-[9px] text-steel-400">{c.name.slice(0, 2)}</span>}
                     </div>
                     <span className={selected ? 'text-steel-100' : 'text-steel-200'}>{c.name}</span>
+                    {c.kbRef && <GroundedBadge entityName={c.kbRef} compact />}
                   </button>
                 );
               })

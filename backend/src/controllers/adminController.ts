@@ -5,7 +5,8 @@ import { isHttpError } from '../utils/httpError';
 import * as styleAdmin from '../services/admin/spriteStyleAdminService';
 import * as registryAdmin from '../services/admin/modelRegistryAdminService';
 import * as userAdmin from '../services/admin/userAdminService';
-import { getInstalledModels } from '../services/admin/comfyModelService';
+import { getManifest as readManifest, getManifestSource, reloadManifest } from '../config/manifest';
+import { logStyleAvailability } from '../services/generation/styleAvailability';
 
 function handleError(res: Response, err: unknown, context: string): void {
   if (isHttpError(err)) {
@@ -211,13 +212,37 @@ export async function setUserRole(req: AuthRequest, res: Response) {
 }
 
 // ---------------------------------------------------------------------------
-// ComfyUI installed models
+// RunPod manifest — what is actually baked into the deployed images
 // ---------------------------------------------------------------------------
 
-export async function getComfyModels(_req: AuthRequest, res: Response) {
+function shapeManifest() {
+  const manifest = readManifest();
+  return {
+    version: manifest.version,
+    builtAt: manifest.built_at,
+    source: getManifestSource(),
+    endpoints: manifest.endpoints,
+  };
+}
+
+export function getManifest(_req: AuthRequest, res: Response) {
   try {
-    res.json(await getInstalledModels());
+    res.json(shapeManifest());
   } catch (err) {
-    handleError(res, err, 'fetch ComfyUI models');
+    handleError(res, err, 'read the model manifest');
+  }
+}
+
+// A manifest that has drifted from what is deployed rejects LoRAs that exist
+// and accepts ones that do not, so make re-reading it cheap.
+export async function reloadModelManifest(_req: AuthRequest, res: Response) {
+  try {
+    await reloadManifest();
+    // Reporting only — a manifest reload never writes isActive. Which styles
+    // an admin wants offered is their decision; which ones *can* run is derived.
+    await logStyleAvailability();
+    res.json(shapeManifest());
+  } catch (err) {
+    handleError(res, err, 'reload the model manifest');
   }
 }

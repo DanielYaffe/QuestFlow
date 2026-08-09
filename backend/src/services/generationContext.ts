@@ -1,6 +1,7 @@
+import mongoose from 'mongoose';
 import { KbType } from './qdrant';
 import { retrieve, RetrievedChunk } from './ragService';
-import { ownsGame } from './gameService';
+import { getOwnedGame } from './gameService';
 import { DifficultyBucket } from './structuredParse';
 
 // ---------------------------------------------------------------------------
@@ -9,7 +10,7 @@ import { DifficultyBucket } from './structuredParse';
 // and an empty/missing KB yields '' so generation runs exactly as before.
 // ---------------------------------------------------------------------------
 
-export type GenerationStep = 'objectives' | 'characters' | 'questline';
+export type GenerationStep = 'objectives' | 'characters' | 'questline' | 'nodeEdit';
 
 export interface ReferenceEntity {
   name: string;
@@ -17,12 +18,39 @@ export interface ReferenceEntity {
   type: KbType;
 }
 
+// Why the KB did or didn't contribute. Ungrounded generation is the normal case
+// (most questlines link no game), but 'not-owned' and 'no-matches' look
+// identical to an author staring at a result that ignored their world — so each
+// exit reports itself rather than collapsing into one silent empty block.
+export type GroundingReason = 'no-game' | 'not-owned' | 'no-matches';
+
+export interface GroundingState {
+  consulted: boolean;
+  reason?: GroundingReason;
+  gameId?: string;
+  gameName?: string;
+  entityCount: number;
+}
+
 export interface ReferenceContext {
   referenceBlock: string;
   entities: ReferenceEntity[];
+  grounding: GroundingState;
 }
 
-const EMPTY: ReferenceContext = { referenceBlock: '', entities: [] };
+function ungrounded(reason: GroundingReason, game?: { id: string; name: string }): ReferenceContext {
+  return {
+    referenceBlock: '',
+    entities: [],
+    grounding: {
+      consulted: false,
+      reason,
+      gameId: game?.id,
+      gameName: game?.name,
+      entityCount: 0,
+    },
+  };
+}
 
 // Which KB categories feed each step, and how much of each.
 const STEP_SOURCES: Record<GenerationStep, { type: KbType; topK: number }[]> = {
@@ -47,6 +75,18 @@ const STEP_SOURCES: Record<GenerationStep, { type: KbType; topK: number }[]> = {
     { type: 'items', topK: 3 },
     { type: 'maps', topK: 2 },
     { type: 'quests', topK: 2 },
+  ],
+  // Editing an existing graph is a different job from drafting one: the payoff
+  // is naming entities that can become node references, so the three castable
+  // types get the deepest recall. lore/general are queried too because a KB may
+  // describe its cast only inside prose world documents.
+  nodeEdit: [
+    { type: 'characters', topK: 4 },
+    { type: 'monsters', topK: 4 },
+    { type: 'items', topK: 4 },
+    { type: 'lore', topK: 2 },
+    { type: 'maps', topK: 2 },
+    { type: 'general', topK: 1 },
   ],
 };
 
@@ -81,7 +121,8 @@ function formatChunk(chunk: RetrievedChunk): string {
 /**
  * Build the optional REFERENCE MATERIAL block for a generation step. Returns
  * '' when there is no game, the game isn't the caller's, or nothing relevant
- * is retrieved — generation then runs free, exactly as without a KB.
+ * is retrieved — generation then runs free, exactly as without a KB. The
+ * accompanying `grounding` says which of those happened.
  */
 export async function buildReferenceContext(args: {
   ownerId: string;
@@ -91,8 +132,13 @@ export async function buildReferenceContext(args: {
   progression?: DifficultyBucket;
 }): Promise<ReferenceContext> {
   const { ownerId, gameId, step, query, progression } = args;
-  if (!gameId) return EMPTY;
-  if (!(await ownsGame(ownerId, gameId))) return EMPTY;
+  // A malformed id is a missing link, not a crash — findOne would throw a
+  // CastError, and callers treat this as an optional enrichment.
+  if (!gameId || !mongoose.isValidObjectId(gameId)) return ungrounded('no-game');
+
+  const game = await getOwnedGame(ownerId, gameId);
+  if (!game) return ungrounded('not-owned');
+  const gameRef = { id: gameId, name: game.name };
 
   const groups = await Promise.all(
     STEP_SOURCES[step].map(async ({ type, topK }) => ({
@@ -122,7 +168,7 @@ export async function buildReferenceContext(args: {
     }
   }
 
-  if (sections.length === 0) return EMPTY;
+  if (sections.length === 0) return ungrounded('no-matches', gameRef);
 
   const referenceBlock = `
 REFERENCE MATERIAL (optional) — existing data from this game's world:
@@ -130,5 +176,14 @@ ${sections.join('\n\n')}
 
 You MAY use or take inspiration from the material above, and you may also freely invent new elements that fit this world. When something you need already exists above, prefer referencing the existing entity over re-creating a near-duplicate.${progression ? `\nThis quest is aimed at the ${progression} game, so lean toward references of a fitting difficulty — but this is a preference, not a rule.` : ''}`;
 
-  return { referenceBlock, entities };
+  return {
+    referenceBlock,
+    entities,
+    grounding: {
+      consulted: true,
+      gameId: gameRef.id,
+      gameName: gameRef.name,
+      entityCount: entities.length,
+    },
+  };
 }

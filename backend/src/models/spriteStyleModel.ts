@@ -15,10 +15,6 @@ export interface IWorkflowPatchMap {
   seedNodes: string[];
   loraNode?: string;
   samplerParamsNode?: string;
-  // SaveImage node — required for the per-style removeBackground injection
-  // (a rembg node is spliced in front of it at patch time)
-  saveImageNode?: string;
-  fallbackSaveImageSource?: string;
 }
 
 export interface ISpriteStyle extends Document {
@@ -28,17 +24,24 @@ export interface ISpriteStyle extends Document {
   previewImagePath: string;
   category: 'pixel' | 'illustrated' | 'realistic' | 'raw';
   baseModel: 'SDXL' | 'SD1.5' | 'Flux';
+  // Which RunPod endpoint runs this style. Each endpoint is a separate Docker
+  // image with exactly one checkpoint baked in, so checkpointFilename below is
+  // not a free choice — it must match what the manifest says is in this image.
+  // Plain String, not an enum: adding an endpoint should be a manifest change,
+  // not a schema migration.
+  endpointKey: string;
   checkpointFilename: string;
   loras: IStyleLora[];
   promptPrefix: string;
   negativePrompt: string;
   defaultDimensions: { width: number; height: number };
-  // Post-processing: splice a rembg node before the SaveImage at generation time
+  // Post-processing: cut the background out on CPU after generation (worker-side)
   removeBackground: boolean;
   // Post-processing: pixel-snap + downscale the output to this size (worker-side)
   targetSize?: number;
-  // sampler/scheduler names are whatever the ComfyUI build supports — the
-  // admin UI populates options from /object_info rather than a fixed enum
+  // sampler/scheduler names are whatever the ComfyUI build in the image
+  // supports; there is no API to enumerate them, so the admin UI offers a
+  // curated list and the API just requires non-empty names
   sampler: {
     steps: number;
     cfg: number;
@@ -76,8 +79,6 @@ const WorkflowPatchMapSchema = new Schema<IWorkflowPatchMap>(
     seedNodes:               { type: [String], required: true },
     loraNode:                { type: String },
     samplerParamsNode:       { type: String },
-    saveImageNode:           { type: String },
-    fallbackSaveImageSource: { type: String },
   },
   { _id: false },
 );
@@ -90,6 +91,7 @@ const SpriteStyleSchema = new Schema<ISpriteStyle>(
     previewImagePath:   { type: String, default: '' },
     category:           { type: String, enum: ['pixel', 'illustrated', 'realistic', 'raw'], required: true },
     baseModel:          { type: String, enum: ['SDXL', 'SD1.5', 'Flux'], default: 'SDXL' },
+    endpointKey:        { type: String, required: true },
     checkpointFilename: { type: String, required: true },
     loras:              { type: [StyleLoraSchema], default: [] },
     promptPrefix:       { type: String, default: '' },

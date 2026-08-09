@@ -1,13 +1,18 @@
 import { Router, Request, Response } from 'express';
 import SpriteStyleModel from '../models/spriteStyleModel';
+import { isStyleRunnable } from '../services/generation/styleAvailability';
 
 const router = Router();
 
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const styles = await SpriteStyleModel.find({ isActive: true })
+    // isActive is the admin's intent; runnability comes from the manifest.
+    // Offering a style whose checkpoint or LoRA is not in any deployed image
+    // just buys the user a failed job.
+    const styles = (await SpriteStyleModel.find({ isActive: true })
       .sort({ sortOrder: 1 })
-      .lean();
+      .lean())
+      .filter(isStyleRunnable);
 
     const payload = styles.map(({ styleId, name, description, previewImagePath, category, defaultDimensions }) => ({
       id: styleId,

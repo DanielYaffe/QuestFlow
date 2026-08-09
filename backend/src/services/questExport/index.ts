@@ -355,11 +355,16 @@ export async function exportQuestline(
     itemDocs.map((i) => ({ _id: i._id, title: i.name, description: i.description ?? '', rarity: i.rarity ?? 'common' })),
   );
 
+  const selectedNodeIdSet = new Set(options.nodeIds?.map((id) => id.startsWith('quest_') ? id : `quest_${id}`) ?? []);
+  const filterNodes = (list: typeof payload.nodes) =>
+    selectedNodeIdSet.size > 0 ? list.filter((n) => selectedNodeIdSet.has(n.id)) : list;
+
   if (isTemplateFormat(format)) {
-    const selectedTemplateId = options.templateId || questline.templateId;
-    const shouldUseSnapshot = selectedTemplateId
-      && selectedTemplateId === questline.templateId
-      && snapshotHasStructure(questline.templateSnapshot);
+    // Template exports are locked to the questline's own creation-time template —
+    // a client-supplied templateId is ignored so the restriction can't be bypassed
+    // via a direct API call.
+    const selectedTemplateId = questline.templateId;
+    const shouldUseSnapshot = selectedTemplateId && snapshotHasStructure(questline.templateSnapshot);
     const template: TemplateLike | null = shouldUseSnapshot
       ? questline.templateSnapshot as TemplateLike
       : selectedTemplateId
@@ -370,10 +375,7 @@ export async function exportQuestline(
       : null;
     if (selectedTemplateId && !template) throw new Error('Template not found');
 
-    const selectedNodeIds = new Set(options.nodeIds?.map((id) => id.startsWith('quest_') ? id : `quest_${id}`) ?? []);
-    const selectedNodes = selectedNodeIds.size > 0
-      ? payload.nodes.filter((node) => selectedNodeIds.has(node.id))
-      : payload.nodes;
+    const selectedNodes = filterNodes(payload.nodes);
     const outputFormat = formatFromTemplateFormat(format);
     const extension = outputFormat === 'json' ? '.json' : outputFormat === 'xml' ? '.xml' : '.yaml';
     const mimeType = outputFormat === 'json' ? 'application/json' : outputFormat === 'xml' ? 'application/xml' : 'application/x-yaml';
@@ -406,7 +408,13 @@ export async function exportQuestline(
     throw new Error(`Unknown format: ${format}`);
   }
 
-  const content = formatModule.render(payload);
+  const selectedNodes = filterNodes(payload.nodes);
+  const keepIds = new Set(selectedNodes.map((n) => n.id));
+  const scopedPayload = selectedNodeIdSet.size > 0
+    ? { ...payload, nodes: selectedNodes, edges: payload.edges.filter((e) => keepIds.has(e.source) && keepIds.has(e.target)) }
+    : payload;
+
+  const content = formatModule.render(scopedPayload);
   const filename = `${slugifyTitle(questline.title)}${formatModule.extension}`;
 
   return { filename, content, mimeType: formatModule.mimeType };

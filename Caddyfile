@@ -1,0 +1,37 @@
+# Edge proxy for the QuestFlow app: one public origin, split by path.
+#
+# The frontend bundle is built with VITE_API_URL=/api, so the browser only ever
+# talks to this host — which is what lets the same frontend image run in any
+# environment. Caddy owns the split, so the frontend container stays a plain
+# static file server with no idea where the backend lives.
+#
+# Set QUESTFLOW_DOMAIN in the compose environment (e.g. questflow.bobber.dev) and
+# Caddy provisions a Let's Encrypt certificate on first start, exactly as the
+# Qdrant stack in deploy/docker-compose.qdrant.yml already does. Left unset it
+# falls back to localhost with a local self-signed cert, which is what you want
+# for `docker compose up` on a dev machine.
+
+{$QUESTFLOW_DOMAIN:localhost} {
+	handle /api/* {
+		# Backend routers mount at the root (/auth, /sprites, /jobs, ...), so the
+		# /api marker is stripped before forwarding.
+		uri strip_prefix /api
+
+		reverse_proxy backend:3000 {
+			# Stream responses straight through instead of buffering them.
+			# Sprite and animation progress arrive as Server-Sent Events
+			# (spriteApi.ts:49, animationApi.ts:132), and a buffered event stream
+			# fails invisibly: the request succeeds, the events just never show
+			# up until the job ends. Caddy already infers this from the
+			# text/event-stream content type; stating it means a future change to
+			# how those responses are typed cannot quietly turn buffering back on.
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:8080
+	}
+
+	encode gzip
+}

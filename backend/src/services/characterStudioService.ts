@@ -11,6 +11,8 @@ import { KbType } from './qdrant';
 import { ingestDocument, editDocument } from './kbService';
 import { animationQueue, AnimationJobData } from '../queues/animationQueue';
 import { applySpriteTool, SpriteTool } from './generation/spriteTools';
+import { pushVersion, resolveIndex, selectVersion } from './generation/spriteHistory';
+import { StudioError } from './studioError';
 import { uploadBufferToS3, downloadBufferFromS3 } from '../utils/s3Helper';
 
 // ---------------------------------------------------------------------------
@@ -19,12 +21,7 @@ import { uploadBufferToS3, downloadBufferFromS3 } from '../utils/s3Helper';
 // tools (resize / remove background / pixel snap).
 // ---------------------------------------------------------------------------
 
-export class StudioError extends Error {
-  constructor(message: string, readonly statusCode: number) {
-    super(message);
-    this.name = 'StudioError';
-  }
-}
+export { StudioError };
 
 async function findOwnedCharacter(ownerId: string, characterId: string): Promise<ICharacter> {
   const character = await CharacterModel.findById(characterId);
@@ -237,10 +234,57 @@ export async function transformSprite(
   const output = await applySpriteTool(source, tool, params);
   const newKey = await uploadBufferToS3(output, 'image/png', 'sprites');
 
-  const candidates = [...(character.assets.rawSpriteCandidates ?? []), newKey];
-  character.assets.rawSpriteCandidates = candidates.slice(-MAX_SPRITE_CANDIDATES);
+  return commitVersion(character, newKey);
+}
+
+// --- Sprite version history -------------------------------------------------
+
+/** Append a new sprite version at the cursor and make it canonical. */
+function commitVersion(character: ICharacter, newKey: string): Promise<ICharacter> {
+  const candidates = character.assets.rawSpriteCandidates ?? [];
+  const index = resolveIndex(candidates, character.assets.snappedSpriteS3Key, character.assets.spriteHistoryIndex);
+  // Re-attaching what is already current (a duplicate job callback, or picking
+  // the same gallery sprite twice) must not add a second identical version.
+  const next = candidates[index] === newKey
+    ? { candidates, index }
+    : pushVersion(candidates, index, newKey, MAX_SPRITE_CANDIDATES);
+
+  character.assets.rawSpriteCandidates = next.candidates;
+  character.assets.spriteHistoryIndex = next.index;
   character.assets.snappedSpriteS3Key = newKey;
   character.markModified('assets');
-  await character.save();
-  return character;
+  return character.save();
+}
+
+/**
+ * Promote a freshly generated or gallery-picked sprite to canonical. Called
+ * when a studio-started generation lands (also on reconnect after a reload).
+ */
+export async function attachSpriteKey(
+  ownerId: string,
+  characterId: string,
+  imageKey: string,
+): Promise<ICharacter> {
+  if (!imageKey) throw new StudioError('imageKey is required', 400);
+  const character = await findOwnedCharacter(ownerId, characterId);
+  return commitVersion(character, imageKey);
+}
+
+/**
+ * Move the history cursor (undo / redo / history-strip click). Unlike a
+ * transform this only re-points at an existing version — nothing is appended,
+ * so the versions ahead of the cursor stay available to redo.
+ */
+export async function selectSpriteVersion(
+  ownerId: string,
+  characterId: string,
+  index: number,
+): Promise<ICharacter> {
+  const character = await findOwnedCharacter(ownerId, characterId);
+  const key = selectVersion(character.assets.rawSpriteCandidates ?? [], index);
+
+  character.assets.snappedSpriteS3Key = key;
+  character.assets.spriteHistoryIndex = index;
+  character.markModified('assets');
+  return character.save();
 }

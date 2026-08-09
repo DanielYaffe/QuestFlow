@@ -12,6 +12,7 @@ itemRouter.put('/:id', itemController.update.bind(itemController));
 itemRouter.delete('/:id', itemController.delete.bind(itemController));
 itemRouter.post('/:id/sprite/attach', itemController.spriteAttach.bind(itemController));
 itemRouter.post('/:id/sprite/transform', itemController.spriteTransform.bind(itemController));
+itemRouter.post('/:id/sprite/version', itemController.spriteVersion.bind(itemController));
 itemRouter.post('/:id/publish-kb', itemController.publishKb.bind(itemController));
 
 export default itemRouter;

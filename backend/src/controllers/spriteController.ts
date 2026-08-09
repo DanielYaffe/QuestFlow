@@ -3,6 +3,7 @@ import { Job } from 'bullmq';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import SpriteModel from '../models/spriteModel';
 import SpriteStyleModel from '../models/spriteStyleModel';
+import { styleUnavailability } from '../services/generation/styleAvailability';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { spriteQueue, SpriteJobData, SpriteJobResult } from '../queues/spriteQueue';
 import { getProjectId } from '../utils/projectScope';
@@ -31,18 +32,36 @@ export async function generateSprite(req: AuthRequest, res: Response) {
     return;
   }
 
-  // Validate the requested styleId against the DB; fall back to the default style
-  let resolvedStyleId = styleId ?? '';
-  if (resolvedStyleId) {
-    const exists = await SpriteStyleModel.exists({ styleId: resolvedStyleId, isActive: true });
-    if (!exists) {
-      const fallback = await SpriteStyleModel.findOne({ isDefault: true, isActive: true }).lean();
-      resolvedStyleId = fallback?.styleId ?? 'none';
+  // An unrecognised style is a 400, not a silent swap to something else: each
+  // style is a different RunPod endpoint with a different model baked in, so
+  // falling back would hand the caller an image from a model they did not ask
+  // for. An omitted styleId still resolves to our default — that is our own
+  // product layer, not a RunPod concern.
+  let style;
+  if (styleId) {
+    style = await SpriteStyleModel.findOne({ styleId, isActive: true }).lean();
+    if (!style) {
+      res.status(400).json({ error: `Unknown or inactive style "${styleId}"` });
+      return;
     }
   } else {
-    const fallback = await SpriteStyleModel.findOne({ isDefault: true, isActive: true }).lean();
-    resolvedStyleId = fallback?.styleId ?? 'none';
+    style = await SpriteStyleModel.findOne({ isDefault: true, isActive: true }).lean();
+    if (!style) {
+      res.status(503).json({ error: 'No active default style is configured' });
+      return;
+    }
   }
+
+  // Catch a style that has drifted from the deployed images here, rather than
+  // paying for a worker cold start and failing inside ComfyUI with "lora not
+  // found" after the fact.
+  const problems = styleUnavailability(style);
+  if (problems.length > 0) {
+    res.status(409).json({ error: `Style "${style.styleId}" cannot run: ${problems.join('; ')}` });
+    return;
+  }
+
+  const resolvedStyleId = style.styleId;
 
   // Scope the sprite to the active project (X-Project-Id header), falling back to Inbox.
   const projectId = await resolveProjectId(userId, getProjectId(req));

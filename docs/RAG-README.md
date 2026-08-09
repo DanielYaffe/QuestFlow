@@ -31,6 +31,9 @@ deleting the Game wipes its Qdrant collections and registry rows.
   OpenAI-compat endpoint.
 - **Embeddings are pinned**: `gemini-embedding-001` @ 1536 dims. Changing
   `EMBED_MODEL`/`EMBED_DIMENSIONS` after ingesting invalidates every stored vector.
+  To change them anyway, swap the env vars and replay the whole KB from Mongo:
+  `npx tsx src/scripts/reembed-kb.ts --dry-run` then without the flag. Collections
+  are dropped and recreated automatically when `EMBED_DIMENSIONS` changes.
 
 ### 2. Vector store + KB pipeline
 

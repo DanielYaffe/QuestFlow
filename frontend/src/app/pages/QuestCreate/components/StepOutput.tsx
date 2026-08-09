@@ -136,7 +136,7 @@ export function StepOutput({
         </div>
 
         <p className="text-steel-500 text-xs text-center pb-2">
-          Export to Unity, Unreal, Godot and more is available inside the Quest Builder.
+          More export formats and options are available inside the Quest Builder.
         </p>
       </div>
 

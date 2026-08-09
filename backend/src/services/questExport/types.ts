@@ -70,9 +70,6 @@ export interface CanonicalExport {
 export type Format =
   | 'questflow-json'
   | 'questflow-yaml'
-  | 'unity-asset'
-  | 'unreal-datatable'
-  | 'godot-tres'
   | 'template-json'
   | 'template-yaml'
   | 'template-xml';

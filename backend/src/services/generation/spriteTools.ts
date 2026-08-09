@@ -1,31 +1,18 @@
-import sharp from 'sharp';
-import { removeBackgroundWithComfy } from './generationService';
+import { removeBackground } from './backgroundRemover';
+import { thresholdAlpha } from './alphaUtils';
 import { snapAndResize } from './pixelSnapper';
 import { smartResize } from './spriteResize';
 
 // ---------------------------------------------------------------------------
 // Sprite image tools shared by the design studio (characters and items):
-// resize / remove background / pixel snap. All local — no PixelLab generations.
+// resize / remove background / pixel snap. All local — no PixelLab generations
+// and, since the move to RunPod, no GPU round-trip either.
 // ---------------------------------------------------------------------------
 
 export type SpriteTool = 'resize' | 'remove-bg' | 'pixel-snap';
 
 export function isSpriteTool(value: unknown): value is SpriteTool {
   return value === 'resize' || value === 'remove-bg' || value === 'pixel-snap';
-}
-
-/**
- * Alpha thresholding keeps pixel edges hard after matting models produce soft
- * (anti-aliased) alpha — every pixel becomes fully opaque or fully transparent.
- */
-async function thresholdAlpha(png: Buffer): Promise<Buffer> {
-  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  for (let i = 3; i < data.length; i += 4) {
-    data[i] = data[i] >= 128 ? 255 : 0;
-  }
-  return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
-    .png()
-    .toBuffer();
 }
 
 export async function applySpriteTool(
@@ -41,7 +28,7 @@ export async function applySpriteTool(
       return smartResize(source, target);
     }
     case 'remove-bg': {
-      const result = await removeBackgroundWithComfy(source);
+      const result = await removeBackground(source);
       return thresholdAlpha(result);
     }
     case 'pixel-snap': {

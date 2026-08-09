@@ -1,31 +1,33 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Server, ServerOff } from 'lucide-react';
+import { RefreshCw, Boxes } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AdminSpriteStyle,
   AdminLora,
   AdminCheckpoint,
   AdminUser,
-  ComfyModels,
+  RunpodManifest,
   WorkflowPresetInfo,
   getAdminStyles,
   getAdminLoras,
   getAdminCheckpoints,
   getAdminUsers,
-  getComfyModels,
+  getManifest,
+  reloadManifest,
   getWorkflowPresets,
 } from '../../api/adminApi';
 import { useMe } from '../../hooks/useMe';
 import { StylesTab } from './components/StylesTab';
-import { LoraRegistryTab, CheckpointRegistryTab } from './components/ModelRegistryTab';
+import { LoraRegistryTab } from './components/ModelRegistryTab';
+import { EndpointsTab } from './components/EndpointsTab';
 import { UsersTab } from './components/UsersTab';
 
-type Tab = 'styles' | 'loras' | 'checkpoints' | 'users';
+type Tab = 'styles' | 'endpoints' | 'loras' | 'users';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'styles', label: 'Styles' },
+  { id: 'endpoints', label: 'Endpoints' },
   { id: 'loras', label: 'LoRAs' },
-  { id: 'checkpoints', label: 'Checkpoints' },
   { id: 'users', label: 'Users' },
 ];
 
@@ -37,29 +39,41 @@ export function AdminPage() {
   const [loras, setLoras] = useState<AdminLora[]>([]);
   const [checkpoints, setCheckpoints] = useState<AdminCheckpoint[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [comfy, setComfy] = useState<ComfyModels | null>(null);
+  const [manifest, setManifest] = useState<RunpodManifest | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      const [stylesData, presetsData, lorasData, checkpointsData, usersData, comfyData] = await Promise.all([
+      const [stylesData, presetsData, lorasData, checkpointsData, usersData, manifestData] = await Promise.all([
         getAdminStyles(),
         getWorkflowPresets(),
         getAdminLoras(),
         getAdminCheckpoints(),
         getAdminUsers(),
-        getComfyModels(),
+        getManifest(),
       ]);
       setStyles(stylesData);
       setPresets(presetsData);
       setLoras(lorasData);
       setCheckpoints(checkpointsData);
       setUsers(usersData);
-      setComfy(comfyData);
+      setManifest(manifestData);
     } catch {
       toast.error('Failed to load admin data');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  // Rebuilding an image without redeploying the backend leaves the manifest
+  // stale, which shows up as LoRAs being rejected that actually exist.
+  const onReloadManifest = useCallback(async () => {
+    try {
+      const fresh = await reloadManifest();
+      setManifest(fresh);
+      toast.success(`Manifest reloaded — ${fresh.version}`);
+    } catch {
+      toast.error('Failed to reload the manifest');
     }
   }, []);
 
@@ -76,16 +90,15 @@ export function AdminPage() {
             <p className="text-steel-400 text-sm mt-1">Manage sprite styles, model registries and user roles</p>
           </div>
           <div className="flex items-center gap-3">
-            {comfy && (
-              comfy.reachable ? (
-                <span className="text-emerald-400 text-xs flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1.5 rounded-md" title={`${comfy.checkpoints.length} checkpoints, ${comfy.loras.length} LoRAs installed`}>
-                  <Server className="w-3.5 h-3.5" /> ComfyUI connected
-                </span>
-              ) : (
-                <span className="text-amber-400 text-xs flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-1.5 rounded-md" title="File validation is unavailable while ComfyUI is offline">
-                  <ServerOff className="w-3.5 h-3.5" /> ComfyUI offline
-                </span>
-              )
+            {manifest && (
+              <button
+                onClick={onReloadManifest}
+                className="text-emerald-400 text-xs flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1.5 rounded-md transition-colors cursor-pointer"
+                title={`Built ${new Date(manifest.builtAt).toLocaleString()} · loaded from ${manifest.source} · click to reload`}
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                manifest {manifest.version} · {Object.keys(manifest.endpoints).length} endpoints
+              </button>
             )}
             <button
               onClick={() => { setLoading(true); refresh(); }}
@@ -127,12 +140,14 @@ export function AdminPage() {
                 presets={presets}
                 registryLoras={loras}
                 registryCheckpoints={checkpoints}
-                comfy={comfy}
+                manifest={manifest}
                 onChanged={refresh}
               />
             )}
-            {tab === 'loras' && <LoraRegistryTab loras={loras} comfy={comfy} onChanged={refresh} />}
-            {tab === 'checkpoints' && <CheckpointRegistryTab checkpoints={checkpoints} comfy={comfy} onChanged={refresh} />}
+            {tab === 'endpoints' && (
+              <EndpointsTab manifest={manifest} checkpoints={checkpoints} loras={loras} onChanged={refresh} />
+            )}
+            {tab === 'loras' && <LoraRegistryTab loras={loras} manifest={manifest} onChanged={refresh} />}
             {tab === 'users' && <UsersTab users={users} meId={me?._id ?? null} onChanged={refresh} />}
           </>
         )}

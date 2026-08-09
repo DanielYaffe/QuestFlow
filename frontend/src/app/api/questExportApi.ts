@@ -3,9 +3,6 @@ import api from './axiosInstance';
 export type Format =
   | 'questflow-json'
   | 'questflow-yaml'
-  | 'unity-asset'
-  | 'unreal-datatable'
-  | 'godot-tres'
   | 'template-json'
   | 'template-yaml'
   | 'template-xml';
@@ -13,9 +10,6 @@ export type Format =
 export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'questflow-json',   label: 'QuestFlow JSON' },
   { id: 'questflow-yaml',   label: 'QuestFlow YAML' },
-  { id: 'unity-asset',      label: 'Unity ScriptableObject (.asset)' },
-  { id: 'unreal-datatable', label: 'Unreal DataTable (.json)' },
-  { id: 'godot-tres',       label: 'Godot Resource (.tres)' },
   { id: 'template-yaml',    label: 'Quest Template YAML' },
   { id: 'template-json',    label: 'Quest Template JSON' },
   { id: 'template-xml',     label: 'Quest Template XML' },
@@ -74,9 +68,6 @@ function getExtension(format: Format): string {
   const map: Record<Format, string> = {
     'questflow-json':   '.json',
     'questflow-yaml':   '.yaml',
-    'unity-asset':      '.asset',
-    'unreal-datatable': '.json',
-    'godot-tres':       '.tres',
     'template-json':    '.json',
     'template-yaml':    '.yaml',
     'template-xml':     '.xml',

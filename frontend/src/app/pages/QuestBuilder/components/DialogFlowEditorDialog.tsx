@@ -17,6 +17,7 @@ import {
   type NodeChange,
   type NodeProps,
   type NodeTypes,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import { PanelRightClose, PanelRightOpen, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -166,24 +167,24 @@ function longTextField(field: TemplateFieldSummary, itemPath: string, current: u
 
 function DialogPageNode({ data }: NodeProps<Node<DialogPageNodeData>>) {
   return (
-    <div className={`w-[260px] rounded-md border bg-steel-850 px-3 py-2 shadow-lg ${data.selected ? 'border-pulse' : data.isolated ? 'border-amber-500/80' : 'border-steel-600'}`}>
+    <div className={`w-[200px] rounded-md border bg-steel-850 px-2.5 py-2 shadow-lg ${data.selected ? 'border-pulse' : data.isolated ? 'border-amber-500/80' : 'border-steel-600'}`}>
       <Handle type="target" position={Position.Left} className="!bg-pulse" />
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold text-steel-100 truncate">{data.title}</p>
+      <div className="flex items-start justify-between gap-1.5">
+        <p className="text-xs font-semibold text-steel-100 truncate">{data.title}</p>
         <div className="flex flex-wrap gap-1 justify-end">
-          {data.badges.slice(0, 3).map((badge) => (
-            <span key={badge} className="text-[10px] text-steel-200 bg-steel-700 rounded px-1.5 py-0.5 truncate max-w-20">
+          {data.badges.slice(0, 2).map((badge) => (
+            <span key={badge} className="text-[9px] text-steel-200 bg-steel-700 rounded px-1 py-0.5 truncate max-w-16">
               {badge}
             </span>
           ))}
           {data.isolated && (
-            <span className="text-[10px] text-amber-200 bg-amber-950/70 border border-amber-700/60 rounded px-1.5 py-0.5">
+            <span className="text-[9px] text-amber-200 bg-amber-950/70 border border-amber-700/60 rounded px-1 py-0.5">
               Unlinked
             </span>
           )}
         </div>
       </div>
-      <p className="mt-2 text-xs text-steel-300 line-clamp-3 whitespace-pre-wrap">{data.prompt || 'No prompt text'}</p>
+      <p className="mt-1.5 text-[11px] text-steel-300 line-clamp-2 whitespace-pre-wrap">{data.prompt || 'No prompt text'}</p>
       <Handle type="source" position={Position.Right} className="!bg-pulse" />
     </div>
   );
@@ -258,7 +259,7 @@ function layoutDialogGraph(nodes: Node<DialogPageNodeData>[], edges: Edge[]) {
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
       position: {
-        x: index * 340,
+        x: index * 260,
         y: 120,
       },
     })),
@@ -378,12 +379,21 @@ export function DialogFlowEditorDialog({
   const relationships = React.useMemo(() => relationshipsFor(field, templateSchema), [field, templateSchema]);
   const identityKey = React.useMemo(() => identityKeyFor(field, templateSchema), [field, templateSchema]);
   const itemSchema = itemSchemaFor(field);
+  const reactFlowInstanceRef = React.useRef<ReactFlowInstance | null>(null);
 
   React.useEffect(() => {
     if (!isOpen) return;
     setSelectedIndex(null);
     setIsInspectorOpen(false);
   }, [field?.path, isOpen]);
+
+  // The inspector panel resizes the canvas without moving the camera — re-fit
+  // so the graph recentres into whatever width is actually left, instead of
+  // leaving nodes sitting behind the newly-opened panel.
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => reactFlowInstanceRef.current?.fitView({ padding: 0.3, maxZoom: 1.1 }));
+    return () => cancelAnimationFrame(id);
+  }, [isInspectorOpen]);
 
   React.useEffect(() => {
     setSelectedIndex((index) => {
@@ -582,13 +592,38 @@ export function DialogFlowEditorDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="bg-steel-900 border-steel-700 text-steel-100 !w-[98vw] !max-w-[98vw] !h-[96vh] p-0 overflow-hidden !flex !flex-col !gap-0">
-        <DialogHeader className="px-5 py-4 border-b border-steel-700 shrink-0">
-          <DialogTitle className="text-steel-100 text-lg">{field?.label ?? 'Dialog'} Flow</DialogTitle>
+      <DialogContent className="bg-steel-900 border-steel-700 text-steel-100 !max-w-7xl !h-[80vh] p-0 overflow-hidden !flex !flex-col !gap-0">
+        <DialogHeader className="px-5 py-4 border-b border-steel-700 shrink-0 flex-row items-center justify-between gap-3">
+          <div>
+            <DialogTitle className="text-steel-100 text-lg">{field?.label ?? 'Dialog'} Flow</DialogTitle>
+            <p className="text-steel-500 text-xs mt-0.5">{rows.length} page{rows.length === 1 ? '' : 's'}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={addRow}
+              className="flex items-center gap-2 rounded-md border border-steel-600 bg-steel-800 hover:bg-steel-700 px-3 py-2 text-sm text-steel-100"
+            >
+              <Plus className="w-4 h-4" />
+              Add page
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (isInspectorOpen) { setIsInspectorOpen(false); return; }
+                if (selectedIndex === null && rows.length > 0) setSelectedIndex(0);
+                setIsInspectorOpen(true);
+              }}
+              className="flex items-center gap-2 rounded-md border border-steel-600 bg-steel-800 hover:bg-steel-700 px-3 py-2 text-sm text-steel-100"
+            >
+              {isInspectorOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+              Page details
+            </button>
+          </div>
         </DialogHeader>
         <div
           className="grid flex-1 min-h-0"
-          style={{ gridTemplateColumns: isInspectorOpen ? 'minmax(0, 1fr) 460px' : 'minmax(0, 1fr)' }}
+          style={{ gridTemplateColumns: isInspectorOpen ? 'minmax(0, 1fr) 400px' : 'minmax(0, 1fr)' }}
         >
           <div className="relative min-w-0">
             <ReactFlow
@@ -606,34 +641,15 @@ export function DialogFlowEditorDialog({
               }}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
+              onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
               fitView
+              fitViewOptions={{ padding: 0.3, maxZoom: 1.1 }}
               proOptions={{ hideAttribution: true }}
               className="bg-steel-950"
             >
               <Background variant={BackgroundVariant.Dots} color="#2a323b" gap={20} size={1.5} />
               <Controls className="!bg-steel-800 !border-steel-600 [&_button]:!bg-steel-800 [&_button]:!border-steel-600 [&_button]:!text-steel-200 hover:[&_button]:!bg-steel-700" />
             </ReactFlow>
-            <button
-              type="button"
-              onClick={addRow}
-              className="absolute top-4 left-4 flex items-center gap-2 rounded-md border border-steel-600 bg-steel-850 px-3 py-2 text-sm text-steel-100 hover:bg-steel-800"
-            >
-              <Plus className="w-4 h-4" />
-              Add page
-            </button>
-            {!isInspectorOpen && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedIndex === null && rows.length > 0) setSelectedIndex(0);
-                  setIsInspectorOpen(true);
-                }}
-                className="absolute top-4 right-4 flex items-center gap-2 rounded-md border border-steel-600 bg-steel-850 px-3 py-2 text-sm text-steel-100 hover:bg-steel-800"
-              >
-                <PanelRightOpen className="w-4 h-4" />
-                Page details
-              </button>
-            )}
           </div>
           {isInspectorOpen && (
           <aside className="border-l border-steel-700 bg-steel-900 overflow-y-auto">

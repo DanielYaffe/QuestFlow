@@ -1,0 +1,24 @@
+{
+  "version": "v1",
+  "built_at": "2026-08-04T19:56:03Z",
+  "endpoints": {
+    "sdxl-lora": {
+      "image": "org/comfy-sdxl-lora:v1",
+      "checkpoint": "sdxl_base.safetensors",
+      "loras": ["pixel_style.safetensors", "outline.safetensors"],
+      "endpoint_id": "REPLACE_WITH_RUNPOD_ENDPOINT_ID"
+    },
+    "illustrious": {
+      "image": "org/comfy-illustrious:v1",
+      "checkpoint": "illustrious.safetensors",
+      "loras": [],
+      "endpoint_id": "REPLACE_WITH_RUNPOD_ENDPOINT_ID"
+    },
+    "pixelart": {
+      "image": "org/comfy-pixelart:v1",
+      "checkpoint": "pixelart.safetensors",
+      "loras": [],
+      "endpoint_id": "REPLACE_WITH_RUNPOD_ENDPOINT_ID"
+    }
+  }
+}

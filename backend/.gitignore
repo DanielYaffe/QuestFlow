@@ -70,6 +70,13 @@ web_modules/
 .env.*
 !.env.example
 
+# Deployment-specific RunPod manifest (holds real endpoint IDs).
+# Copy config/manifest.example.json → config/manifest.json and fill it in.
+config/manifest.json
+
+# Vendored ONNX weights — fetched via `npm run fetch:rmbg`, too large to commit
+vendor/rmbg/*.onnx
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

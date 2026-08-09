@@ -24,6 +24,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Loader2, Crosshair } from "lucide-react";
+import { toast } from "sonner";
 import { QuestNode } from "./components/QuestNode";
 import { QuestBuilderHeader } from "./components/QuestBuilderHeader";
 import { BuilderDock } from "./components/BuilderDock";
@@ -47,7 +48,13 @@ import {
 } from "../../api/questBuilderApi";
 import { ExportDialog } from "./components/ExportDialog";
 import { AIEditPanel } from "./components/AIEditPanel";
-import { AIChange } from "../../api/questAiEditApi";
+import {
+  AIChange,
+  ProposedDesign,
+  materializeAiEditDesigns,
+  proposalsFor,
+  remapRefs,
+} from "../../api/questAiEditApi";
 import { NodeVariant } from "@/types/quest";
 
 const nodeTypes = {
@@ -166,6 +173,7 @@ export function QuestBuilder() {
   const [searchParams, setSearchParams] = useSearchParams();
   const attachHandledRef = useRef(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportNodeIds, setExportNodeIds] = useState<string[] | null>(null);
   const [isAiEditOpen, setIsAiEditOpen] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -173,6 +181,10 @@ export function QuestBuilder() {
   // roster — node-attached characters/items are reconciled server-side on save,
   // and this surfaces them in the shelves without a page reload.
   const [savedVersion, setSavedVersion] = useState(0);
+  // Bumped whenever the set of project designs may have changed, so the id→name
+  // lookups behind the node chips re-read instead of going stale.
+  const [designsVersion, setDesignsVersion] = useState(0);
+  const markDesignsChanged = useCallback(() => setDesignsVersion((v) => v + 1), []);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -258,7 +270,10 @@ export function QuestBuilder() {
       .catch(() => {});
   }, [questlineId]);
 
-  // Character name map (for node cards) comes from the project character collection
+  // Character name map (for node cards) comes from the project character collection.
+  // Re-read whenever a design may have joined the project (a save reconciles node
+  // references into the roster; the dock can attach one directly) — otherwise a
+  // design created after mount is missing here and its node chip renders a raw id.
   useEffect(() => {
     if (!projectId) return;
     listCharacters({ projectId })
@@ -268,7 +283,7 @@ export function QuestBuilder() {
         ),
       )
       .catch(() => {});
-  }, [projectId]);
+  }, [projectId, designsVersion]);
 
   // Reward name map is sourced from the project item collection (mirrors the
   // character map) so a node's freshly-picked item resolves its name immediately,
@@ -280,7 +295,7 @@ export function QuestBuilder() {
         setRewardNames(Object.fromEntries(items.map((i) => [i._id, i.name]))),
       )
       .catch(() => {});
-  }, [projectId]);
+  }, [projectId, designsVersion]);
 
   // Populate graph once data is fetched and apply default horizontal layout
   useEffect(() => {
@@ -336,6 +351,16 @@ export function QuestBuilder() {
     },
     [setNodes, nodes],
   );
+
+  // Right-click "Export Node": if the clicked node is part of the current
+  // multi-selection, export the whole selection; otherwise just that node.
+  const handleNodeContextExport = useCallback((nodeId: string) => {
+    const current = nodesRef.current;
+    const clicked = current.find((n) => n.id === nodeId);
+    const selectedIds = current.filter((n) => n.selected).map((n) => n.id);
+    setExportNodeIds(clicked?.selected && selectedIds.length > 1 ? selectedIds : [nodeId]);
+    setIsExportOpen(true);
+  }, []);
 
   // Keep the in-memory graph consistent when a character/reward is deleted from
   // the side panel (the backend strips the references; this mirrors it on-screen).
@@ -580,6 +605,7 @@ export function QuestBuilder() {
           onChangeVariant: (variant: NodeVariant) =>
             changeNodeVariant(node.id, variant),
           onEdit: () => openEditSidebar(node.id),
+          onExportNode: () => handleNodeContextExport(node.id),
         },
       })),
     );
@@ -588,6 +614,7 @@ export function QuestBuilder() {
     deleteNode,
     changeNodeVariant,
     openEditSidebar,
+    handleNodeContextExport,
     characterNames,
     rewardNames,
     pushHistory,
@@ -606,13 +633,16 @@ export function QuestBuilder() {
         );
         setHasUnsavedChanges(false);
         setSavedVersion((v) => v + 1);
+        // The save reconciled node references into the roster, so a design
+        // attached this session is now resolvable by name.
+        markDesignsChanged();
       } catch {
         // will retry on next change
       } finally {
         setIsSaving(false);
       }
     }, 0);
-  }, [questlineId]);
+  }, [questlineId, markDesignsChanged]);
 
   const handleAutoLayout = useCallback(
     (direction: "TB" | "LR") => {
@@ -644,11 +674,16 @@ export function QuestBuilder() {
   );
 
   const applyAiChange = useCallback(
-    (change: AIChange) => {
+    (change: AIChange, designIds: Record<string, string>) => {
       const HIGHLIGHT_MS = 4000;
 
       switch (change.type) {
         case "updateNode": {
+          // refs arrives as complete before/after lists, so `after` replaces the
+          // node's references outright — an id it omits is a detach (ADR-0002).
+          const refs = change.refs
+            ? remapRefs(change.refs.after, designIds)
+            : null;
           setNodes((nds) =>
             nds.map((n) =>
               n.id === change.nodeId
@@ -659,6 +694,7 @@ export function QuestBuilder() {
                       title: change.after.title,
                       body: change.after.body,
                       variant: change.after.variant,
+                      ...(refs ?? {}),
                       aiHighlight: "updated",
                     },
                   }
@@ -684,6 +720,7 @@ export function QuestBuilder() {
             position,
             data: {
               ...change.node,
+              ...(change.refs ? remapRefs(change.refs.after, designIds) : {}),
               layoutDirection,
               aiHighlight: "added",
               onAddPath: (pos: "top" | "bottom" | "left" | "right") =>
@@ -775,13 +812,48 @@ export function QuestBuilder() {
 
   // Apply a batch of AI-Edit changes as one undoable step: snapshot once, then apply
   // all. A single approval passes a one-element array, so it stays one undo step too.
+  //
+  // Approval is also the moment proposed designs become real: anything the batch
+  // references but does not yet exist is created first, once, so a design used on
+  // two nodes yields one document. Undo reverts the graph and leaves the designs
+  // in the project (ADR-0001).
   const applyAiChangesWithUndo = useCallback(
-    (changes: AIChange[]) => {
+    async (changes: AIChange[], entities: ProposedDesign[] = []) => {
       if (changes.length === 0) return;
+
+      let designIds: Record<string, string> = {};
+      const needed = proposalsFor(changes, entities);
+      if (needed.length > 0) {
+        try {
+          const { ids, designs } = await materializeAiEditDesigns(
+            questlineId,
+            needed,
+          );
+          designIds = ids;
+          // Name lookups drive the node cards and diffs — fill them now so the
+          // new designs never render as raw ids while the save round-trips.
+          const named = (kind: "item" | "character") =>
+            Object.fromEntries(
+              designs
+                .filter((d) =>
+                  kind === "item" ? d.kind === "item" : d.kind !== "item",
+                )
+                .map((d) => [d.id, d.name]),
+            );
+          setCharacterNames((prev) => ({ ...prev, ...named("character") }));
+          setRewardNames((prev) => ({ ...prev, ...named("item") }));
+        } catch {
+          toast("Couldn't create the new designs", {
+            description: "Nothing was changed — please try again.",
+          });
+          return;
+        }
+      }
+
       pushHistory();
-      changes.forEach(applyAiChange);
+      changes.forEach((change) => applyAiChange(change, designIds));
     },
-    [pushHistory, applyAiChange],
+    [pushHistory, applyAiChange, questlineId],
   );
 
   if (isLoading) {
@@ -838,6 +910,7 @@ export function QuestBuilder() {
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
+          multiSelectionKeyCode={['Control', 'Meta']}
           fitView
           className="bg-steel-850"
           proOptions={{ hideAttribution: true }}
@@ -856,7 +929,7 @@ export function QuestBuilder() {
 
         <div className="absolute top-4 left-4 bg-steel-850/90 backdrop-blur-sm border border-steel-700 rounded-lg px-4 py-3 z-10">
           <p className="text-steel-400 text-sm">
-            Click a node to edit • Hover for + buttons • Drag to connect paths
+            Click a node to edit • Ctrl+click to multi-select • Right-click to export • Drag to connect paths
           </p>
         </div>
       </div>
@@ -869,6 +942,7 @@ export function QuestBuilder() {
         onQuestClick={focusNode}
         onCharacterDeleted={removeCharacterFromGraph}
         onRewardDeleted={removeRewardFromGraph}
+        onRosterChanged={markDesignsChanged}
       />
 
       {/* Create-node sidebar (+ button flow) */}
@@ -908,8 +982,9 @@ export function QuestBuilder() {
 
       <ExportDialog
         isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
+        onClose={() => { setIsExportOpen(false); setExportNodeIds(null); }}
         questlineId={questlineId}
+        initialSelectedNodeIds={exportNodeIds ?? undefined}
       />
 
       <AIEditPanel
@@ -918,6 +993,8 @@ export function QuestBuilder() {
         questlineId={questlineId}
         nodes={nodes}
         edges={edges}
+        characterNames={characterNames}
+        rewardNames={rewardNames}
         onApplyChanges={applyAiChangesWithUndo}
       />
     </div>

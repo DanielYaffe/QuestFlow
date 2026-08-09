@@ -146,6 +146,8 @@ characterRouter.post('/:id/rotations', characterController.rotations.bind(charac
 characterRouter.post('/:id/rotations/export', characterController.rotationsExport.bind(characterController));
 characterRouter.post('/:id/publish-kb', characterController.publishKb.bind(characterController));
 characterRouter.post('/:id/sprite/transform', characterController.spriteTransform.bind(characterController));
+characterRouter.post('/:id/sprite/attach', characterController.spriteAttach.bind(characterController));
+characterRouter.post('/:id/sprite/version', characterController.spriteVersion.bind(characterController));
 
 /**
  * @swagger

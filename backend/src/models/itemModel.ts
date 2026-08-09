@@ -14,6 +14,7 @@ export type ItemRarity = 'common' | 'rare' | 'epic';
 export interface IItemAssets {
   rawSpriteCandidates: string[]; // S3 keys, capped at MAX_ITEM_SPRITE_CANDIDATES
   snappedSpriteS3Key: string;    // user-picked canonical sprite
+  spriteHistoryIndex?: number;   // undo/redo cursor into rawSpriteCandidates
 }
 
 export interface IMapleAssetMetadata {
@@ -38,6 +39,8 @@ export interface IItem extends Document {
   kbRef: string;
   // KB document id when published from the design studio. '' = never published.
   kbDocId: string;
+  // Sprite style this design generates in (SpriteStyle.styleId). '' = unset.
+  spriteStyleId: string;
   assets: IItemAssets;
   maple: IMapleAssetMetadata;
   createdAt: Date;
@@ -48,6 +51,7 @@ const ItemAssetsSchema = new Schema<IItemAssets>(
   {
     rawSpriteCandidates: { type: [String], default: [] },
     snappedSpriteS3Key:  { type: String, default: '' },
+    spriteHistoryIndex:  { type: Number },
   },
   { _id: false },
 );
@@ -75,6 +79,7 @@ const ItemSchema = new Schema<IItem>(
     tags:        { type: [String], default: [] },
     kbRef:       { type: String, default: '', index: true },
     kbDocId:     { type: String, default: '' },
+    spriteStyleId: { type: String, default: '' },
     assets:      { type: ItemAssetsSchema, default: () => ({}) },
     maple:       { type: MapleAssetMetadataSchema, default: () => ({}) },
   },

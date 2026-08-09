@@ -2,7 +2,7 @@ import { Router, RequestHandler } from 'express';
 import questlineController from '../controllers/questlineController';
 import { requireQuestlineOwnership } from '../middlewares/requireQuestlineOwnership';
 import { previewExport, downloadExport, pushToGithub } from '../controllers/questExportController';
-import { aiEditQuestline } from '../controllers/questAiEditController';
+import { aiEditQuestline, materializeAiEditDesigns } from '../controllers/questAiEditController';
 
 const questlineRouter = Router();
 
@@ -645,5 +645,6 @@ questlineRouter.post('/:id/push-to-github', requireQuestlineOwnership as Request
 // ── AI Edit ─────────────────────────────────────────────────────────────────
 
 questlineRouter.post('/:id/ai-edit', requireQuestlineOwnership as RequestHandler, aiEditQuestline as RequestHandler);
+questlineRouter.post('/:id/ai-edit/materialize', requireQuestlineOwnership as RequestHandler, materializeAiEditDesigns as RequestHandler);
 
 export default questlineRouter;

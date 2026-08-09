@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProjectReward, fetchProjectRewards } from '../../api/projectApi';
-import { updateReward, deleteReward, getRewardUsage } from '../../api/projectSidebarApi';
+import { updateReward } from '../../api/projectSidebarApi';
+import { deleteItem, getItemUsage } from '../../api/itemApi';
 import { ConfirmModal } from '../../components/shared/ConfirmModal';
 import { GroundedBadge } from '../../components/shared/GroundedBadge';
 
@@ -182,10 +183,13 @@ export function Items() {
       .finally(() => setLoading(false));
   }, [projectId]);
 
+  // Deleting from the project is project-scoped (ADR-0001) — it must work for an
+  // item no questline references, whose questlineId here is ''. The item routes
+  // strip it from every questline roster and node on the way out.
   const requestDelete = (item: ProjectReward) => {
     setPendingDelete(item);
     setDeleteUsage(null);
-    getRewardUsage(item.questlineId, item._id)
+    getItemUsage(item._id)
       .then(setDeleteUsage)
       .catch(() => setDeleteUsage({ nodeCount: 0 }));
   };
@@ -197,7 +201,7 @@ export function Items() {
     setDeleteUsage(null);
     setSelected(null);
     try {
-      await deleteReward(target.questlineId, target._id);
+      await deleteItem(target._id);
       setItems((prev) => prev.filter((i) => i._id !== target._id));
       toast.success('Item deleted');
     } catch {

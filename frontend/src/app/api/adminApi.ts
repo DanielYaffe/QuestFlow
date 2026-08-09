@@ -34,6 +34,8 @@ export interface AdminSpriteStyle {
   previewImagePath: string;
   category: StyleCategory;
   baseModel: 'SDXL' | 'SD1.5' | 'Flux';
+  // Which RunPod endpoint runs this style; determines checkpointFilename
+  endpointKey: string;
   checkpointFilename: string;
   loras: StyleLora[];
   promptPrefix: string;
@@ -44,7 +46,13 @@ export interface AdminSpriteStyle {
   sampler: SamplerParams;
   presetId?: string;
   isDefault: boolean;
+  // The admin's own on/off decision. Nothing derives or overwrites it.
   isActive: boolean;
+  // Why the deployed images cannot run this style; empty means they can.
+  // Derived server-side from the manifest, so it always matches what the API
+  // will actually accept. Independent of isActive — a style can be both
+  // switched off and unrunnable, and those are different problems.
+  unavailable: string[];
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -71,6 +79,7 @@ export interface CreateStylePayload {
   previewImagePath?: string;
   category: StyleCategory;
   baseModel?: 'SDXL' | 'SD1.5' | 'Flux';
+  endpointKey: string;
   checkpointFilename: string;
   loras?: StyleLora[];
   promptPrefix?: string;
@@ -115,12 +124,35 @@ export type UpdateCheckpointPayload = Partial<Omit<CreateCheckpointPayload, 'fil
 export type CreateLoraPayload = Omit<AdminLora, '_id' | 'isActive'> & { isActive?: boolean };
 export type UpdateLoraPayload = Partial<Omit<CreateLoraPayload, 'filename'>>;
 
-export interface ComfyModels {
-  reachable: boolean;
-  checkpoints: string[];
+// Model availability is a build-time property now: each endpoint is a Docker
+// image with one checkpoint baked in, and LoRAs exist only in sdxl-lora. There
+// is no live ComfyUI to ask, so this manifest is the authority.
+export const LORA_ENDPOINT_KEY = 'sdxl-lora';
+
+export interface ManifestEndpoint {
+  image: string;
+  checkpoint: string;
   loras: string[];
-  samplers: string[];
-  schedulers: string[];
+  endpoint_id: string;
+}
+
+export interface RunpodManifest {
+  version: string;
+  builtAt: string;
+  source: 'url' | 'bundled';
+  endpoints: Record<string, ManifestEndpoint>;
+}
+
+/** Every checkpoint across all endpoints — for "is this file deployed?" checks. */
+export function manifestCheckpoints(manifest: RunpodManifest | null): string[] {
+  if (!manifest) return [];
+  return Object.values(manifest.endpoints).map((e) => e.checkpoint);
+}
+
+/** Every LoRA across all endpoints. In practice only sdxl-lora contributes. */
+export function manifestLoras(manifest: RunpodManifest | null): string[] {
+  if (!manifest) return [];
+  return [...new Set(Object.values(manifest.endpoints).flatMap((e) => e.loras))];
 }
 
 export interface AdminUser {
@@ -210,8 +242,14 @@ export async function deleteAdminLora(filename: string): Promise<void> {
   await api.delete(`/admin/loras/${encodeURIComponent(filename)}`);
 }
 
-export async function getComfyModels(): Promise<ComfyModels> {
-  const { data } = await api.get<ComfyModels>('/admin/comfy/models');
+export async function getManifest(): Promise<RunpodManifest> {
+  const { data } = await api.get<RunpodManifest>('/admin/manifest');
+  return data;
+}
+
+/** Re-reads the manifest server-side, for when the images were rebuilt. */
+export async function reloadManifest(): Promise<RunpodManifest> {
+  const { data } = await api.post<RunpodManifest>('/admin/manifest/reload');
   return data;
 }
 
