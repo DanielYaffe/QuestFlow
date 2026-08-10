@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  allocateMapleId,
   checkMapleIdAvailability,
   MapleAssetMetadata,
   MapleAssetType,
@@ -41,6 +42,7 @@ export function MapleAssetPanel({
   onSave: (value: Partial<MapleAssetMetadata>) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<MapleAssetMetadata>(() => ({ ...defaultMaple(), ...value }));
+  const [allocating, setAllocating] = useState(false);
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [messages, setMessages] = useState<{ warnings: string[]; errors: string[] }>({ warnings: [], errors: [] });
@@ -73,6 +75,29 @@ export function MapleAssetPanel({
       return { available: false, messages };
     } finally {
       setChecking(false);
+    }
+  };
+
+  const assignFreeId = async () => {
+    setAllocating(true);
+    try {
+      const result = await allocateMapleId({
+        projectId,
+        assetType,
+        excludeRecordId: recordId,
+      });
+      const nextMessages = { warnings: result.warnings, errors: result.errors };
+      setMessages(nextMessages);
+      if (result.available && result.mapleId) {
+        setDraft((current) => ({ ...current, mapleId: result.mapleId, operation: 'create' }));
+        toast.success(`Assigned Maple ID ${result.mapleId}`);
+      } else {
+        toast.error(result.errors[0] ?? 'No free Maple ID found');
+      }
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to assign Maple ID'));
+    } finally {
+      setAllocating(false);
     }
   };
 
@@ -156,6 +181,15 @@ export function MapleAssetPanel({
           className="self-start text-xs text-pulse hover:text-pulse/80 disabled:opacity-50"
         >
           Check ID
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void assignFreeId()}
+          disabled={allocating}
+          className="self-start text-xs text-pulse hover:text-pulse/80 disabled:opacity-50"
+        >
+          {allocating ? 'Assigning...' : 'Assign free ID'}
         </button>
 
         {(hasErrors || hasWarnings) && (

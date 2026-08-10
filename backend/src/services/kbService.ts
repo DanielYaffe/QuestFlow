@@ -1,8 +1,9 @@
 import { KbType, deleteDocumentPoints } from './qdrant';
 import { embedBatch } from './ai';
 import { chunkText } from './chunk';
-import { parseCollectionFile } from './structuredParse';
+import { parseCollectionFile, ParsedEntity } from './structuredParse';
 import KbDocumentModel, { IKbDocument } from '../models/kbDocumentModel';
+import CharacterModel from '../models/characterModel';
 import { kbQueue } from '../queues/kbQueue';
 
 // ---------------------------------------------------------------------------
@@ -20,6 +21,75 @@ import { kbQueue } from '../queues/kbQueue';
  * 1's freeform chunking; prose categories (lore/general) are always freeform.
  */
 const FREEFORM_TYPES: KbType[] = ['lore', 'general'];
+
+function stringField(fields: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = fields[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function stringListField(fields: Record<string, unknown>, keys: string[]): string[] {
+  for (const key of keys) {
+    const value = fields[key];
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return value.split(/[,;]/).map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function numberField(fields: Record<string, unknown>, keys: string[]): number {
+  for (const key of keys) {
+    const value = fields[key];
+    if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim());
+  }
+  return 0;
+}
+
+function characterPatchFromEntity(entity: ParsedEntity, type: KbType): Record<string, unknown> {
+  const fields = entity.fields;
+  const appearance = stringField(fields, ['appearance', 'look', 'visual', 'description']);
+  const lore = stringField(fields, ['notes', 'lore', 'background', 'bio', 'description']);
+  const dialogueTraits = stringListField(fields, ['traits', 'dialogueTraits', 'dialogue_traits', 'personality']);
+  const mapleId = numberField(fields, ['id', 'mapleId', 'maple_id', 'npcId', 'npc_id', 'mobId', 'mob_id']);
+
+  const patch: Record<string, unknown> = {
+    name: entity.name,
+    kind: type === 'monsters' ? 'monster' : 'npc',
+  };
+  if (appearance) patch.appearance = appearance;
+  if (lore) patch.lore = lore;
+  if (dialogueTraits.length > 0) patch.dialogueTraits = dialogueTraits;
+  if (mapleId) patch['maple.mapleId'] = mapleId;
+  return patch;
+}
+
+async function syncCharacterReferencesFromKb(doc: IKbDocument): Promise<void> {
+  if (doc.type !== 'characters' && doc.type !== 'monsters') return;
+
+  const entities = parseCollectionFile(doc.originalText);
+  if (!entities?.length) return;
+
+  const docId = doc._id.toString();
+  const singleEntityDoc = entities.length === 1;
+  for (const entity of entities) {
+    const filters: Record<string, unknown>[] = [
+      { kbRef: `${doc.gameId}:${entity.name}` },
+    ];
+    if (singleEntityDoc) filters.push({ kbDocId: docId });
+
+    await CharacterModel.updateMany(
+      { $or: filters },
+      { $set: { ...characterPatchFromEntity(entity, doc.type), kbRef: `${doc.gameId}:${entity.name}` } },
+    );
+  }
+}
 
 export async function buildPoints(text: string, gameId: string, docId: string, type: KbType) {
   const entities = FREEFORM_TYPES.includes(type) ? null : parseCollectionFile(text);
@@ -105,6 +175,7 @@ export async function editDocument(
     doc.statusError = '';
   }
   await doc.save();
+  await syncCharacterReferencesFromKb(doc);
 
   if (textChanged) {
     await kbQueue.add('reembed', {

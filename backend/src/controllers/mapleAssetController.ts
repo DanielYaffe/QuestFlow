@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import {
+  allocateMapleId,
   buildMapleAssetPackage,
   checkMapleIdAvailability,
   MapleAssetType,
@@ -73,6 +74,35 @@ export async function checkIdAvailability(req: AuthRequest, res: Response): Prom
     }));
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to check Maple ID' });
+  }
+}
+
+export async function allocateId(req: AuthRequest, res: Response): Promise<void> {
+  const ownerId = req.user?._id?.toString();
+  if (!ownerId) return unauthorized(res);
+
+  const assetType = parseAssetType(req.query.assetType ?? req.body?.assetType);
+  const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : req.body?.projectId;
+  const excludeRecordId = typeof req.query.excludeRecordId === 'string' ? req.query.excludeRecordId : req.body?.excludeRecordId;
+
+  if (!projectId || typeof projectId !== 'string') {
+    res.status(400).json({ error: 'projectId is required' });
+    return;
+  }
+  if (!assetType) {
+    res.status(400).json({ error: 'assetType must be npc or item' });
+    return;
+  }
+
+  try {
+    res.json(await allocateMapleId({
+      ownerId,
+      projectId,
+      assetType,
+      excludeRecordId,
+    }));
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to allocate Maple ID' });
   }
 }
 

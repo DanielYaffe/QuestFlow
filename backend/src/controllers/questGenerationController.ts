@@ -585,12 +585,15 @@ function normalizeGeneratedRelationshipRows(
   const nextRows = rows.map((row) => (
     row && typeof row === 'object' && !Array.isArray(row) ? { ...row as Record<string, unknown> } : row
   ));
-  const idToIndex = new Map<string, number>();
-  nextRows.forEach((row, index) => {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
-    const id = (row as Record<string, unknown>)[identityKey];
-    if (id !== undefined && id !== null && id !== '') idToIndex.set(String(id), index);
-  });
+  const idToIndex = indexRelationshipRows(nextRows, identityKey);
+  ensureGeneratedRowIdentities(nextRows, identityKey, idToIndex);
+
+  const forwardSequenceHints = parsedHints.filter((hint) => (
+    !isReverseRelationshipHint(hint) && isSequenceForwardRelationshipHint(hint)
+  ));
+  for (const forwardHint of forwardSequenceHints) {
+    normalizeForwardSequence(nextRows, identityKey, forwardHint.from.itemPath, idToIndex);
+  }
 
   for (const hint of parsedHints) {
     if (isReverseRelationshipHint(hint) || !isSequenceForwardRelationshipHint(hint)) continue;
@@ -616,25 +619,56 @@ function normalizeGeneratedRelationshipRows(
     });
   }
 
-  const connectedIds = new Set<string>();
-  for (const row of nextRows) {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    const sourceId = (row as Record<string, unknown>)[identityKey];
-    if (sourceId === undefined || sourceId === null || sourceId === '') continue;
-    for (const hint of parsedHints) {
-      const targetId = (row as Record<string, unknown>)[hint.from.itemPath];
-      if (targetId === undefined || targetId === null || targetId === '' || !idToIndex.has(String(targetId))) continue;
-      connectedIds.add(String(sourceId));
-      connectedIds.add(String(targetId));
-    }
-  }
+  return nextRows;
+}
 
-  if (!connectedIds.size) return nextRows;
-  return nextRows.filter((row, index) => {
-    if (index === 0) return true;
-    if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+function indexRelationshipRows(rows: unknown[], identityKey: string): Map<string, number> {
+  const idToIndex = new Map<string, number>();
+  rows.forEach((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
     const id = (row as Record<string, unknown>)[identityKey];
-    return id !== undefined && id !== null && connectedIds.has(String(id));
+    if (id !== undefined && id !== null && id !== '') idToIndex.set(String(id), index);
+  });
+  return idToIndex;
+}
+
+function ensureGeneratedRowIdentities(
+  rows: unknown[],
+  identityKey: string,
+  idToIndex: Map<string, number>,
+): void {
+  rows.forEach((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
+    const record = row as Record<string, unknown>;
+    const rawId = record[identityKey];
+    if (rawId !== undefined && rawId !== null && rawId !== '') return;
+    let generatedId = `page_${index + 1}`;
+    while (idToIndex.has(generatedId)) generatedId = `page_${index + 1}_${idToIndex.size + 1}`;
+    record[identityKey] = generatedId;
+    idToIndex.set(generatedId, index);
+  });
+}
+
+function normalizeForwardSequence(
+  rows: unknown[],
+  identityKey: string,
+  forwardKey: string,
+  idToIndex: Map<string, number>,
+): void {
+  rows.forEach((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
+    if (index >= rows.length - 1) return;
+
+    const record = row as Record<string, unknown>;
+    const currentTarget = record[forwardKey];
+    if (currentTarget !== undefined && currentTarget !== null && currentTarget !== '' && idToIndex.has(String(currentTarget))) {
+      return;
+    }
+
+    const nextRow = rows[index + 1];
+    if (!nextRow || typeof nextRow !== 'object' || Array.isArray(nextRow)) return;
+    const nextId = (nextRow as Record<string, unknown>)[identityKey];
+    if (nextId !== undefined && nextId !== null && nextId !== '') record[forwardKey] = String(nextId);
   });
 }
 

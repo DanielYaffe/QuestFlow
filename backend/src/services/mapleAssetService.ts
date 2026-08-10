@@ -5,6 +5,7 @@ import ItemModel, { IItem } from '../models/itemModel';
 import ProjectModel, { IMapleIdRange, IProject } from '../models/projectModel';
 import KbDocumentModel from '../models/kbDocumentModel';
 import { downloadBufferFromS3 } from '../utils/s3Helper';
+import { config } from '../config/config';
 
 export type MapleAssetType = 'npc' | 'item';
 export type MapleExportMode = 'changed-only' | 'full-snapshot';
@@ -21,6 +22,10 @@ export interface MapleIdAvailability {
     kbType: string;
     documentTitle: string;
   };
+}
+
+export interface MapleIdAllocation extends MapleIdAvailability {
+  exhausted: boolean;
 }
 
 export interface MaplePackageFile {
@@ -72,6 +77,12 @@ interface NativeEntity {
   id: number;
   name: string;
   documentTitle: string;
+}
+
+interface NormalizedImageResult {
+  buffer: Buffer;
+  usedPlaceholder: boolean;
+  warning?: string;
 }
 
 const NATIVE_TYPE_BY_ASSET: Record<MapleAssetType, 'characters' | 'items'> = {
@@ -225,6 +236,50 @@ async function findNativeCollision(
   return undefined;
 }
 
+async function nativeIds(project: IProject, assetType: MapleAssetType): Promise<Set<number>> {
+  const ids = new Set<number>();
+  if (!project.gameId) return ids;
+
+  const docs = await KbDocumentModel.find({
+    gameId: project.gameId,
+    type: NATIVE_TYPE_BY_ASSET[assetType],
+    status: 'ready',
+  }).select('originalText').lean();
+
+  for (const doc of docs) {
+    let entries: Array<Record<string, unknown>> = [];
+    try {
+      entries = entitiesFromParsedJson(JSON.parse(doc.originalText));
+    } catch {
+      entries = entitiesFromXml(doc.originalText);
+    }
+    for (const entry of entries) {
+      const id = readEntityId(entry);
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
+}
+
+async function projectUsedIds(
+  projectId: string,
+  assetType: MapleAssetType,
+  excludeRecordId?: string,
+): Promise<Set<number>> {
+  const idFilter = excludeRecordId ? { $ne: excludeRecordId } : { $exists: true };
+  const filter = {
+    projectId,
+    _id: idFilter,
+    'maple.mapleId': { $gt: 0 },
+  };
+
+  const rows = assetType === 'npc'
+    ? await CharacterModel.find({ ...filter, kind: 'npc' }).select('maple.mapleId').lean()
+    : await ItemModel.find(filter).select('maple.mapleId').lean();
+
+  return new Set(rows.map((row) => normalizeId(row.maple?.mapleId)).filter(Boolean));
+}
+
 async function projectDuplicate(
   projectId: string,
   assetType: MapleAssetType,
@@ -292,10 +347,94 @@ export async function checkMapleIdAvailability(args: {
   };
 }
 
-async function normalizeImage(imageKey: string, assetType: MapleAssetType): Promise<Buffer> {
+export async function allocateMapleId(args: {
+  ownerId: string;
+  projectId: string;
+  assetType: MapleAssetType;
+  excludeRecordId?: string;
+}): Promise<MapleIdAllocation> {
+  const project = await ProjectModel.findOne({ _id: args.projectId, ownerId: args.ownerId });
+  if (!project) throw new Error('Project not found');
+
+  const ranges = rangesFor(project, args.assetType);
+  if (!ranges.length) {
+    return {
+      available: false,
+      exhausted: true,
+      assetType: args.assetType,
+      mapleId: 0,
+      warnings: [],
+      errors: [`Configure at least one allowed ${args.assetType} ID range in project Maple settings.`],
+    };
+  }
+
+  const [native, projectUsed] = await Promise.all([
+    nativeIds(project, args.assetType),
+    projectUsedIds(args.projectId, args.assetType, args.excludeRecordId),
+  ]);
+
+  const sortedRanges = [...ranges].sort((a, b) => a.min - b.min);
+  for (const range of sortedRanges) {
+    const min = Math.max(1, Math.min(range.min, range.max));
+    const max = Math.max(range.min, range.max);
+    for (let mapleId = min; mapleId <= max; mapleId += 1) {
+      if (native.has(mapleId) || projectUsed.has(mapleId)) continue;
+      const availability = await checkMapleIdAvailability({
+        ownerId: args.ownerId,
+        projectId: args.projectId,
+        assetType: args.assetType,
+        mapleId,
+        excludeRecordId: args.excludeRecordId,
+        allowNativePatch: false,
+      });
+      if (availability.available) {
+        return { ...availability, exhausted: false };
+      }
+    }
+  }
+
+  return {
+    available: false,
+    exhausted: true,
+    assetType: args.assetType,
+    mapleId: 0,
+    warnings: [],
+    errors: [`No free ${args.assetType} Maple ID was found in the configured ranges.`],
+  };
+}
+
+async function placeholderImage(assetType: MapleAssetType): Promise<Buffer> {
   const profile = IMAGE_PROFILES[assetType];
-  const input = await downloadBufferFromS3(imageKey);
-  return sharp(input)
+  const label = assetType === 'npc' ? 'NPC' : 'ITEM';
+  const svg = `
+    <svg width="${profile.width}" height="${profile.height}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="#24313f"/>
+      <rect x="1" y="1" width="${profile.width - 2}" height="${profile.height - 2}" fill="#9be8ff" fill-opacity="0.22" stroke="#9be8ff"/>
+      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="${assetType === 'npc' ? 9 : 6}" font-weight="700" fill="#ffffff">${label}</text>
+    </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+async function normalizeImage(
+  imageKey: string,
+  assetType: MapleAssetType,
+): Promise<{ buffer: Buffer; usedPlaceholder: boolean; warning?: string }> {
+  const profile = IMAGE_PROFILES[assetType];
+  let input: Buffer;
+  try {
+    input = await downloadBufferFromS3(imageKey);
+  } catch (error) {
+    if (!config.MAPLE_EXPORT_ALLOW_PLACEHOLDER_IMAGES) throw error;
+    const reason = error instanceof Error ? error.message : 'Could not read image from object storage.';
+    input = await placeholderImage(assetType);
+    return {
+      buffer: input,
+      usedPlaceholder: true,
+      warning: `Used placeholder ${assetType} image because object storage image could not be read: ${reason}`,
+    };
+  }
+
+  const buffer = await sharp(input)
     .resize(profile.width, profile.height, {
       fit: 'contain',
       background: { r: 0, g: 0, b: 0, alpha: 0 },
@@ -303,6 +442,18 @@ async function normalizeImage(imageKey: string, assetType: MapleAssetType): Prom
     })
     .png()
     .toBuffer();
+  return { buffer, usedPlaceholder: false };
+}
+
+async function missingImageFallback(assetType: MapleAssetType): Promise<NormalizedImageResult> {
+  if (!config.MAPLE_EXPORT_ALLOW_PLACEHOLDER_IMAGES) {
+    return { buffer: Buffer.alloc(0), usedPlaceholder: false };
+  }
+  return {
+    buffer: await placeholderImage(assetType),
+    usedPlaceholder: true,
+    warning: `Used placeholder ${assetType} image because no canonical image is set.`,
+  };
 }
 
 function statusFor(warnings: string[], errors: string[]): MaplePackageAsset['validationStatus'] {
@@ -333,7 +484,10 @@ async function buildNpcAsset(
   const mapleId = normalizeId(character.maple?.mapleId);
   const imageKey = character.assets?.snappedSpriteS3Key || character.assets?.rawSpriteCandidates?.at(-1) || '';
   if (!mapleId) errors.push('NPC has no Maple ID.');
-  if (!imageKey) errors.push('NPC has no canonical sprite image.');
+  if (!imageKey) {
+    if (config.MAPLE_EXPORT_ALLOW_PLACEHOLDER_IMAGES) warnings.push('NPC has no canonical sprite image.');
+    else errors.push('NPC has no canonical sprite image.');
+  }
 
   const availability = mapleId ? await checkMapleIdAvailability({
     ownerId,
@@ -346,10 +500,12 @@ async function buildNpcAsset(
   warnings.push(...(availability?.warnings ?? []));
   errors.push(...(availability?.errors ?? []));
 
-  const sprite = imageKey ? await normalizeImage(imageKey, 'npc').catch((error: unknown) => {
+  const spriteResult: NormalizedImageResult = imageKey ? await normalizeImage(imageKey, 'npc').catch((error: unknown) => {
     errors.push(error instanceof Error ? error.message : 'Failed to normalize NPC sprite.');
-    return Buffer.alloc(0);
-  }) : Buffer.alloc(0);
+    return { buffer: Buffer.alloc(0), usedPlaceholder: false };
+  }) : await missingImageFallback('npc');
+  if (spriteResult.warning) warnings.push(spriteResult.warning);
+  const sprite = spriteResult.buffer;
   const source = {
     id: character._id.toString(),
     kind: character.kind,
@@ -398,7 +554,10 @@ async function buildItemAsset(
   const mapleId = normalizeId(item.maple?.mapleId);
   const imageKey = item.assets?.snappedSpriteS3Key || item.assets?.rawSpriteCandidates?.at(-1) || '';
   if (!mapleId) errors.push('Item has no Maple ID.');
-  if (!imageKey) errors.push('Item has no canonical icon image.');
+  if (!imageKey) {
+    if (config.MAPLE_EXPORT_ALLOW_PLACEHOLDER_IMAGES) warnings.push('Item has no canonical icon image.');
+    else errors.push('Item has no canonical icon image.');
+  }
 
   const availability = mapleId ? await checkMapleIdAvailability({
     ownerId,
@@ -411,10 +570,12 @@ async function buildItemAsset(
   warnings.push(...(availability?.warnings ?? []));
   errors.push(...(availability?.errors ?? []));
 
-  const icon = imageKey ? await normalizeImage(imageKey, 'item').catch((error: unknown) => {
+  const iconResult: NormalizedImageResult = imageKey ? await normalizeImage(imageKey, 'item').catch((error: unknown) => {
     errors.push(error instanceof Error ? error.message : 'Failed to normalize item icon.');
-    return Buffer.alloc(0);
-  }) : Buffer.alloc(0);
+    return { buffer: Buffer.alloc(0), usedPlaceholder: false };
+  }) : await missingImageFallback('item');
+  if (iconResult.warning) warnings.push(iconResult.warning);
+  const icon = iconResult.buffer;
   const source = {
     id: item._id.toString(),
     category: 'etc',

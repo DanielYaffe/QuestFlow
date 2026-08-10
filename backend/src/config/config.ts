@@ -28,6 +28,13 @@ const envSchema = z.object({
         .enum(['true', 'false'])
         .default('false')
         .transform((v) => v === 'true'),
+    // Temporary/testing escape hatch for Maple exports when object storage is
+    // unavailable. Keeps the deploy pipeline testable without hiding the issue:
+    // exported assets receive a manifest warning.
+    MAPLE_EXPORT_ALLOW_PLACEHOLDER_IMAGES: z
+        .enum(['true', 'false'])
+        .default('false')
+        .transform((v) => v === 'true'),
     GOOGLE_CLIENT_ID: z.string().default(''),
     GOOGLE_CLIENT_SECRET: z.string().default(''),
     GOOGLE_CALLBACK_URL: z.string().default('http://localhost:3000/auth/google/callback'),

@@ -39,6 +39,10 @@ export interface MapleIdAvailability {
   };
 }
 
+export interface MapleIdAllocation extends MapleIdAvailability {
+  exhausted: boolean;
+}
+
 export interface MaplePackageFile {
   path: string;
   content: string;
@@ -83,6 +87,15 @@ export async function checkMapleIdAvailability(params: {
   allowNativePatch?: boolean;
 }): Promise<MapleIdAvailability> {
   const { data } = await api.get<MapleIdAvailability>('/maple-assets/id-availability', { params });
+  return data;
+}
+
+export async function allocateMapleId(params: {
+  projectId: string;
+  assetType: MapleAssetType;
+  excludeRecordId?: string;
+}): Promise<MapleIdAllocation> {
+  const { data } = await api.get<MapleIdAllocation>('/maple-assets/id-allocation', { params });
   return data;
 }
 
