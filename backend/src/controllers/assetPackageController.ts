@@ -177,6 +177,7 @@ export async function pushPackageToGithub(req: AuthRequest, res: Response): Prom
       files: pkg.files.map((file) => ({
         filePath: [baseDir, file.path].filter(Boolean).join('/'),
         content: file.content,
+        encoding: file.encoding,
       })),
     });
 

@@ -13,7 +13,7 @@ interface PushFilesOptions {
   owner: string;
   repo: string;
   branch: string;
-  files: Array<{ filePath: string; content: string }>;
+  files: Array<{ filePath: string; content: string; encoding?: 'utf8' | 'base64' }>;
   commitMessage: string;
 }
 
@@ -220,7 +220,9 @@ export async function pushFiles(options: PushFilesOptions): Promise<string[]> {
         `https://api.github.com/repos/${owner}/${repo}/git/blobs`,
         token,
         {
-          content: Buffer.from(file.content, 'utf-8').toString('base64'),
+          content: file.encoding === 'base64'
+            ? file.content
+            : Buffer.from(file.content, 'utf-8').toString('base64'),
           encoding: 'base64',
         },
       );

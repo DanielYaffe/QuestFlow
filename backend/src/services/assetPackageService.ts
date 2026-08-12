@@ -2,14 +2,14 @@ import crypto from 'crypto';
 import CharacterModel from '../models/characterModel';
 import ItemModel from '../models/itemModel';
 import ProjectModel, { IProjectAssetSchema } from '../models/projectModel';
-import { getPresignedUrl } from '../utils/s3Helper';
+import { downloadBufferFromS3, getPresignedUrl } from '../utils/s3Helper';
 
 export type GenericAssetPackageMode = 'changed-only' | 'full-snapshot';
 
 export interface GenericAssetPackageFile {
   path: string;
   content: string;
-  encoding: 'utf8';
+  encoding: 'utf8' | 'base64';
 }
 
 export interface GenericAssetPackageAsset {
@@ -84,9 +84,37 @@ function isStoredObjectReference(value: string): boolean {
   return Boolean(value) && !/^https?:\/\//i.test(value) && !value.startsWith('data:');
 }
 
+function isDataUrl(value: string): boolean {
+  return /^data:[^;]+;base64,/i.test(value);
+}
+
+function dataUrlPayload(value: string): string {
+  return value.replace(/^data:[^;]+;base64,/i, '');
+}
+
+async function downloadHttpImage(value: string): Promise<Buffer> {
+  const response = await fetch(value);
+  if (!response.ok) throw new Error(`Failed to download image (${response.status})`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
 async function exportedImageReference(value: string): Promise<string> {
   if (!value) return '';
   return isStoredObjectReference(value) ? getPresignedUrl(value) : value;
+}
+
+async function embeddedImageFile(path: string, value: string): Promise<GenericAssetPackageFile | undefined> {
+  if (!value) return undefined;
+
+  if (isDataUrl(value)) {
+    return { path, content: dataUrlPayload(value), encoding: 'base64' };
+  }
+
+  const buffer = isStoredObjectReference(value)
+    ? await downloadBufferFromS3(value)
+    : await downloadHttpImage(value);
+
+  return { path, content: buffer.toString('base64'), encoding: 'base64' };
 }
 
 function itemImageKeys(item: { assets?: { snappedSpriteS3Key?: string; rawSpriteCandidates?: string[] } }): Record<string, string> {
@@ -155,6 +183,7 @@ export async function buildGenericAssetPackage(input: BuildGenericAssetPackageIn
   const mode = input.mode ?? 'changed-only';
   const explicitSelection = Boolean(input.characterIds?.length || input.itemIds?.length || input.assetTypes?.length);
   const assets: GenericAssetPackageAsset[] = [];
+  const files: GenericAssetPackageFile[] = [];
   for (const character of characters) {
     const assetType = characterAssetType(character.kind);
     if (!wantsAssetType(selectedTypes, assetType)) continue;
@@ -190,6 +219,10 @@ export async function buildGenericAssetPackage(input: BuildGenericAssetPackageIn
       adapterMetadata,
       updatedAt: character.updatedAt.toISOString(),
     });
+    const spriteFile = await embeddedImageFile(`assets/${assetType}/${character._id.toString()}/images/sprite.png`, imageKeys.sprite);
+    if (spriteFile) files.push(spriteFile);
+    const portraitFile = await embeddedImageFile(`assets/${assetType}/${character._id.toString()}/images/portrait.png`, imageKeys.portrait);
+    if (portraitFile) files.push(portraitFile);
   }
 
   for (const item of items) {
@@ -223,6 +256,8 @@ export async function buildGenericAssetPackage(input: BuildGenericAssetPackageIn
       adapterMetadata,
       updatedAt: item.updatedAt.toISOString(),
     });
+    const spriteFile = await embeddedImageFile(`assets/item/${item._id.toString()}/images/sprite.png`, imageKeys.sprite);
+    if (spriteFile) files.push(spriteFile);
   }
 
   assets.sort((a, b) => {
@@ -292,6 +327,7 @@ export async function buildGenericAssetPackage(input: BuildGenericAssetPackageIn
         content: JSON.stringify(asset, null, 2),
         encoding: 'utf8' as const,
       })),
+      ...files,
     ],
   };
 }
@@ -334,7 +370,9 @@ export function buildGenericAssetPackageZip(pkg: GenericAssetPackage): Buffer {
 
   for (const file of pkg.files) {
     const name = Buffer.from(file.path.replace(/\\/g, '/'), 'utf8');
-    const content = Buffer.from(file.content, 'utf8');
+    const content = file.encoding === 'base64'
+      ? Buffer.from(file.content, 'base64')
+      : Buffer.from(file.content, 'utf8');
     const checksum = crc32(content);
 
     const local = writeZipHeader(0x04034b50, 30);
