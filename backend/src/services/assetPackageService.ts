@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import CharacterModel from '../models/characterModel';
 import ItemModel from '../models/itemModel';
 import ProjectModel, { IProjectAssetSchema } from '../models/projectModel';
+import { getPresignedUrl } from '../utils/s3Helper';
 
 export type GenericAssetPackageMode = 'changed-only' | 'full-snapshot';
 
@@ -79,14 +80,30 @@ function exportStatus(lastHash: string | undefined, nextHash: string): GenericAs
   return lastHash === nextHash ? 'exported' : 'changed';
 }
 
-function itemImageFields(item: { assets?: { snappedSpriteS3Key?: string; rawSpriteCandidates?: string[] } }): Record<string, string> {
+function isStoredObjectReference(value: string): boolean {
+  return Boolean(value) && !/^https?:\/\//i.test(value) && !value.startsWith('data:');
+}
+
+async function exportedImageReference(value: string): Promise<string> {
+  if (!value) return '';
+  return isStoredObjectReference(value) ? getPresignedUrl(value) : value;
+}
+
+function itemImageKeys(item: { assets?: { snappedSpriteS3Key?: string; rawSpriteCandidates?: string[] } }): Record<string, string> {
   const candidates = item.assets?.rawSpriteCandidates ?? [];
   return {
     sprite: item.assets?.snappedSpriteS3Key || candidates[candidates.length - 1] || '',
   };
 }
 
-function characterImageFields(character: {
+async function itemImageFields(item: { assets?: { snappedSpriteS3Key?: string; rawSpriteCandidates?: string[] } }): Promise<Record<string, string>> {
+  const keys = itemImageKeys(item);
+  return {
+    sprite: await exportedImageReference(keys.sprite),
+  };
+}
+
+function characterImageKeys(character: {
   portraitUrl?: string;
   assets?: { snappedSpriteS3Key?: string; rawSpriteCandidates?: string[]; spritesheetS3Key?: string; spritesheetJsonS3Key?: string };
 }): Record<string, string> {
@@ -96,6 +113,19 @@ function characterImageFields(character: {
     sprite: character.assets?.snappedSpriteS3Key || candidates[candidates.length - 1] || '',
     spritesheet: character.assets?.spritesheetS3Key ?? '',
     spritesheetMetadata: character.assets?.spritesheetJsonS3Key ?? '',
+  };
+}
+
+async function characterImageFields(character: {
+  portraitUrl?: string;
+  assets?: { snappedSpriteS3Key?: string; rawSpriteCandidates?: string[]; spritesheetS3Key?: string; spritesheetJsonS3Key?: string };
+}): Promise<Record<string, string>> {
+  const keys = characterImageKeys(character);
+  return {
+    portrait: await exportedImageReference(keys.portrait),
+    sprite: await exportedImageReference(keys.sprite),
+    spritesheet: await exportedImageReference(keys.spritesheet),
+    spritesheetMetadata: await exportedImageReference(keys.spritesheetMetadata),
   };
 }
 
@@ -138,11 +168,12 @@ export async function buildGenericAssetPackage(input: BuildGenericAssetPackageIn
       speciesData: character.speciesData ?? {},
       custom: character.customFields ?? {},
     };
-    const images = characterImageFields(character);
+    const imageKeys = characterImageKeys(character);
+    const images = await characterImageFields(character);
     const adapterMetadata = {
       maple: character.maple ?? {},
     };
-    const hash = contentHash({ assetType, fields, images, adapterMetadata });
+    const hash = contentHash({ assetType, fields, images: imageKeys, adapterMetadata });
     const status = exportStatus(character.exportState?.lastGenericExportHash, hash);
     const changed = status !== 'exported';
     if (mode === 'changed-only' && !changed && !explicitSelection) continue;
@@ -170,11 +201,12 @@ export async function buildGenericAssetPackage(input: BuildGenericAssetPackageIn
       tags: item.tags ?? [],
       custom: item.customFields ?? {},
     };
-    const images = itemImageFields(item);
+    const imageKeys = itemImageKeys(item);
+    const images = await itemImageFields(item);
     const adapterMetadata = {
       maple: item.maple ?? {},
     };
-    const hash = contentHash({ assetType: 'item', fields, images, adapterMetadata });
+    const hash = contentHash({ assetType: 'item', fields, images: imageKeys, adapterMetadata });
     const status = exportStatus(item.exportState?.lastGenericExportHash, hash);
     const changed = status !== 'exported';
     if (mode === 'changed-only' && !changed && !explicitSelection) continue;

@@ -133,9 +133,7 @@ export async function pushPackageToGithub(req: AuthRequest, res: Response): Prom
     const repoOwner = parseString(req.body?.repoOwner) ?? projectGit?.repoOwner ?? userGit.repoOwner ?? '';
     const repoName = parseString(req.body?.repoName) ?? projectGit?.repoName ?? userGit.repoName ?? '';
     const branch = parseString(req.body?.branch) ?? projectGit?.defaultBranch ?? userGit.defaultBranch ?? 'main';
-    const baseDir = normalizeAssetPackageBaseDir(
-      parseString(req.body?.filePath) ?? projectGit?.defaultFilePath ?? userGit.defaultFilePath ?? 'tools/input/questflow-assets',
-    );
+    const baseDir = normalizeAssetPackageBaseDir(parseString(req.body?.filePath) ?? 'tools/input/questflow-assets');
 
     if (!repoOwner || !repoName) {
       res.status(400).json({ error: 'Repository owner and name are required.' });
