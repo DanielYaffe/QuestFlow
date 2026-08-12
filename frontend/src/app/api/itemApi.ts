@@ -15,6 +15,11 @@ export interface ItemAssets {
   spriteHistoryIndex?: number;
 }
 
+export interface AssetExportState {
+  lastGenericExportHash: string;
+  lastGenericExportedAt?: string;
+}
+
 export interface ItemRecord {
   _id: string;
   projectId: string;
@@ -27,6 +32,8 @@ export interface ItemRecord {
   kbDocId: string;
   // SpriteStyle.id this design generates in; '' until the user picks one.
   spriteStyleId?: string;
+  customFields?: Record<string, unknown>;
+  exportState?: AssetExportState;
   assets: ItemAssets;
   maple?: MapleAssetMetadata;
   previewUrl?: string;
@@ -63,6 +70,7 @@ export async function createItem(input: {
   description?: string;
   rarity?: ItemRarity;
   tags?: string[];
+  customFields?: Record<string, unknown>;
   maple?: Partial<MapleAssetMetadata>;
 }): Promise<ItemRecord> {
   const { data } = await api.post<ItemRecord>('/items', input);
@@ -71,7 +79,7 @@ export async function createItem(input: {
 
 export async function updateItem(
   id: string,
-  patch: Partial<Pick<ItemRecord, 'name' | 'description' | 'rarity' | 'tags' | 'spriteStyleId' | 'assets' | 'maple'>>,
+  patch: Partial<Pick<ItemRecord, 'name' | 'description' | 'rarity' | 'tags' | 'spriteStyleId' | 'customFields' | 'assets' | 'maple'>>,
 ): Promise<ItemRecord> {
   const { data } = await api.put<ItemRecord>(`/items/${id}`, patch);
   return data;

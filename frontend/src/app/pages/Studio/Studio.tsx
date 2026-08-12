@@ -1,15 +1,29 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Gem, Loader2, Palette, Plus, Skull, UploadCloud, Users } from 'lucide-react';
+import { Check, Download, Gem, Loader2, Palette, Plus, Skull, UploadCloud, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { CharacterKind, CharacterRecord, createCharacter, listCharacters } from '../../api/characterApi';
 import { ItemRecord, createItem, listItems } from '../../api/itemApi';
-import { buildMapleAssetPackage, MapleExportMode, pushMapleAssetPackage } from '../../api/mapleAssetApi';
+import {
+  AssetPackageInput,
+  downloadAssetPackage,
+  GenericAssetPackageStatus,
+  listAssetPackageStatuses,
+  pushAssetPackage,
+} from '../../api/assetPackageApi';
 import { useProject } from '../../context/ProjectContext';
 import { GroundedBadge } from '../../components/shared/GroundedBadge';
 import { CHECKER_SM } from '../../utils/spriteStyles';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '../../components/ui/context-menu';
 import { downloadBlob, fileSlug } from '../../utils/download';
+import { AssetSchemaSettingsCard } from '../Projects/components/AssetSchemaSettingsCard';
 
 // ---------------------------------------------------------------------------
 // Design studio — the visual identity workshop. Mobs and characters come from
@@ -18,14 +32,6 @@ import { downloadBlob, fileSlug } from '../../utils/download';
 // ---------------------------------------------------------------------------
 
 type StudioTab = CharacterKind | 'item';
-
-function errorMessage(err: unknown, fallback: string): string {
-  if (typeof err === 'object' && err !== null && 'response' in err) {
-    const response = (err as { response?: { data?: { error?: unknown } } }).response;
-    if (typeof response?.data?.error === 'string') return response.data.error;
-  }
-  return fallback;
-}
 
 const TAB_META: Record<StudioTab, { label: string; singular: string; icon: React.ElementType }> = {
   monster: { label: 'Mobs',       singular: 'Mob',       icon: Skull },
@@ -142,24 +148,47 @@ interface DesignCard {
   subtitle: string;
   previewUrl?: string;
   kbRef?: string;
+  exportStatus?: GenericAssetPackageStatus['exportStatus'];
   link: string;
+}
+
+function exportBadge(status?: GenericAssetPackageStatus['exportStatus']): { label: string; className: string } | null {
+  if (status === 'changed') {
+    return {
+      label: 'Changed',
+      className: 'border-amber-400/40 bg-amber-400/10 text-amber-200',
+    };
+  }
+  return null;
+}
+
+function requestErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { error?: unknown } } }).response;
+    if (typeof response?.data?.error === 'string') return response.data.error;
+  }
+  return fallback;
 }
 
 export function Studio() {
   const navigate = useNavigate();
-  const { activeProjectId } = useProject();
+  const { activeProject, activeProjectId } = useProject();
 
   const [tab, setTab] = useState<StudioTab>('monster');
   const [cards, setCards] = useState<DesignCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
-  const [exporting, setExporting] = useState<MapleExportMode | null>(null);
-  const [pushing, setPushing] = useState<MapleExportMode | null>(null);
+  const [genericExporting, setGenericExporting] = useState<{
+    action: 'download' | 'push';
+  } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const refresh = useCallback(async () => {
     if (!activeProjectId) return;
     setLoading(true);
     try {
+      const statuses: GenericAssetPackageStatus[] = await listAssetPackageStatuses(activeProjectId, { assetTypes: [tab] });
+      const statusById = new Map(statuses.map((status) => [status.sourceRecordId, status]));
       if (tab === 'item') {
         const items: ItemRecord[] = await listItems({ projectId: activeProjectId });
         setCards(items.map((i) => ({
@@ -168,8 +197,9 @@ export function Studio() {
           subtitle: i.description || `${i.rarity} item`,
           previewUrl: i.previewUrl,
           kbRef: i.kbRef || undefined,
+          exportStatus: statusById.get(i._id)?.exportStatus ?? 'exported',
           link: `/studio/items/${i._id}`,
-        })));
+        })).sort((a, b) => Number(b.exportStatus === 'changed') - Number(a.exportStatus === 'changed')));
       } else {
         const characters: CharacterRecord[] = await listCharacters({ projectId: activeProjectId, kind: tab });
         setCards(characters.map((c) => ({
@@ -178,8 +208,9 @@ export function Studio() {
           subtitle: c.appearance || 'No appearance yet',
           previewUrl: c.previewUrl,
           kbRef: c.kbRef || undefined,
+          exportStatus: statusById.get(c._id)?.exportStatus ?? 'exported',
           link: `/studio/${c._id}`,
-        })));
+        })).sort((a, b) => Number(b.exportStatus === 'changed') - Number(a.exportStatus === 'changed')));
       }
     } catch {
       toast.error('Failed to load designs');
@@ -189,45 +220,67 @@ export function Studio() {
   }, [activeProjectId, tab]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { setSelectedIds(new Set()); }, [activeProjectId, tab]);
 
   const meta = TAB_META[tab];
   const TabIcon = meta.icon;
+  const selectedCount = selectedIds.size;
+  const changedCount = cards.filter((card) => card.exportStatus === 'changed').length;
+  const allVisibleSelected = cards.length > 0 && cards.every((card) => selectedIds.has(card.id));
 
-  const handleMapleExport = async (mode: MapleExportMode) => {
-    if (!activeProjectId || exporting) return;
-    setExporting(mode);
+  const inputForIds = (ids: string[]): AssetPackageInput => {
+    if (ids.length === 0) return { mode: 'changed-only', assetTypes: [tab] };
+    return tab === 'item'
+      ? { mode: 'changed-only', assetTypes: ['item'], itemIds: ids }
+      : { mode: 'changed-only', assetTypes: [tab], characterIds: ids };
+  };
+
+  const targetIdsForCard = (cardId: string): string[] =>
+    selectedIds.has(cardId) ? Array.from(selectedIds) : [cardId];
+
+  const toggleSelected = (cardId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(cardId)) next.delete(cardId);
+      else next.add(cardId);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(cards.map((card) => card.id)));
+  };
+
+  const selectChanged = () => {
+    setSelectedIds(new Set(cards.filter((card) => card.exportStatus === 'changed').map((card) => card.id)));
+  };
+
+  const handleGenericDownload = async (ids: string[]) => {
+    if (!activeProjectId || genericExporting) return;
+    setGenericExporting({ action: 'download' });
     try {
-      const pkg = await buildMapleAssetPackage(activeProjectId, { mode });
-      const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
-      downloadBlob(blob, `${fileSlug(pkg.manifest.projectName, 'project')}-maple-build.json`);
-      const errorCount = pkg.manifest.errors.length;
-      if (errorCount > 0) {
-        toast.error(`Maple package downloaded with ${errorCount} validation issue${errorCount === 1 ? '' : 's'}`);
-      } else {
-        toast.success(`Maple package downloaded (${pkg.manifest.assets.length} assets)`);
-      }
-    } catch {
-      toast.error('Failed to build Maple package');
+      const blob = await downloadAssetPackage(activeProjectId, { ...inputForIds(ids), markExported: true });
+      downloadBlob(blob, `${fileSlug(activeProject?.name, 'project')}-asset-package.zip`);
+      toast.success('Asset package downloaded');
+      void refresh();
+    } catch (error) {
+      toast.error(requestErrorMessage(error, 'Failed to download asset package'));
     } finally {
-      setExporting(null);
+      setGenericExporting(null);
     }
   };
 
-  const handleMaplePush = async (mode: MapleExportMode) => {
-    if (!activeProjectId || pushing) return;
-    setPushing(mode);
+  const handleGenericPush = async (ids: string[]) => {
+    if (!activeProjectId || genericExporting) return;
+    setGenericExporting({ action: 'push' });
     try {
-      const result = await pushMapleAssetPackage(activeProjectId, { mode });
-      const errorCount = result.manifest.errors.length;
-      if (errorCount > 0) {
-        toast.error(`Pushed with ${errorCount} validation issue${errorCount === 1 ? '' : 's'}`);
-      } else {
-        toast.success(`Pushed ${result.manifest.assets.length} Maple asset${result.manifest.assets.length === 1 ? '' : 's'} to GitHub`);
-      }
-    } catch (err) {
-      toast.error(errorMessage(err, 'Failed to push Maple package'));
+      const result = await pushAssetPackage(activeProjectId, inputForIds(ids));
+      toast.success(result.message || 'Asset package exported');
+      void refresh();
+    } catch (error) {
+      toast.error(requestErrorMessage(error, 'Failed to export asset package'));
     } finally {
-      setPushing(null);
+      setGenericExporting(null);
     }
   };
 
@@ -255,70 +308,76 @@ export function Studio() {
           </button>
         </div>
 
-        <section className="bg-steel-850 border border-steel-700 rounded-md p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="min-w-0">
-            <h2 className="text-steel-100 text-sm font-semibold">Maple build package</h2>
-            <p className="text-steel-400 text-xs mt-1">
-              Exports enabled NPCs and ETC items as a deterministic handoff package for the external v83 builder/deployer.
-            </p>
-          </div>
-          <div className="sm:ml-auto flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void handleMapleExport('changed-only')}
-              disabled={!activeProjectId || exporting !== null}
-              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
-            >
-              {exporting === 'changed-only' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 text-pulse" />}
-              Changed only
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleMapleExport('full-snapshot')}
-              disabled={!activeProjectId || exporting !== null}
-              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
-            >
-              {exporting === 'full-snapshot' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 text-pulse" />}
-              Full snapshot
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleMaplePush('changed-only')}
-              disabled={!activeProjectId || pushing !== null}
-              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
-            >
-              {pushing === 'changed-only' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5 text-pulse" />}
-              Push changed
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleMaplePush('full-snapshot')}
-              disabled={!activeProjectId || pushing !== null}
-              className="flex items-center gap-2 px-3 py-2 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
-            >
-              {pushing === 'full-snapshot' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5 text-pulse" />}
-              Push snapshot
-            </button>
+        <AssetSchemaSettingsCard project={activeProject} />
+
+        <section className="bg-steel-850 border border-steel-700 rounded-md p-4 flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="min-w-0">
+              <h2 className="text-steel-100 text-sm font-semibold">Project asset package</h2>
+              <p className="text-steel-400 text-xs mt-1">
+                Right-click an asset card to export it to GitHub or download a package. Ctrl-click cards to select several assets first.
+              </p>
+            </div>
+            <div className="sm:ml-auto flex flex-wrap gap-2">
+              {genericExporting && (
+                <span className="inline-flex items-center gap-2 px-3 py-2 text-xs text-steel-300">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-pulse" />
+                  {genericExporting.action === 'push' ? 'Exporting...' : 'Downloading...'}
+                </span>
+              )}
+              <span className="px-3 py-2 text-xs text-steel-400">
+                {selectedCount} selected · {changedCount} changed
+              </span>
+            </div>
           </div>
         </section>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-steel-900 border border-steel-700 rounded-md p-1 self-start">
-          {(Object.keys(TAB_META) as StudioTab[]).map((id) => {
-            const Icon = TAB_META[id].icon;
-            return (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 bg-steel-900 border border-steel-700 rounded-md p-1">
+            {(Object.keys(TAB_META) as StudioTab[]).map((id) => {
+              const Icon = TAB_META[id].icon;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setTab(id)}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm transition-colors cursor-pointer ${
+                    tab === id ? 'bg-volt text-steel-950 font-semibold' : 'text-steel-400 hover:text-steel-100'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {TAB_META[id].label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={toggleAllVisible}
+              disabled={cards.length === 0}
+              className="px-3 py-1.5 bg-steel-850 hover:bg-steel-800 border border-steel-700 disabled:opacity-50 text-steel-200 text-xs rounded-md transition-colors cursor-pointer"
+            >
+              {allVisibleSelected ? 'Clear all' : 'Select all'}
+            </button>
+            <button
+              type="button"
+              onClick={selectChanged}
+              disabled={changedCount === 0}
+              className="px-3 py-1.5 bg-steel-850 hover:bg-steel-800 border border-steel-700 disabled:opacity-50 text-steel-200 text-xs rounded-md transition-colors cursor-pointer"
+            >
+              Select changed
+            </button>
+            {selectedCount > 0 && (
               <button
-                key={id}
-                onClick={() => setTab(id)}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm transition-colors cursor-pointer ${
-                  tab === id ? 'bg-volt text-steel-950 font-semibold' : 'text-steel-400 hover:text-steel-100'
-                }`}
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="px-3 py-1.5 bg-steel-850 hover:bg-steel-800 border border-steel-700 text-steel-200 text-xs rounded-md transition-colors cursor-pointer"
               >
-                <Icon className="w-4 h-4" />
-                {TAB_META[id].label}
+                Clear selection
               </button>
-            );
-          })}
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -346,28 +405,82 @@ export function Studio() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {cards.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => navigate(c.link)}
-                className="group text-left bg-steel-850 border border-steel-700 rounded-md overflow-hidden hover:border-steel-500 transition-colors cursor-pointer"
-              >
-                <div className="aspect-square flex items-center justify-center p-3" style={CHECKER_SM}>
-                  {c.previewUrl ? (
-                    <img src={c.previewUrl} alt={c.name} loading="lazy" className="w-full h-full object-contain" />
-                  ) : (
-                    <TabIcon className="w-10 h-10 text-steel-600" />
-                  )}
-                </div>
-                <div className="px-3 py-2.5 border-t border-steel-700">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-steel-100 text-sm font-medium truncate group-hover:text-pulse transition-colors">
-                      {c.name}
-                    </p>
-                    {c.kbRef && <GroundedBadge entityName={c.kbRef} compact />}
-                  </div>
-                  <p className="text-steel-400 text-xs truncate mt-0.5">{c.subtitle}</p>
-                </div>
-              </button>
+              (() => {
+                const badge = exportBadge(c.exportStatus);
+                const isSelected = selectedIds.has(c.id);
+                const targetCount = isSelected ? selectedCount : 1;
+                return (
+                  <ContextMenu key={c.id}>
+                    <ContextMenuTrigger asChild>
+                      <button
+                        onClick={(event) => {
+                          if (event.ctrlKey || event.metaKey) {
+                            event.preventDefault();
+                            toggleSelected(c.id);
+                            return;
+                          }
+                          navigate(c.link);
+                        }}
+                        onContextMenu={() => {
+                          if (!selectedIds.has(c.id)) setSelectedIds(new Set([c.id]));
+                        }}
+                        className={`group relative text-left bg-steel-850 border rounded-md overflow-hidden transition-colors cursor-pointer ${
+                          isSelected ? 'border-pulse ring-1 ring-pulse/40' : 'border-steel-700 hover:border-steel-500'
+                        }`}
+                      >
+                        {isSelected && (
+                          <span className="absolute left-2 top-2 z-10 w-6 h-6 rounded bg-pulse text-steel-950 flex items-center justify-center shadow">
+                            <Check className="w-4 h-4" />
+                          </span>
+                        )}
+                        <div className="aspect-square flex items-center justify-center p-3" style={CHECKER_SM}>
+                          {c.previewUrl ? (
+                            <img src={c.previewUrl} alt={c.name} loading="lazy" className="w-full h-full object-contain" />
+                          ) : (
+                            <TabIcon className="w-10 h-10 text-steel-600" />
+                          )}
+                        </div>
+                        <div className="px-3 py-2.5 border-t border-steel-700">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-steel-100 text-sm font-medium truncate group-hover:text-pulse transition-colors">
+                              {c.name}
+                            </p>
+                            {badge && (
+                              <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[10px] font-semibold ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            )}
+                            {c.kbRef && <GroundedBadge entityName={c.kbRef} compact />}
+                          </div>
+                          <p className="text-steel-400 text-xs truncate mt-0.5">{c.subtitle}</p>
+                        </div>
+                      </button>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="bg-steel-800 border-steel-600 text-steel-100">
+                      <ContextMenuItem
+                        onSelect={() => void handleGenericPush(targetIdsForCard(c.id))}
+                        disabled={!activeProjectId || genericExporting !== null}
+                        className="gap-2 cursor-pointer"
+                      >
+                        <UploadCloud className="w-4 h-4 text-pulse" />
+                        Export to GitHub
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() => void handleGenericDownload(targetIdsForCard(c.id))}
+                        disabled={!activeProjectId || genericExporting !== null}
+                        className="gap-2 cursor-pointer"
+                      >
+                        <Download className="w-4 h-4 text-pulse" />
+                        Download package
+                      </ContextMenuItem>
+                      <ContextMenuSeparator className="bg-steel-700" />
+                      <ContextMenuItem disabled className="text-steel-400">
+                        {targetCount} asset{targetCount === 1 ? '' : 's'} selected
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                );
+              })()
             ))}
           </div>
         )}

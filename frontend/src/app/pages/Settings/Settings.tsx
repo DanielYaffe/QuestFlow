@@ -1,6 +1,5 @@
 import React from 'react';
 import { GitHubSettingsCard } from './components/GitHubSettingsCard';
-import { MapleSettingsCard } from './components/MapleSettingsCard';
 import { QuestTemplateSettingsCard } from './components/QuestTemplateSettingsCard';
 
 export function Settings() {
@@ -13,7 +12,6 @@ export function Settings() {
         </div>
         <div className="space-y-6">
           <GitHubSettingsCard />
-          <MapleSettingsCard />
           <QuestTemplateSettingsCard />
         </div>
       </div>

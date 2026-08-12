@@ -22,6 +22,7 @@ import exportTemplateRouter from "./routes/exportTemplateRoute";
 import gameRouter from "./routes/gameRoute";
 import adminRouter from "./routes/adminRoute";
 import mapleAssetRouter from "./routes/mapleAssetRoute";
+import assetPackageRouter from "./routes/assetPackageRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import { seedThemes } from "./models/seedThemes";
@@ -65,6 +66,7 @@ app.use('/users', userSettingsRouter);
 app.use('/export-templates', exportTemplateRouter);
 app.use('/games', gameRouter);
 app.use('/admin', adminRouter);
+app.use('/asset-packages', assetPackageRouter);
 app.use('/maple-assets', mapleAssetRouter);
 
 const db = mongoose.connection;

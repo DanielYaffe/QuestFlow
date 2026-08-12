@@ -27,6 +27,11 @@ export interface IMapleAssetMetadata {
   validationErrors: string[];
 }
 
+export interface IAssetExportState {
+  lastGenericExportHash: string;
+  lastGenericExportedAt?: Date;
+}
+
 export interface IItem extends Document {
   _id: mongoose.Types.ObjectId;
   ownerId: string;
@@ -42,6 +47,8 @@ export interface IItem extends Document {
   // Sprite style this design generates in (SpriteStyle.styleId). '' = unset.
   spriteStyleId: string;
   assets: IItemAssets;
+  customFields: Record<string, unknown>;
+  exportState: IAssetExportState;
   maple: IMapleAssetMetadata;
   createdAt: Date;
   updatedAt: Date;
@@ -69,6 +76,14 @@ const MapleAssetMetadataSchema = new Schema<IMapleAssetMetadata>(
   { _id: false },
 );
 
+const AssetExportStateSchema = new Schema<IAssetExportState>(
+  {
+    lastGenericExportHash: { type: String, default: '' },
+    lastGenericExportedAt: { type: Date },
+  },
+  { _id: false },
+);
+
 const ItemSchema = new Schema<IItem>(
   {
     ownerId:     { type: String, required: true, index: true },
@@ -81,6 +96,8 @@ const ItemSchema = new Schema<IItem>(
     kbDocId:     { type: String, default: '' },
     spriteStyleId: { type: String, default: '' },
     assets:      { type: ItemAssetsSchema, default: () => ({}) },
+    customFields: { type: Schema.Types.Mixed, default: () => ({}) },
+    exportState: { type: AssetExportStateSchema, default: () => ({}) },
     maple:       { type: MapleAssetMetadataSchema, default: () => ({}) },
   },
   { timestamps: true },

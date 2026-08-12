@@ -19,6 +19,7 @@ export interface MapleAssetMetadata {
 }
 
 export interface MapleProjectSettings {
+  enabled: boolean;
   targetVersion: 'v83';
   defaultExportMode: MapleExportMode;
   npcIdRanges: MapleIdRange[];

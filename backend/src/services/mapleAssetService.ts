@@ -113,10 +113,10 @@ const TARGET_PATHS: Record<MapleAssetType, (id: number) => string[]> = {
   ],
 };
 
-const IMAGE_PROFILES: Record<MapleAssetType, { width: number; height: number }> = {
-  // Matches existing custom NPC readback examples in the Contabo v83 client:
-  // stand/0 canvas width=45 height=68 origin=(22,68).
-  npc: { width: 45, height: 68 },
+const IMAGE_PROFILES: Record<MapleAssetType, { width: number; height: number; originX?: number; originY?: number }> = {
+  // Matches native NPC 22000's stand/0 canvas size. Generated sprites use a
+  // centered x-origin because their pixel layout is not the same as NPC 22000.
+  npc: { width: 67, height: 77, originY: 77 },
   item: { width: 32, height: 32 },
 };
 
@@ -434,6 +434,39 @@ async function normalizeImage(
     };
   }
 
+  if (assetType === 'npc') {
+    const trimmed = await sharp(input)
+      .trim({ threshold: 10 })
+      .resize(profile.width, profile.height, {
+        fit: 'inside',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+        kernel: sharp.kernel.nearest,
+      })
+      .png()
+      .toBuffer();
+    const metadata = await sharp(trimmed).metadata();
+    const width = metadata.width ?? profile.width;
+    const height = metadata.height ?? profile.height;
+    return {
+      buffer: await sharp({
+        create: {
+          width: profile.width,
+          height: profile.height,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .composite([{
+          input: trimmed,
+          left: Math.max(0, Math.floor((profile.width - width) / 2)),
+          top: Math.max(0, profile.height - height),
+        }])
+        .png()
+        .toBuffer(),
+      usedPlaceholder: false,
+    };
+  }
+
   const buffer = await sharp(input)
     .resize(profile.width, profile.height, {
       fit: 'contain',
@@ -460,6 +493,26 @@ function statusFor(warnings: string[], errors: string[]): MaplePackageAsset['val
   if (errors.length > 0) return 'error';
   if (warnings.length > 0) return 'warning';
   return 'valid';
+}
+
+function npcFramesManifest(): { profile: string; frames: Array<Record<string, unknown>> } {
+  const profile = IMAGE_PROFILES.npc;
+  return {
+    profile: 'npc-world-sprite',
+    frames: [
+      {
+        action: 'stand',
+        name: '0',
+        source: 'sprite.png',
+        width: profile.width,
+        height: profile.height,
+        origin: {
+          x: profile.originX ?? Math.floor(profile.width / 2),
+          y: profile.originY ?? profile.height,
+        },
+      },
+    ],
+  };
 }
 
 function shouldIncludeAsset(
@@ -538,7 +591,7 @@ async function buildNpcAsset(
     files: [
       { path: `${base}/npc.json`, content: JSON.stringify(source, null, 2), encoding: 'utf8' },
       ...(sprite.length ? [{ path: `${base}/sprite.png`, content: sprite.toString('base64'), encoding: 'base64' as const }] : []),
-      { path: `${base}/frames.json`, content: JSON.stringify({ profile: 'npc-world-sprite', frames: [] }, null, 2), encoding: 'utf8' },
+      { path: `${base}/frames.json`, content: JSON.stringify(npcFramesManifest(), null, 2), encoding: 'utf8' },
     ],
   };
 }

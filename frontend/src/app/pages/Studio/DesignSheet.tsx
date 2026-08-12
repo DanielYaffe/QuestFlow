@@ -33,7 +33,7 @@ import {
   SpritePickerDialog,
   StylePickerDialog,
 } from './StudioDialogs';
-import { MapleAssetPanel } from './MapleAssetPanel';
+import { CustomFieldsPanel } from './CustomFieldsPanel';
 
 function errorMessage(err: unknown, fallback: string): string {
   if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -529,18 +529,15 @@ export function DesignSheet() {
               </div>
             </Section>
 
-            {!isMob && (
-              <MapleAssetPanel
-                assetType="npc"
-                projectId={character.projectId}
-                recordId={character._id}
-                value={character.maple}
-                onSave={async (maple) => {
-                  const fresh = await updateCharacter(character._id, { maple });
-                  applyCharacter({ ...fresh, rotationUrls: character.rotationUrls });
-                }}
-              />
-            )}
+            <CustomFieldsPanel
+              assetType={character.kind}
+              schema={activeProject?.assetSchema}
+              value={character.customFields}
+              onSave={async (customFields) => {
+                const fresh = await updateCharacter(character._id, { customFields });
+                applyCharacter(fresh);
+              }}
+            />
 
             {/* Stats — mobs only */}
             {isMob && species && (

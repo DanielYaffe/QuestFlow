@@ -43,6 +43,11 @@ export interface IMapleAssetMetadata {
   validationErrors: string[];
 }
 
+export interface IAssetExportState {
+  lastGenericExportHash: string;
+  lastGenericExportedAt?: Date;
+}
+
 export interface ICharacterSpeciesData {
   species_name: string;
   type1: string;
@@ -84,6 +89,8 @@ export interface ICharacter extends Document {
   // Monster-only
   speciesData: ICharacterSpeciesData;
   assets: ICharacterAssets;
+  customFields: Record<string, unknown>;
+  exportState: IAssetExportState;
   maple: IMapleAssetMetadata;
   createdAt: Date;
   updatedAt: Date;
@@ -147,6 +154,14 @@ const MapleAssetMetadataSchema = new Schema<IMapleAssetMetadata>(
   { _id: false },
 );
 
+const AssetExportStateSchema = new Schema<IAssetExportState>(
+  {
+    lastGenericExportHash: { type: String, default: '' },
+    lastGenericExportedAt: { type: Date },
+  },
+  { _id: false },
+);
+
 /**
  * @swagger
  * components:
@@ -203,6 +218,8 @@ const CharacterSchema = new Schema<ICharacter>(
     dialogueTraits: { type: [String], default: [] },
     speciesData:    { type: SpeciesDataSchema, default: () => ({}) },
     assets:         { type: AssetsSchema, default: () => ({}) },
+    customFields:   { type: Schema.Types.Mixed, default: () => ({}) },
+    exportState:    { type: AssetExportStateSchema, default: () => ({}) },
     maple:          { type: MapleAssetMetadataSchema, default: () => ({}) },
   },
   { timestamps: true },

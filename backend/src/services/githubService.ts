@@ -8,7 +8,33 @@ interface PushFileOptions {
   commitMessage: string;
 }
 
+interface PushFilesOptions {
+  token: string;
+  owner: string;
+  repo: string;
+  branch: string;
+  files: Array<{ filePath: string; content: string }>;
+  commitMessage: string;
+}
+
 interface GitHubFileResponse {
+  sha: string;
+}
+
+interface GitHubRefResponse {
+  object: { sha: string };
+}
+
+interface GitHubCommitResponse {
+  sha: string;
+  tree: { sha: string };
+}
+
+interface GitHubBlobResponse {
+  sha: string;
+}
+
+interface GitHubTreeResponse {
   sha: string;
 }
 
@@ -170,6 +196,72 @@ export async function pushFile(options: PushFileOptions): Promise<string> {
   }
 
   throw new GitHubHttpError(409, `Could not write after ${MAX_VARIANTS} retries — the file kept changing remotely. Try again.`);
+}
+
+export async function pushFiles(options: PushFilesOptions): Promise<string[]> {
+  const { token, owner, repo, branch, files, commitMessage } = options;
+  if (files.length === 0) return [];
+
+  try {
+    const ref = await githubRequest<GitHubRefResponse>(
+      'GET',
+      `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch).replace(/%2F/g, '/')}`,
+      token,
+    );
+    const parent = await githubRequest<GitHubCommitResponse>(
+      'GET',
+      `https://api.github.com/repos/${owner}/${repo}/git/commits/${ref.object.sha}`,
+      token,
+    );
+
+    const tree = await Promise.all(files.map(async (file) => {
+      const blob = await githubRequest<GitHubBlobResponse>(
+        'POST',
+        `https://api.github.com/repos/${owner}/${repo}/git/blobs`,
+        token,
+        {
+          content: Buffer.from(file.content, 'utf-8').toString('base64'),
+          encoding: 'base64',
+        },
+      );
+      return {
+        path: file.filePath,
+        mode: '100644',
+        type: 'blob',
+        sha: blob.sha,
+      };
+    }));
+
+    const nextTree = await githubRequest<GitHubTreeResponse>(
+      'POST',
+      `https://api.github.com/repos/${owner}/${repo}/git/trees`,
+      token,
+      {
+        base_tree: parent.tree.sha,
+        tree,
+      },
+    );
+    const nextCommit = await githubRequest<GitHubCommitResponse>(
+      'POST',
+      `https://api.github.com/repos/${owner}/${repo}/git/commits`,
+      token,
+      {
+        message: commitMessage,
+        tree: nextTree.sha,
+        parents: [parent.sha],
+      },
+    );
+    await githubRequest(
+      'PATCH',
+      `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch).replace(/%2F/g, '/')}`,
+      token,
+      { sha: nextCommit.sha },
+    );
+
+    return files.map((file) => file.filePath);
+  } catch (err) {
+    throw mapPushError(err, owner, repo, branch);
+  }
 }
 
 // Turns a raw GitHub error into a message that names the likely cause. A 404

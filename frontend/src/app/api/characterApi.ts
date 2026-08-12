@@ -35,6 +35,11 @@ export interface CharacterSpeciesData {
   bestiary_bio: string;
 }
 
+export interface AssetExportState {
+  lastGenericExportHash: string;
+  lastGenericExportedAt?: string;
+}
+
 export interface CharacterRecord {
   _id: string;
   projectId: string;
@@ -61,6 +66,8 @@ export interface CharacterRecord {
   kbRef?: string;
   // KB document id when published from the design studio.
   kbDocId?: string;
+  customFields?: Record<string, unknown>;
+  exportState?: AssetExportState;
   maple?: MapleAssetMetadata;
   createdAt: string;
   updatedAt: string;
@@ -77,6 +84,7 @@ export interface CreateCharacterInput {
   dialogueTraits?: string[];
   spriteStyleId?: string;
   assets?: Partial<CharacterAssets>;
+  customFields?: Record<string, unknown>;
   maple?: Partial<MapleAssetMetadata>;
 }
 

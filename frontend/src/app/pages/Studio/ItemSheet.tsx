@@ -31,7 +31,7 @@ import {
   SpritePickerDialog,
   StylePickerDialog,
 } from './StudioDialogs';
-import { MapleAssetPanel } from './MapleAssetPanel';
+import { CustomFieldsPanel } from './CustomFieldsPanel';
 
 // ---------------------------------------------------------------------------
 // Item design sheet — sprite + identity + publish-to-KB for a studio Item.
@@ -436,15 +436,16 @@ export function ItemSheet() {
             </div>
           </Section>
 
-          <MapleAssetPanel
-            assetType="item"
-            projectId={item.projectId}
-            recordId={item._id}
-            value={item.maple}
-            onSave={async (maple) => {
-              applyItem(await updateItem(item._id, { maple }));
-            }}
-          />
+          <div className="lg:col-span-2">
+            <CustomFieldsPanel
+              assetType="item"
+              schema={activeProject?.assetSchema}
+              value={item.customFields}
+              onSave={async (customFields) => {
+                applyItem(await updateItem(item._id, { customFields }));
+              }}
+            />
+          </div>
         </div>
       </main>
     </div>

@@ -13,23 +13,20 @@ import {
 } from '../../../api/exportTemplateApi';
 
 const DEFAULT_TEMPLATE = `{
-  "name": "Free Tier 3",
-  "quest_id": 2,
-  "silent": "true",
-  "pre_quest": [-1],
-  "daily": "false",
-  "to_kill": [
-    { "id": 100134, "amount": 200 }
+  "id": 1,
+  "title": "Quest Title",
+  "prerequisites": {
+    "requiredQuestIds": []
+  },
+  "objectives": [
+    { "type": "objective_type", "targetId": 0, "amount": 1 }
   ],
-  "to_collect": [
-    { "item_id": 4000002, "amount": 80 }
+  "dialogue": [
+    { "id": "intro", "speakerId": 0, "text": "Player-facing quest text." }
   ],
-  "rewards": {
-    "items": [
-      { "id": 4000006, "amount": 100 },
-      { "id": 5072000, "amount": 20 }
-    ]
-  }
+  "rewards": [
+    { "type": "reward_type", "targetId": 0, "amount": 1 }
+  ]
 }`;
 
 function detectedGroups(template: ExportTemplate): string[] {
@@ -50,8 +47,8 @@ export function QuestTemplateSettingsCard() {
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
-  const [name, setName] = useState('Free Tier 3');
-  const [description, setDescription] = useState('Maple-style quest-node export template');
+  const [name, setName] = useState('Generic Quest');
+  const [description, setDescription] = useState('Quest-node export template');
   const [inputFormat, setInputFormat] = useState<TemplateFormat>('json');
   const [outputFormat, setOutputFormat] = useState<TemplateFormat>('yaml');
   const [rawTemplate, setRawTemplate] = useState(DEFAULT_TEMPLATE);
@@ -108,8 +105,8 @@ export function QuestTemplateSettingsCard() {
 
   const resetForm = () => {
     setEditingId(null);
-    setName('Free Tier 3');
-    setDescription('Maple-style quest-node export template');
+    setName('Generic Quest');
+    setDescription('Quest-node export template');
     setInputFormat('json');
     setOutputFormat('yaml');
     setRawTemplate(DEFAULT_TEMPLATE);

@@ -2,7 +2,13 @@ import { Response } from 'express';
 import { Model } from 'mongoose';
 import { z } from 'zod';
 import BaseController from './baseController';
-import ProjectModel, { ensureInboxProject, IProjectGitSettings, IProjectMapleSettings } from '../models/projectModel';
+import ProjectModel, {
+  ensureInboxProject,
+  IProjectAssetField,
+  IProjectAssetSchema,
+  IProjectGitSettings,
+  IProjectMapleSettings,
+} from '../models/projectModel';
 import QuestlineModel from '../models/questlineModel';
 import SpriteModel from '../models/spriteModel';
 import CharacterModel from '../models/characterModel';
@@ -54,10 +60,75 @@ const mapleIdRangeSchema = z.object({
 }).refine((range) => range.max >= range.min, 'Range max must be greater than or equal to min.');
 
 const mapleSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
   targetVersion: z.literal('v83').optional(),
   defaultExportMode: z.enum(['changed-only', 'full-snapshot']).optional(),
   npcIdRanges: z.array(mapleIdRangeSchema).optional(),
   itemIdRanges: z.array(mapleIdRangeSchema).optional(),
+}).partial();
+
+const assetFieldTypeSchema = z.enum([
+  'text',
+  'number',
+  'boolean',
+  'date',
+  'object',
+  'list',
+  'image',
+  'enum',
+  'reference',
+]);
+
+type AssetFieldInput = {
+  key: string;
+  label: string;
+  type: z.infer<typeof assetFieldTypeSchema>;
+  required?: boolean;
+  nullable?: boolean;
+  description?: string;
+  poolKey?: string;
+  itemType?: z.infer<typeof assetFieldTypeSchema>;
+  fields?: AssetFieldInput[];
+};
+
+const assetFieldSchema: z.ZodType<AssetFieldInput> = z.lazy(() => z.object({
+  key: z.string().trim().min(1).max(100)
+    .regex(/^[A-Za-z0-9_.-]+$/, 'Asset field keys may contain only letters, numbers, dots, hyphens, and underscores.'),
+  label: z.string().trim().min(1).max(120),
+  type: assetFieldTypeSchema,
+  required: z.boolean().optional(),
+  nullable: z.boolean().optional(),
+  description: z.string().trim().max(500).optional(),
+  poolKey: z.string().trim().max(100).optional(),
+  itemType: assetFieldTypeSchema.optional(),
+  fields: z.array(assetFieldSchema).max(100).optional(),
+}));
+
+const valuePoolOptionSchema = z.object({
+  label: z.string().trim().min(1).max(120),
+  value: z.union([z.string(), z.number(), z.boolean()]),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const valuePoolSchema = z.object({
+  key: z.string().trim().min(1).max(100)
+    .regex(/^[A-Za-z0-9_.-]+$/, 'Pool keys may contain only letters, numbers, dots, hyphens, and underscores.'),
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(500).optional(),
+  valueType: z.enum(['text', 'number', 'boolean']).optional(),
+  options: z.array(valuePoolOptionSchema).max(1000).optional(),
+  ranges: z.array(mapleIdRangeSchema).max(100).optional(),
+});
+
+const assetSchemaSchema = z.object({
+  assetTypes: z.array(z.object({
+    key: z.string().trim().min(1).max(100)
+      .regex(/^[A-Za-z0-9_.-]+$/, 'Asset type keys may contain only letters, numbers, dots, hyphens, and underscores.'),
+    name: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(500).optional(),
+    fields: z.array(assetFieldSchema).max(200).optional(),
+  })).max(50).optional(),
+  valuePools: z.array(valuePoolSchema).max(100).optional(),
 }).partial();
 
 function parseMapleSettings(req: AuthRequest, res: Response): Partial<IProjectMapleSettings> | null | undefined {
@@ -68,6 +139,41 @@ function parseMapleSettings(req: AuthRequest, res: Response): Partial<IProjectMa
     return undefined;
   }
   return result.data;
+}
+
+function parseAssetSchema(req: AuthRequest, res: Response): Partial<IProjectAssetSchema> | null | undefined {
+  if (req.body.assetSchema === undefined || req.body.assetSchema === null) return null;
+  const result = assetSchemaSchema.safeParse(req.body.assetSchema);
+  if (!result.success) {
+    res.status(400).json({ error: result.error.issues[0]?.message ?? 'Invalid asset schema.' });
+    return undefined;
+  }
+  const normalizeField = (field: AssetFieldInput): IProjectAssetField => ({
+    key: field.key,
+    label: field.label,
+    type: field.type,
+    required: field.required ?? false,
+    nullable: field.nullable ?? true,
+    description: field.description ?? '',
+    poolKey: field.poolKey ?? '',
+    itemType: field.itemType,
+    fields: field.fields?.map(normalizeField) ?? [],
+  });
+  return {
+    assetTypes: result.data.assetTypes?.map((assetType) => ({
+      key: assetType.key,
+      name: assetType.name,
+      description: assetType.description ?? '',
+      fields: assetType.fields?.map(normalizeField) ?? [],
+    })),
+    valuePools: result.data.valuePools?.map((pool) => ({
+      ...pool,
+      description: pool.description ?? '',
+      valueType: pool.valueType ?? 'text',
+      options: pool.options ?? [],
+      ranges: pool.ranges ?? [],
+    })),
+  };
 }
 
 class ProjectController extends BaseController {
@@ -205,6 +311,8 @@ class ProjectController extends BaseController {
     if (git === undefined) return;
     const mapleSettings = parseMapleSettings(req, res);
     if (mapleSettings === undefined) return;
+    const assetSchema = parseAssetSchema(req, res);
+    if (assetSchema === undefined) return;
     try {
       const { name, description, defaultThemeId, defaultExportFormat } = req.body as {
         name?: string;
@@ -224,6 +332,7 @@ class ProjectController extends BaseController {
         defaultExportFormat: defaultExportFormat ?? 'json',
         isInbox: false,
         git: git ?? undefined,
+        ...(assetSchema ? { assetSchema } : {}),
         ...(mapleSettings ? { mapleSettings } : {}),
       });
       res.status(201).json(project);
@@ -239,6 +348,8 @@ class ProjectController extends BaseController {
     if (git === undefined) return;
     const mapleSettings = parseMapleSettings(req, res);
     if (mapleSettings === undefined) return;
+    const assetSchema = parseAssetSchema(req, res);
+    if (assetSchema === undefined) return;
     try {
       const project = await ProjectModel.findById(req.params.id);
       if (!project) {
@@ -282,12 +393,20 @@ class ProjectController extends BaseController {
       }
       if (mapleSettings) {
         project.mapleSettings = {
+          enabled: mapleSettings.enabled ?? project.mapleSettings?.enabled ?? false,
           targetVersion: mapleSettings.targetVersion ?? project.mapleSettings?.targetVersion ?? 'v83',
           defaultExportMode: mapleSettings.defaultExportMode ?? project.mapleSettings?.defaultExportMode ?? 'changed-only',
           npcIdRanges: mapleSettings.npcIdRanges ?? project.mapleSettings?.npcIdRanges ?? [],
           itemIdRanges: mapleSettings.itemIdRanges ?? project.mapleSettings?.itemIdRanges ?? [],
         };
         project.markModified('mapleSettings');
+      }
+      if (assetSchema) {
+        project.assetSchema = {
+          assetTypes: assetSchema.assetTypes ?? project.assetSchema?.assetTypes ?? [],
+          valuePools: assetSchema.valuePools ?? project.assetSchema?.valuePools ?? [],
+        };
+        project.markModified('assetSchema');
       }
       await project.save();
       res.json(project);
@@ -320,10 +439,11 @@ class ProjectController extends BaseController {
         QuestlineModel.updateMany({ projectId }, { projectId: inboxId }),
         SpriteModel.updateMany({ projectId }, { projectId: inboxId }),
         CharacterModel.updateMany({ projectId }, { projectId: inboxId }),
+        ItemModel.updateMany({ projectId }, { projectId: inboxId }),
       ]);
       await ProjectModel.findByIdAndDelete(projectId);
 
-      return res.json({ message: 'Project deleted; its questlines, sprites and characters moved to Inbox' });
+      return res.json({ message: 'Project deleted; its questlines, sprites, characters and items moved to Inbox' });
     } catch (error) {
       this.handleError(res, error);
     }
@@ -350,6 +470,17 @@ class ProjectController extends BaseController {
         defaultThemeId:      source.defaultThemeId,
         defaultExportFormat: source.defaultExportFormat,
         isInbox:             false,
+        assetSchema:         source.assetSchema ? {
+          assetTypes: source.assetSchema.assetTypes ?? [],
+          valuePools: source.assetSchema.valuePools ?? [],
+        } : undefined,
+        mapleSettings:       source.mapleSettings ? {
+          enabled:           source.mapleSettings.enabled,
+          targetVersion:     source.mapleSettings.targetVersion,
+          defaultExportMode: source.mapleSettings.defaultExportMode,
+          npcIdRanges:       source.mapleSettings.npcIdRanges,
+          itemIdRanges:      source.mapleSettings.itemIdRanges,
+        } : undefined,
         git:                 source.git ? {
           repoOwner:       source.git.repoOwner,
           repoName:        source.git.repoName,
@@ -377,6 +508,7 @@ class ProjectController extends BaseController {
         cloneInto(QuestlineModel),
         cloneInto(SpriteModel),
         cloneInto(CharacterModel),
+        cloneInto(ItemModel),
       ]);
 
       res.status(201).json(copy);
@@ -393,12 +525,13 @@ class ProjectController extends BaseController {
  * compatible with data created before projects existed.
  */
 export async function ensureDefaultProjects(): Promise<void> {
-  const [questlineOwners, spriteOwners, characterOwners] = await Promise.all([
+  const [questlineOwners, spriteOwners, characterOwners, itemOwners] = await Promise.all([
     QuestlineModel.distinct('ownerId'),
     SpriteModel.distinct('ownerId'),
     CharacterModel.distinct('ownerId'),
+    ItemModel.distinct('ownerId'),
   ]);
-  const owners = [...new Set([...questlineOwners, ...spriteOwners, ...characterOwners])].filter(Boolean) as string[];
+  const owners = [...new Set([...questlineOwners, ...spriteOwners, ...characterOwners, ...itemOwners])].filter(Boolean) as string[];
 
   for (const ownerId of owners) {
     const inbox = await ensureInboxProject(ownerId);
@@ -409,6 +542,7 @@ export async function ensureDefaultProjects(): Promise<void> {
       QuestlineModel.updateMany(orphanFilter, { $set: { projectId } }),
       SpriteModel.updateMany(orphanFilter, { $set: { projectId } }),
       CharacterModel.updateMany(orphanFilter, { $set: { projectId } }),
+      ItemModel.updateMany(orphanFilter, { $set: { projectId } }),
     ]);
   }
 }
