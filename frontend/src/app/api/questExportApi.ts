@@ -5,7 +5,12 @@ export type Format =
   | 'questflow-yaml'
   | 'template-json'
   | 'template-yaml'
-  | 'template-xml';
+  | 'template-xml'
+  | 'unity-asset'
+  | 'unreal-datatable'
+  | 'godot-tres';
+
+export const ENGINE_FORMATS: Format[] = ['unity-asset', 'unreal-datatable', 'godot-tres'];
 
 export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'questflow-json',   label: 'QuestFlow JSON' },
@@ -13,6 +18,9 @@ export const FORMAT_OPTIONS: { id: Format; label: string }[] = [
   { id: 'template-yaml',    label: 'Quest Template YAML' },
   { id: 'template-json',    label: 'Quest Template JSON' },
   { id: 'template-xml',     label: 'Quest Template XML' },
+  { id: 'unity-asset',      label: 'Unity ScriptableObject (.asset)' },
+  { id: 'unreal-datatable', label: 'Unreal DataTable (.json)' },
+  { id: 'godot-tres',       label: 'Godot Resource (.tres)' },
 ];
 
 export async function previewExport(
@@ -71,6 +79,9 @@ function getExtension(format: Format): string {
     'template-json':    '.json',
     'template-yaml':    '.yaml',
     'template-xml':     '.xml',
+    'unity-asset':      '.asset',
+    'unreal-datatable': '.json',
+    'godot-tres':       '.tres',
   };
   return map[format];
 }

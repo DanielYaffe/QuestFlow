@@ -18,6 +18,7 @@ import { Skeleton } from '../../../components/ui/skeleton';
 import {
   Format,
   FORMAT_OPTIONS,
+  ENGINE_FORMATS,
   previewExport,
   downloadExport,
 } from '../../../api/questExportApi';
@@ -41,12 +42,19 @@ export function ExportDialog({ isOpen, onClose, questlineId, initialSelectedNode
   const [isPushOpen, setIsPushOpen] = useState(false);
   const [creationTemplateId, setCreationTemplateId] = useState('');
   const [creationTemplateName, setCreationTemplateName] = useState('');
+  const [creationEngineFormat, setCreationEngineFormat] = useState('');
   const [isQuestlineLoaded, setIsQuestlineLoaded] = useState(false);
   const [questNodes, setQuestNodes] = useState<{ id: string; title: string }[]>([]);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTemplateFormat = format.startsWith('template-');
-  const formatOptions = FORMAT_OPTIONS.filter((opt) => !opt.id.startsWith('template-') || !!creationTemplateId);
+  const isEngineFormat = (ENGINE_FORMATS as string[]).includes(format);
+  const engineFormatLabel = FORMAT_OPTIONS.find((opt) => opt.id === creationEngineFormat)?.label;
+  const formatOptions = FORMAT_OPTIONS.filter((opt) => {
+    if (opt.id.startsWith('template-')) return !!creationTemplateId;
+    if ((ENGINE_FORMATS as string[]).includes(opt.id)) return opt.id === creationEngineFormat;
+    return true;
+  });
 
   const loadPreview = useCallback(
     (selectedFormat: Format, selectedTemplateId: string, nodeIds: string[]) => {
@@ -77,6 +85,7 @@ export function ExportDialog({ isOpen, onClose, questlineId, initialSelectedNode
     setIsQuestlineLoaded(false);
     setCreationTemplateId('');
     setCreationTemplateName('');
+    setCreationEngineFormat('');
     setQuestNodes([]);
     setSelectedNodeIds([]);
     fetchQuestlineById(questlineId)
@@ -91,6 +100,11 @@ export function ExportDialog({ isOpen, onClose, questlineId, initialSelectedNode
         } else {
           setFormat((current) => (current.startsWith('template-') ? 'questflow-yaml' : current));
         }
+        const engineFormat = data.engineFormat || '';
+        setCreationEngineFormat(engineFormat);
+        setFormat((current) => (
+          (ENGINE_FORMATS as string[]).includes(current) && current !== engineFormat ? 'questflow-yaml' : current
+        ));
         setIsQuestlineLoaded(true);
       })
       .catch(() => {
@@ -173,6 +187,16 @@ export function ExportDialog({ isOpen, onClose, questlineId, initialSelectedNode
                     {creationTemplateName}
                   </div>
                   <p className="text-steel-500 text-xs">Locked to the template this quest was generated with.</p>
+                </div>
+              )}
+
+              {isEngineFormat && (
+                <div className="space-y-1">
+                  <label className="text-steel-400 text-sm">Engine</label>
+                  <div className="px-3 py-2 rounded-lg bg-steel-800/60 border border-steel-700 text-steel-300 text-sm">
+                    {engineFormatLabel}
+                  </div>
+                  <p className="text-steel-500 text-xs">Locked to the engine this quest was generated for.</p>
                 </div>
               )}
 

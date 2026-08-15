@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { z } from 'zod';
+import JSZip from 'jszip';
 import { exportQuestline, Format } from '../services/questExport';
 import { QuestlineRequest } from '../middlewares/requireQuestlineOwnership';
 import { pushFile, GitHubHttpError } from '../services/githubService';
@@ -13,6 +14,9 @@ const formatSchema = z.enum([
   'template-json',
   'template-yaml',
   'template-xml',
+  'unity-asset',
+  'unreal-datatable',
+  'godot-tres',
 ]);
 
 function parseFormat(raw: unknown): Format | null {
@@ -71,6 +75,21 @@ export async function downloadExport(req: QuestlineRequest, res: Response): Prom
       templateId: parseString(req.query.templateId),
       nodeIds: parseNodeIds(req.query.nodeIds),
     });
+
+    // Multiple real files (per-node template/engine exports) — bundle them into
+    // an actual .zip instead of the single merged preview text, so "Download"
+    // hands back the same per-node files "Push to GitHub" already delivers.
+    if (result.files && result.files.length > 1) {
+      const zip = new JSZip();
+      for (const file of result.files) zip.file(file.filename, file.content);
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+      const zipFilename = result.filename.replace(/\.txt$/, '.zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+      res.setHeader('Content-Type', 'application/zip');
+      res.send(buffer);
+      return;
+    }
+
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.setHeader('Content-Type', result.mimeType);
     res.send(result.content);

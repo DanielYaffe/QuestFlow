@@ -162,7 +162,7 @@ class QuestlineController extends BaseController {
   async getGraph(req: AuthRequest, res: Response) {
     const userId = req.user?._id;
     try {
-      const questline = await QuestlineModel.findById(req.params.id).select('ownerId projectId nodes edges templateId templateName templateSnapshot');
+      const questline = await QuestlineModel.findById(req.params.id).select('ownerId projectId nodes edges templateId templateName templateSnapshot engineFormat');
       if (!questline) {
         res.status(404).json({ error: 'Questline not found' });
         return;
@@ -241,6 +241,7 @@ class QuestlineController extends BaseController {
           name: latestTemplate?.name ?? questline.templateName,
           snapshot: templateSnapshot,
         } : null,
+        engineFormat: questline.engineFormat || '',
       });
     } catch (error) {
       this.handleError(res, error);

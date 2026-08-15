@@ -33,6 +33,7 @@
     "ioredis": "^5.10.1",
     "js-yaml": "^4.1.1",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.1",
     "mongoose": "^9.1.5",
     "onnxruntime-node": "^1.27.0",
     "openai": "^6.46.0",

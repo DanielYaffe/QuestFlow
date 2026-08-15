@@ -18,6 +18,7 @@ interface WizardState {
   selectedStyleId: string;
   templates: ExportTemplate[];
   selectedTemplateId: string;
+  selectedEngineFormat: string;
   games: Game[];
   // null = follow the active project's linked game; '' = explicitly none.
   selectedGameId: string | null;
@@ -44,6 +45,7 @@ const DEFAULT_WIZARD_STATE: WizardState = {
   selectedStyleId: '',
   templates: [],
   selectedTemplateId: '',
+  selectedEngineFormat: '',
   games: [],
   selectedGameId: null,
   selectedStage: '',
@@ -242,10 +244,11 @@ export function QuestCreate() {
             selectedGenre={state.selectedGenre}
             templates={state.templates}
             selectedTemplateId={state.selectedTemplateId}
+            selectedEngineFormat={state.selectedEngineFormat}
             isLoading={state.isLoadingObjectives}
             onStoryChange={(value) => setState((s) => ({ ...s, storyInput: value }))}
             onGenreChange={(genre) => setState((s) => ({ ...s, selectedGenre: genre }))}
-            onTemplateChange={(templateId) => setState((s) => ({ ...s, selectedTemplateId: templateId }))}
+            onExportModeChange={(templateId, engineFormat) => setState((s) => ({ ...s, selectedTemplateId: templateId, selectedEngineFormat: engineFormat }))}
             onSubmit={handleStorySubmit}
           />
         )}
@@ -311,6 +314,7 @@ export function QuestCreate() {
             styleId={state.selectedStyleId}
             templateId={state.selectedTemplateId}
             templateName={state.templates.find((template) => template._id === state.selectedTemplateId)?.name ?? ''}
+            engineFormat={state.selectedEngineFormat}
             kbOptions={kbOptions}
             gameName={state.games.find((game) => game._id === effectiveGameId)?.name ?? ''}
             onGenerated={() => localStorage.removeItem(DRAFT_STORAGE_KEY)}

@@ -98,6 +98,7 @@ export interface IQuestline extends Document {
   templateId?: string;
   templateName?: string;
   templateSnapshot?: unknown;
+  engineFormat?: string;
   ownerId: string;
   projectId: string;
   // Optional per-questline Game/KB override; falls back to the project's
@@ -218,6 +219,7 @@ const QuestlineSchema = new Schema<IQuestline>(
     templateId:       { type: String, default: '' },
     templateName:     { type: String, default: '' },
     templateSnapshot: { type: Schema.Types.Mixed },
+    engineFormat:     { type: String, default: '' },
     ownerId:      { type: String, required: true, index: true },
     projectId:    { type: String, default: '', index: true },
     gameId:       { type: String, default: '' },
