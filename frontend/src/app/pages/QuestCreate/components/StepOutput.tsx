@@ -4,6 +4,7 @@ import { BookOpen } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
 import { QuestLoadingScreen } from './QuestLoadingScreen';
 import { Objective, Reward, GeneratedCharacter, KbOptions, generateQuestline } from '../../../api/questCreateApi';
+import { FORMAT_OPTIONS } from '../../../api/questExportApi';
 
 interface StepOutputProps {
   story: string;
@@ -16,6 +17,7 @@ interface StepOutputProps {
   styleId: string;
   templateId: string;
   templateName: string;
+  engineFormat: string;
   kbOptions?: KbOptions;
   gameName?: string;
   onGenerated?: () => void;
@@ -33,6 +35,7 @@ export function StepOutput({
   styleId,
   templateId,
   templateName,
+  engineFormat,
   kbOptions,
   gameName,
   onGenerated,
@@ -46,6 +49,7 @@ export function StepOutput({
   const filteredRewards    = rewards.filter((r) => selectedRewards.includes(r.id));
   const groundedCount      = characters.filter((c) => c.kbRef).length
     + filteredRewards.filter((r) => r.kbRef).length;
+  const engineFormatLabel  = FORMAT_OPTIONS.find((opt) => opt.id === engineFormat)?.label;
 
   const handleOpenInBuilder = async () => {
     setGenerating(true);
@@ -60,6 +64,7 @@ export function StepOutput({
         styleId,
         templateId || undefined,
         kbOptions,
+        engineFormat || undefined,
       );
       onGenerated?.();
       navigate(`/quest-builder/${id}`);
@@ -86,6 +91,7 @@ export function StepOutput({
           <p className="text-steel-200 text-sm line-clamp-3">{story}</p>
           <p className="text-steel-400 text-xs mt-1">Genre: {genre} · Characters: {characters.length}</p>
           <p className="text-steel-400 text-xs mt-1">Template: {templateName || 'No template'}</p>
+          <p className="text-steel-400 text-xs mt-1">Export engine: {engineFormatLabel || 'None'}</p>
           <p className="text-steel-400 text-xs mt-1">
             Knowledge base: {kbOptions?.gameId && gameName ? `${gameName}${kbOptions.progression ? ` (${kbOptions.progression} game)` : ''}` : 'None (free generation)'}
             {groundedCount > 0 && (

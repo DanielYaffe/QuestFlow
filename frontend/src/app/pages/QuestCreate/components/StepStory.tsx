@@ -2,33 +2,54 @@ import React, { useRef } from 'react';
 import { ArrowUp, Loader2 } from 'lucide-react';
 import { WizardStepIndicator } from './WizardStepIndicator';
 import { ExportTemplate } from '../../../api/exportTemplateApi';
+import { FORMAT_OPTIONS, ENGINE_FORMATS } from '../../../api/questExportApi';
 
 const GENRES = ['All', 'Fantasy', 'RPG', 'Horror', 'Sci-Fi', 'Action', 'Mystery', 'Historical', 'Open World', 'Puzzle', 'Dystopian'];
+
+const ENGINE_OPTIONS = FORMAT_OPTIONS.filter((opt) => ENGINE_FORMATS.includes(opt.id));
 
 interface StepStoryProps {
   storyInput: string;
   selectedGenre: string;
   templates: ExportTemplate[];
   selectedTemplateId: string;
+  selectedEngineFormat: string;
   isLoading: boolean;
   onStoryChange: (value: string) => void;
   onGenreChange: (genre: string) => void;
-  onTemplateChange: (templateId: string) => void;
+  onExportModeChange: (templateId: string, engineFormat: string) => void;
   onSubmit: () => void;
 }
+
+const TEMPLATE_PREFIX = 'template:';
+const ENGINE_PREFIX = 'engine:';
 
 export function StepStory({
   storyInput,
   selectedGenre,
   templates,
   selectedTemplateId,
+  selectedEngineFormat,
   isLoading,
   onStoryChange,
   onGenreChange,
-  onTemplateChange,
+  onExportModeChange,
   onSubmit,
 }: StepStoryProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const exportModeValue = selectedTemplateId
+    ? `${TEMPLATE_PREFIX}${selectedTemplateId}`
+    : selectedEngineFormat
+    ? `${ENGINE_PREFIX}${selectedEngineFormat}`
+    : '';
+  const selectedTemplate = templates.find((template) => template._id === selectedTemplateId);
+  const selectedEngineLabel = ENGINE_OPTIONS.find((option) => option.id === selectedEngineFormat)?.label;
+
+  const handleExportModeChange = (value: string) => {
+    if (value.startsWith(TEMPLATE_PREFIX)) onExportModeChange(value.slice(TEMPLATE_PREFIX.length), '');
+    else if (value.startsWith(ENGINE_PREFIX)) onExportModeChange('', value.slice(ENGINE_PREFIX.length));
+    else onExportModeChange('', '');
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && storyInput.trim()) {
@@ -88,26 +109,39 @@ export function StepStory({
       </div>
 
       <div className="bg-steel-850 border border-steel-700 rounded-md p-4 space-y-2">
-        <label className="text-steel-400 text-xs uppercase tracking-wide">Quest Template</label>
+        <label className="text-steel-400 text-xs uppercase tracking-wide">Export Format</label>
         <select
-          value={selectedTemplateId}
-          onChange={(event) => onTemplateChange(event.target.value)}
+          value={exportModeValue}
+          onChange={(event) => handleExportModeChange(event.target.value)}
           disabled={isLoading}
           className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 text-sm focus:outline-none focus:border-pulse"
         >
-          <option value="">No template</option>
-          {templates.map((template) => (
-            <option key={template._id} value={template._id}>
-              {template.name}
-            </option>
-          ))}
+          <option value="">No template (QuestFlow YAML export)</option>
+          {templates.length > 0 && (
+            <optgroup label="Templates">
+              {templates.map((template) => (
+                <option key={template._id} value={`${TEMPLATE_PREFIX}${template._id}`}>
+                  {template.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <optgroup label="Engines">
+            {ENGINE_OPTIONS.map((option) => (
+              <option key={option.id} value={`${ENGINE_PREFIX}${option.id}`}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
         </select>
         <p className="text-steel-400 text-xs">
           {selectedTemplateId
-            ? templates.find((template) => template._id === selectedTemplateId)?.templateSchema?.summary
-              || templates.find((template) => template._id === selectedTemplateId)?.schemaSummary?.structureSummary
+            ? selectedTemplate?.templateSchema?.summary
+              || selectedTemplate?.schemaSummary?.structureSummary
               || 'Template schema will guide requirement, reward, and dialog generation.'
-            : 'YAML export will be used by default when no template is selected.'}
+            : selectedEngineFormat
+            ? `This quest will only be exportable as ${selectedEngineLabel} later on.`
+            : 'YAML export will be used by default when no template or engine is selected.'}
         </p>
       </div>
 

@@ -11,6 +11,7 @@ import GameThemeModel, { IGameTheme } from '../models/gameThemeModel';
 import ThemeConfigModel from '../models/themeConfigModel';
 import ExportTemplateModel from '../models/exportTemplateModel';
 import { resolveProjectId } from '../models/projectModel';
+import { ENGINE_FORMATS, Format } from '../services/questExport/types';
 import { complete } from '../services/ai';
 import { hasGenApiKey } from '../config/ai';
 import { buildReferenceContext, ReferenceEntity } from '../services/generationContext';
@@ -115,6 +116,11 @@ Theme context:
 // Optional soft progression hint from the client ('' / unknown → none).
 function parseProgression(v: unknown): DifficultyBucket | undefined {
   return v === 'early' || v === 'mid' || v === 'late' ? v : undefined;
+}
+
+// Optional engine export locked in at creation time ('' / unknown → none).
+function parseEngineFormat(v: unknown): Format | '' {
+  return typeof v === 'string' && (ENGINE_FORMATS as string[]).includes(v) ? (v as Format) : '';
 }
 
 function isQuotaError(error: unknown): boolean {
@@ -1076,7 +1082,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     return;
   }
 
-  const { story, genre, objectives, rewards, characters, styleId, themeId, exportFormat, templateId, projectId, gameId, progression } = req.body as {
+  const { story, genre, objectives, rewards, characters, styleId, themeId, exportFormat, templateId, engineFormat, projectId, gameId, progression } = req.body as {
     story?: string;
     genre?: string;
     objectives?: Objective[];
@@ -1086,6 +1092,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     themeId?: string;
     exportFormat?: string;
     templateId?: string;
+    engineFormat?: string;
     projectId?: string;
     gameId?: string;
     progression?: string;
@@ -1247,6 +1254,9 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       exportFormat: resolvedExportFormat,
       gameId:       ownedGameId,
       characterIds: questlineCharacterIds,
+      // Export format is a single exclusive choice — a template takes priority
+      // over an engine format if a client somehow sends both.
+      engineFormat: templateDoc ? '' : parseEngineFormat(engineFormat),
       templateId:   templateDoc?._id.toString() ?? '',
       templateName: templateDoc?.name ?? '',
       templateSnapshot: templateDoc ? {

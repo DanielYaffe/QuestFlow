@@ -86,6 +86,7 @@ export async function generateQuestline(
   styleId: string,
   templateId?: string,
   kb?: KbOptions,
+  engineFormat?: string,
 ): Promise<string> {
   try {
     const { data } = await api.post('/quests/generate-questline', {
@@ -96,6 +97,7 @@ export async function generateQuestline(
       characters,
       styleId,
       templateId,
+      engineFormat,
       ...kb,
     });
     return data.questlineId;

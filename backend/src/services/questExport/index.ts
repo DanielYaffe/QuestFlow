@@ -4,7 +4,8 @@ import CharacterModel from '../../models/characterModel';
 import ItemModel from '../../models/itemModel';
 import { buildExportPayload } from './buildExportPayload';
 import { formats } from './formats';
-import { CanonicalNode, ExportFile, Format, ExportResult } from './types';
+import { engineFormats } from './formats/engineFormats';
+import { CanonicalNode, ExportFile, Format, ExportResult, ENGINE_FORMATS } from './types';
 import { TemplateAstNode, TemplateFieldSummary } from '../exportTemplates/templateParser';
 import yaml from 'js-yaml';
 
@@ -22,6 +23,10 @@ function slugifyTitle(title: string): string {
 
 function isTemplateFormat(format: Format): boolean {
   return format === 'template-json' || format === 'template-yaml' || format === 'template-xml';
+}
+
+function isEngineFormat(format: Format): boolean {
+  return (ENGINE_FORMATS as Format[]).includes(format);
 }
 
 function formatFromTemplateFormat(format: Format): 'json' | 'yaml' | 'xml' {
@@ -394,6 +399,36 @@ export async function exportQuestline(
         mimeType,
       };
     });
+
+    return {
+      filename: files.length === 1 ? files[0].filename : `${slugifyTitle(questline.title)}-quests.txt`,
+      content: files.length === 1 ? files[0].content : joinPreview(files),
+      mimeType: files.length === 1 ? files[0].mimeType : 'text/plain',
+      files,
+    };
+  }
+
+  if (isEngineFormat(format)) {
+    // Engine exports are locked to the questline's own creation-time engine
+    // choice — a client-supplied format can't be swapped for a different
+    // engine via a direct API call.
+    if (questline.engineFormat !== format) {
+      throw new Error('This questline was not generated for that export engine');
+    }
+    const engineModule = engineFormats[format];
+    if (!engineModule) {
+      throw new Error(`Unknown format: ${format}`);
+    }
+
+    // One file per node, mirroring the template export's per-node hierarchy —
+    // a game engine expects one quest asset per file, not the whole questline
+    // bundled into a single document.
+    const selectedNodes = filterNodes(payload.nodes);
+    const files = selectedNodes.map((node) => ({
+      filename: `${slugifyTitle(node.title || node.id)}${engineModule.extension}`,
+      content: engineModule.renderNode(node, payload),
+      mimeType: engineModule.mimeType,
+    }));
 
     return {
       filename: files.length === 1 ? files[0].filename : `${slugifyTitle(questline.title)}-quests.txt`,

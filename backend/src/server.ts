@@ -44,7 +44,10 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
-app.use(cors())
+// Content-Disposition isn't a CORS "simple" response header — without exposing
+// it explicitly, the frontend (a different origin/port) can never read the
+// server-picked filename and silently falls back to a generic one.
+app.use(cors({ exposedHeaders: ['Content-Disposition'] }))
 
 app.use('/auth', authRouter);
 app.use(authenticate);

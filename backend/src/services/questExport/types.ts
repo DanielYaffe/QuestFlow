@@ -72,7 +72,12 @@ export type Format =
   | 'questflow-yaml'
   | 'template-json'
   | 'template-yaml'
-  | 'template-xml';
+  | 'template-xml'
+  | 'unity-asset'
+  | 'unreal-datatable'
+  | 'godot-tres';
+
+export const ENGINE_FORMATS: readonly Format[] = ['unity-asset', 'unreal-datatable', 'godot-tres'];
 
 export interface FormatModule {
   id: Format;
@@ -80,6 +85,17 @@ export interface FormatModule {
   extension: string;
   mimeType: string;
   render: (payload: CanonicalExport) => string;
+}
+
+// Engine exports render one file per quest node — like template exports — since
+// a Unity/Unreal/Godot project expects one quest asset per file, not the whole
+// questline bundled into a single document.
+export interface EngineFormatModule {
+  id: Format;
+  label: string;
+  extension: string;
+  mimeType: string;
+  renderNode: (node: CanonicalNode, payload: CanonicalExport) => string;
 }
 
 export interface ExportResult {

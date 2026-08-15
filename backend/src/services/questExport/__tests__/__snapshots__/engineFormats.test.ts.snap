@@ -1,0 +1,179 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`Engine export renderers (per node) Godot Resource (.tres) node "Confront the Dragon" renders content matching snapshot 1`] = `
+"[gd_resource type="Resource" format=3]
+
+[resource]
+node_id = "quest_2"
+variant = "combat"
+title = "Confront the Dragon"
+body = "The beast emerges from the peak."
+npc_ids = []
+monster_ids = ["npc_igrath-the-dragon"]
+reward_ids = ["reward_dragon-scale"]
+prev_node_ids = ["quest_1"]
+next_node_ids = ["quest_3"]
+"
+`;
+
+exports[`Engine export renderers (per node) Godot Resource (.tres) node "The Awakening" renders content matching snapshot 1`] = `
+"[gd_resource type="Resource" format=3]
+
+[resource]
+node_id = "quest_1"
+variant = "story"
+title = "The Awakening"
+body = "A red glow erupts from the mountain."
+npc_ids = ["npc_taras-the-elder"]
+monster_ids = []
+reward_ids = []
+prev_node_ids = []
+next_node_ids = ["quest_2"]
+"
+`;
+
+exports[`Engine export renderers (per node) Godot Resource (.tres) node "The Reward" renders content matching snapshot 1`] = `
+"[gd_resource type="Resource" format=3]
+
+[resource]
+node_id = "quest_3"
+variant = "treasure"
+title = "The Reward"
+body = "The curse is lifted and peace returns."
+npc_ids = []
+monster_ids = []
+reward_ids = ["reward_ancient-sword"]
+prev_node_ids = ["quest_2"]
+next_node_ids = []
+"
+`;
+
+exports[`Engine export renderers (per node) Unity ScriptableObject (.asset) node "Confront the Dragon" renders content matching snapshot 1`] = `
+"%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: Confront the Dragon
+  questNode:
+    NodeId: "quest_2"
+    Variant: "combat"
+    Title: "Confront the Dragon"
+    Body: "The beast emerges from the peak."
+    NpcIds: []
+    MonsterIds: ["npc_igrath-the-dragon"]
+    RewardIds: ["reward_dragon-scale"]
+    PrevNodeIds: ["quest_1"]
+    NextNodeIds: ["quest_3"]
+"
+`;
+
+exports[`Engine export renderers (per node) Unity ScriptableObject (.asset) node "The Awakening" renders content matching snapshot 1`] = `
+"%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: The Awakening
+  questNode:
+    NodeId: "quest_1"
+    Variant: "story"
+    Title: "The Awakening"
+    Body: "A red glow erupts from the mountain."
+    NpcIds: ["npc_taras-the-elder"]
+    MonsterIds: []
+    RewardIds: []
+    PrevNodeIds: []
+    NextNodeIds: ["quest_2"]
+"
+`;
+
+exports[`Engine export renderers (per node) Unity ScriptableObject (.asset) node "The Reward" renders content matching snapshot 1`] = `
+"%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00000000000000000000000000000000, type: 3}
+  m_Name: The Reward
+  questNode:
+    NodeId: "quest_3"
+    Variant: "treasure"
+    Title: "The Reward"
+    Body: "The curse is lifted and peace returns."
+    NpcIds: []
+    MonsterIds: []
+    RewardIds: ["reward_ancient-sword"]
+    PrevNodeIds: ["quest_2"]
+    NextNodeIds: []
+"
+`;
+
+exports[`Engine export renderers (per node) Unreal DataTable (.json) node "Confront the Dragon" renders content matching snapshot 1`] = `
+"[
+  {
+    "Name": "quest_2",
+    "NodeId": "quest_2",
+    "Variant": "combat",
+    "Title": "Confront the Dragon",
+    "Body": "The beast emerges from the peak.",
+    "NpcIds": [],
+    "MonsterIds": [
+      "npc_igrath-the-dragon"
+    ],
+    "RewardIds": [
+      "reward_dragon-scale"
+    ],
+    "PrevNodeIds": [
+      "quest_1"
+    ],
+    "NextNodeIds": [
+      "quest_3"
+    ]
+  }
+]"
+`;
+
+exports[`Engine export renderers (per node) Unreal DataTable (.json) node "The Awakening" renders content matching snapshot 1`] = `
+"[
+  {
+    "Name": "quest_1",
+    "NodeId": "quest_1",
+    "Variant": "story",
+    "Title": "The Awakening",
+    "Body": "A red glow erupts from the mountain.",
+    "NpcIds": [
+      "npc_taras-the-elder"
+    ],
+    "MonsterIds": [],
+    "RewardIds": [],
+    "PrevNodeIds": [],
+    "NextNodeIds": [
+      "quest_2"
+    ]
+  }
+]"
+`;
+
+exports[`Engine export renderers (per node) Unreal DataTable (.json) node "The Reward" renders content matching snapshot 1`] = `
+"[
+  {
+    "Name": "quest_3",
+    "NodeId": "quest_3",
+    "Variant": "treasure",
+    "Title": "The Reward",
+    "Body": "The curse is lifted and peace returns.",
+    "NpcIds": [],
+    "MonsterIds": [],
+    "RewardIds": [
+      "reward_ancient-sword"
+    ],
+    "PrevNodeIds": [
+      "quest_2"
+    ],
+    "NextNodeIds": []
+  }
+]"
+`;

@@ -52,6 +52,7 @@ export interface QuestlineData {
     name: string;
     snapshot: unknown;
   } | null;
+  engineFormat?: string;
 }
 
 export async function fetchQuestlineById(questlineId: string): Promise<QuestlineData> {
