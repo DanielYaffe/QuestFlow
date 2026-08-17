@@ -18,6 +18,7 @@ import { AuthRequest } from '../middlewares/authMiddleware';
 import { ownsGame } from '../services/gameService';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { encrypt } from '../utils/encryption';
+import { KB_TYPES, collectionName, qdrant } from '../services/qdrant';
 
 interface CountRow {
   _id: string;
@@ -256,6 +257,118 @@ function parseAssetSchema(req: AuthRequest, res: Response): Partial<IProjectAsse
   };
 }
 
+function pathFromRequest(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((part) => String(part).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.split('.').map((part) => part.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function getNestedValue(root: unknown, path: string[]): unknown {
+  let cursor = root;
+  for (const segment of path) {
+    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) return undefined;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor;
+}
+
+function flattenNumericFields(value: unknown, prefix = '', out: Array<{ path: string; value: number }> = []): Array<{ path: string; value: number }> {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    out.push({ path: prefix, value });
+    return out;
+  }
+  if (!value || typeof value !== 'object') return out;
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => flattenNumericFields(entry, `${prefix}.${index}`, out));
+    return out;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    flattenNumericFields(child, prefix ? `${prefix}.${key}` : key, out);
+  }
+  return out;
+}
+
+function splitIdentifierTokens(value: string | undefined): Set<string> {
+  return new Set(
+    String(value ?? '')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .split(/[^a-zA-Z0-9]+/)
+      .map((token) => token.toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function tokenOverlap(a: Set<string>, b: Set<string>): boolean {
+  for (const token of a) {
+    if (b.has(token)) return true;
+  }
+  return false;
+}
+
+function fieldLooksRelatedToPool(path: string, field: IProjectAssetField, poolName: string, poolKey: string): boolean {
+  const pathTokens = splitIdentifierTokens(path);
+  const fieldTokens = splitIdentifierTokens([field.key, field.label, field.description].filter(Boolean).join(' '));
+  const poolTokens = splitIdentifierTokens(`${poolName} ${poolKey}`);
+  return tokenOverlap(pathTokens, fieldTokens) || tokenOverlap(pathTokens, poolTokens);
+}
+
+function isInsideRanges(value: number, ranges: Array<{ min: number; max: number }>): boolean {
+  return ranges.some((range) => value >= range.min && value <= range.max);
+}
+
+async function collectKbReservedPoolValues(
+  gameId: string | undefined,
+  field: IProjectAssetField,
+  pool: { key: string; name: string; ranges: Array<{ min: number; max: number }> },
+): Promise<Set<number>> {
+  const reserved = new Set<number>();
+  if (!gameId || !pool.ranges.length) return reserved;
+
+  for (const type of KB_TYPES) {
+    const collection = collectionName(gameId, type);
+    let offset: unknown = undefined;
+    do {
+      const result = await qdrant
+        .scroll(collection, {
+          limit: 256,
+          offset: offset as never,
+          with_payload: true,
+          with_vector: false,
+        })
+        .catch(() => null);
+      if (!result || !Array.isArray(result.points)) break;
+
+      for (const point of result.points) {
+        const payload = point.payload;
+        if (!payload || typeof payload !== 'object') continue;
+        const fields = (payload as Record<string, unknown>).fields;
+        if (!fields || typeof fields !== 'object' || Array.isArray(fields)) continue;
+        for (const entry of flattenNumericFields(fields)) {
+          if (!isInsideRanges(entry.value, pool.ranges)) continue;
+          if (fieldLooksRelatedToPool(entry.path, field, pool.name, pool.key)) {
+            reserved.add(entry.value);
+          }
+        }
+      }
+      offset = (result as { next_page_offset?: unknown }).next_page_offset;
+    } while (offset !== undefined && offset !== null);
+  }
+  return reserved;
+}
+
+function findAssetField(fields: IProjectAssetField[], path: string[]): IProjectAssetField | null {
+  if (path.length === 0) return null;
+  const [head, ...tail] = path;
+  const field = fields.find((entry) => entry.key === head);
+  if (!field) return null;
+  if (tail.length === 0) return field;
+  return findAssetField(field.fields ?? [], tail);
+}
+
 class ProjectController extends BaseController {
   constructor() {
     super(ProjectModel);
@@ -384,6 +497,82 @@ class ProjectController extends BaseController {
       }
       return res.json(serializeProject(project));
     } catch (error) {
+      this.handleError(res, error);
+    }
+  }
+
+  // POST /projects/:id/asset-pools/allocate — generic project pool allocator.
+  // Returns the first unused numeric value from the pool attached to a schema field.
+  async allocateAssetPoolValue(req: AuthRequest, res: Response) {
+    const userId = req.user?._id;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const assetType = typeof req.body.assetType === 'string' ? req.body.assetType.trim() : '';
+    const fieldPath = pathFromRequest(req.body.fieldPath);
+    const excludeAssetId = typeof req.body.assetId === 'string' ? req.body.assetId : '';
+    if (!assetType || fieldPath.length === 0) {
+      res.status(400).json({ error: 'assetType and fieldPath are required.' });
+      return;
+    }
+
+    try {
+      const project = await ProjectModel.findById(req.params.id).select('ownerId gameId assetSchema').lean();
+      if (!project) {
+        res.status(404).json({ error: 'Project not found' });
+        return;
+      }
+      if (project.ownerId !== userId) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+
+      const assetSchema = project.assetSchema?.assetTypes?.find((entry) => entry.key === assetType);
+      const field = assetSchema ? findAssetField(assetSchema.fields ?? [], fieldPath) : null;
+      const pool = field?.poolKey
+        ? project.assetSchema?.valuePools?.find((entry) => entry.key === field.poolKey)
+        : null;
+      if (!field || !pool) {
+        res.status(400).json({ error: 'Field is not associated with a value pool.' });
+        return;
+      }
+      if (pool.valueType !== 'number' || !pool.ranges?.length) {
+        res.status(400).json({ error: 'Only numeric range pools can allocate values.' });
+        return;
+      }
+
+      const idFilter = excludeAssetId ? { _id: { $ne: excludeAssetId } } : {};
+      const docs = assetType === 'item'
+        ? await ItemModel.find({ ownerId: userId, projectId: req.params.id, ...idFilter }).select('customFields').lean()
+        : await CharacterModel.find({ ownerId: userId, projectId: req.params.id, kind: assetType, ...idFilter }).select('customFields').lean();
+      const used = new Set<number>();
+      for (const doc of docs) {
+        const value = getNestedValue(doc.customFields, fieldPath);
+        if (typeof value === 'number' && Number.isFinite(value)) used.add(value);
+      }
+      const nativeReserved = await collectKbReservedPoolValues(project.gameId, field, {
+        key: pool.key,
+        name: pool.name,
+        ranges: pool.ranges ?? [],
+      });
+      nativeReserved.forEach((value) => used.add(value));
+
+      const ranges = [...pool.ranges].sort((a, b) => a.min - b.min);
+      for (const range of ranges) {
+        for (let candidate = range.min; candidate <= range.max; candidate += 1) {
+          if (!used.has(candidate)) {
+            res.json({ value: candidate, poolKey: pool.key, fieldPath: fieldPath.join('.') });
+            return;
+          }
+        }
+      }
+      res.status(409).json({ error: `No available values remain in the ${pool.name} pool.` });
+    } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
       this.handleError(res, error);
     }
   }

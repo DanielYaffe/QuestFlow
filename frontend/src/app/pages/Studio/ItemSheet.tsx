@@ -440,6 +440,8 @@ export function ItemSheet() {
           <div className="lg:col-span-2">
             <CustomFieldsPanel
               assetType="item"
+              assetId={item._id}
+              projectId={item.projectId}
               schema={activeProject?.assetSchema}
               value={item.customFields}
               onSave={async (customFields) => {

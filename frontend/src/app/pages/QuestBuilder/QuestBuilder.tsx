@@ -43,11 +43,15 @@ import {
 import { listCharacters } from "../../api/characterApi";
 import { listItems } from "../../api/itemApi";
 import {
+  deleteQuestline,
   fetchQuestlineMeta,
+  fetchQuestlines,
+  QuestlineSummary,
   saveQuestlineGraph,
 } from "../../api/questBuilderApi";
 import { ExportDialog } from "./components/ExportDialog";
 import { AIEditPanel } from "./components/AIEditPanel";
+import { ConfirmModal } from "../../components/shared/ConfirmModal";
 import {
   AIChange,
   ProposedDesign,
@@ -169,6 +173,14 @@ export function QuestBuilder() {
   );
   const [rewardNames, setRewardNames] = useState<Record<string, string>>({});
   const [projectId, setProjectId] = useState("");
+  const [currentQuestlineTitle, setCurrentQuestlineTitle] = useState("");
+  const [questlineOptions, setQuestlineOptions] = useState<QuestlineSummary[]>(
+    [],
+  );
+  const [isQuestlineListLoading, setIsQuestlineListLoading] = useState(false);
+  const [pendingQuestlineDelete, setPendingQuestlineDelete] =
+    useState<QuestlineSummary | null>(null);
+  const [isDeletingQuestline, setIsDeletingQuestline] = useState(false);
   const [autoAttachId, setAutoAttachId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const attachHandledRef = useRef(false);
@@ -266,9 +278,40 @@ export function QuestBuilder() {
   useEffect(() => {
     if (!questlineId) return;
     fetchQuestlineMeta(questlineId)
-      .then((meta) => setProjectId(meta.projectId ?? ""))
+      .then((meta) => {
+        setProjectId(meta.projectId ?? "");
+        setCurrentQuestlineTitle(meta.title ?? "");
+      })
       .catch(() => {});
   }, [questlineId]);
+
+  const questlineListProjectId =
+    questlineProjectId || projectId || activeProjectId || undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsQuestlineListLoading(true);
+    fetchQuestlines(questlineListProjectId)
+      .then((list) => {
+        if (cancelled) return;
+        setQuestlineOptions(
+          [...list].sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() -
+              new Date(a.updatedAt).getTime(),
+          ),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Failed to load questflows");
+      })
+      .finally(() => {
+        if (!cancelled) setIsQuestlineListLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [questlineListProjectId]);
 
   // Character name map (for node cards) comes from the project character collection.
   // Re-read whenever a design may have joined the project (a save reconciles node
@@ -664,6 +707,74 @@ export function QuestBuilder() {
     [nodes, edges, setNodes, setEdges],
   );
 
+  const handleSelectQuestline = useCallback(
+    (nextQuestlineId: string) => {
+      if (!nextQuestlineId || nextQuestlineId === questlineId) return;
+      if (
+        hasUnsavedChanges &&
+        !window.confirm(
+          "This questflow is still saving. Switch to another questflow anyway?",
+        )
+      ) {
+        return;
+      }
+      navigate(`/quest-builder/${nextQuestlineId}`);
+    },
+    [hasUnsavedChanges, navigate, questlineId],
+  );
+
+  const requestDeleteQuestline = useCallback(() => {
+    const current = questlineOptions.find((q) => q._id === questlineId);
+    setPendingQuestlineDelete(
+      current ?? {
+        _id: questlineId,
+        title: currentQuestlineTitle || "Untitled questflow",
+        description: "",
+        updatedAt: new Date().toISOString(),
+      },
+    );
+  }, [currentQuestlineTitle, questlineId, questlineOptions]);
+
+  const confirmDeleteQuestline = useCallback(async () => {
+    if (!pendingQuestlineDelete) return;
+    const target = pendingQuestlineDelete;
+    setIsDeletingQuestline(true);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    try {
+      await deleteQuestline(target._id);
+      const remaining = questlineOptions.filter((q) => q._id !== target._id);
+      setQuestlineOptions(remaining);
+      setPendingQuestlineDelete(null);
+      toast.success("Questflow deleted");
+
+      if (target._id === questlineId) {
+        const nextQuestline = remaining[0];
+        if (nextQuestline) {
+          navigate(`/quest-builder/${nextQuestline._id}`, { replace: true });
+        } else {
+          const fallbackProjectId =
+            questlineProjectId || projectId || activeProjectId;
+          navigate(
+            fallbackProjectId ? `/projects/${fallbackProjectId}` : "/quest-builder",
+            { replace: true },
+          );
+        }
+      }
+    } catch {
+      toast.error("Failed to delete questflow");
+    } finally {
+      setIsDeletingQuestline(false);
+    }
+  }, [
+    activeProjectId,
+    navigate,
+    pendingQuestlineDelete,
+    projectId,
+    questlineId,
+    questlineOptions,
+    questlineProjectId,
+  ]);
+
   const clearNodeHighlight = useCallback(
     (nodeId: string) => {
       setNodes((nds) =>
@@ -885,6 +996,13 @@ export function QuestBuilder() {
   return (
     <div className="h-full flex flex-col">
       <QuestBuilderHeader
+        questlines={questlineOptions}
+        currentQuestlineId={questlineId}
+        currentQuestlineTitle={currentQuestlineTitle}
+        isQuestlineListLoading={isQuestlineListLoading}
+        isDeletingQuestline={isDeletingQuestline}
+        onSelectQuestline={handleSelectQuestline}
+        onDeleteQuestline={requestDeleteQuestline}
         onAutoLayout={handleAutoLayout}
         layoutDirection={layoutDirection}
         isSidebarOpen={isLeftSidebarOpen}
@@ -901,6 +1019,18 @@ export function QuestBuilder() {
         }}
         isSaving={isSaving}
         hasUnsavedChanges={hasUnsavedChanges}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(pendingQuestlineDelete)}
+        title="Delete questflow?"
+        message={`Are you sure you want to delete "${pendingQuestlineDelete?.title || "this questflow"}"? This removes the questflow only; project assets stay untouched.`}
+        confirmLabel={isDeletingQuestline ? "Deleting..." : "Delete"}
+        danger
+        onConfirm={confirmDeleteQuestline}
+        onCancel={() => {
+          if (!isDeletingQuestline) setPendingQuestlineDelete(null);
+        }}
       />
 
       {/* Canvas */}

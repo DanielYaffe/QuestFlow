@@ -142,6 +142,18 @@ export async function updateProject(
   return data;
 }
 
+export async function allocateProjectPoolValue(
+  projectId: string,
+  input: {
+    assetType: string;
+    fieldPath: string[];
+    assetId?: string;
+  },
+): Promise<{ value: string | number | boolean; poolKey: string; fieldPath: string }> {
+  const { data } = await api.post(`/projects/${projectId}/asset-pools/allocate`, input);
+  return data;
+}
+
 export async function deleteProject(id: string): Promise<void> {
   await api.delete(`/projects/${id}`);
 }

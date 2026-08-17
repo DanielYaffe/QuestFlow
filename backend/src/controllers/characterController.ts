@@ -273,6 +273,7 @@ class CharacterController extends BaseController {
           ownerId: userId,
           projectId: targetProjectId,
           assetType: character.kind,
+          assetId: character._id.toString(),
           values: body.customFields,
         });
         if (validationErrors.length) {

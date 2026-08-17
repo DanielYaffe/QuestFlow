@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Braces, Loader2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  allocateProjectPoolValue,
   AssetFieldType,
   ProjectAssetField,
   ProjectAssetSchema,
@@ -48,6 +49,7 @@ function getNestedValue(root: Record<string, unknown>, path: string[]): unknown 
 }
 
 function parseValue(value: string, type: AssetFieldType): unknown {
+  if (value.trim() === '') return '';
   if (type === 'number') {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -72,6 +74,80 @@ function poolFor(field: ProjectAssetField, pools: ProjectValuePool[]): ProjectVa
   return field.poolKey ? pools.find((pool) => pool.key === field.poolKey) : undefined;
 }
 
+function valueInPool(value: unknown, pool: ProjectValuePool): boolean {
+  if (value === undefined || value === null || value === '') return true;
+  if (pool.options.length) {
+    return pool.options.some((option) => option.value === value);
+  }
+  if (pool.ranges.length) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+    return pool.ranges.some((range) => value >= range.min && value <= range.max);
+  }
+  return true;
+}
+
+function poolRangeLabel(pool: ProjectValuePool): string {
+  return pool.ranges.map((range) => `${range.min}-${range.max}`).join(', ');
+}
+
+function validateFieldValues(
+  fields: ProjectAssetField[],
+  values: Record<string, unknown>,
+  pools: ProjectValuePool[],
+  prefix = '',
+): string[] {
+  const errors: string[] = [];
+  for (const field of fields) {
+    const path = prefix ? `${prefix}.${field.key}` : field.key;
+    const value = values[field.key];
+    if (field.required && (value === undefined || value === null || value === '')) {
+      errors.push(`${field.label} is required.`);
+      continue;
+    }
+    const pool = poolFor(field, pools);
+    if (pool) {
+      if (field.type === 'list' && Array.isArray(value) && !field.fields?.length) {
+        const invalidIndex = value.findIndex((entry) => !valueInPool(entry, pool));
+        if (invalidIndex >= 0) errors.push(`${path}.${invalidIndex + 1} must use ${pool.name}.`);
+      } else if (field.type !== 'list' && !valueInPool(value, pool)) {
+        errors.push(`${field.label} must use ${pool.name}.`);
+      }
+    }
+    if (field.type === 'object' && value && typeof value === 'object' && !Array.isArray(value)) {
+      errors.push(...validateFieldValues(field.fields ?? [], value as Record<string, unknown>, pools, path));
+    }
+    if (field.type === 'list' && Array.isArray(value) && field.fields?.length) {
+      value.forEach((row, index) => {
+        if (row && typeof row === 'object' && !Array.isArray(row)) {
+          errors.push(...validateFieldValues(field.fields ?? [], row as Record<string, unknown>, pools, `${path}.${index + 1}`));
+        }
+      });
+    }
+  }
+  return errors;
+}
+
+function firstRequiredAllocatablePath(
+  fields: ProjectAssetField[],
+  values: Record<string, unknown>,
+  pools: ProjectValuePool[],
+  prefix: string[] = [],
+): string[] | null {
+  for (const field of fields) {
+    const path = [...prefix, field.key];
+    const value = getNestedValue(values, path);
+    const pool = poolFor(field, pools);
+    if (field.required && field.type === 'number' && pool?.ranges.length && (value === undefined || value === null || value === '')) {
+      return path;
+    }
+    if (field.type === 'object' && field.fields?.length) {
+      const nested = firstRequiredAllocatablePath(field.fields, values, pools, path);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 function objectRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
     ? value.map((row) => (row && typeof row === 'object' && !Array.isArray(row) ? row as Record<string, unknown> : {}))
@@ -83,15 +159,21 @@ function FieldInput({
   path,
   value,
   pools,
+  allocatingPath,
   onChange,
+  onAllocate,
 }: {
   field: ProjectAssetField;
   path: string[];
   value: unknown;
   pools: ProjectValuePool[];
+  allocatingPath?: string;
   onChange: (path: string[], value: unknown) => void;
+  onAllocate?: (path: string[]) => void;
 }) {
   const pool = poolFor(field, pools);
+  const fieldPathKey = path.join('.');
+  const isAllocating = allocatingPath === fieldPathKey;
   const label = (
     <label className="block text-steel-400 text-[11px] uppercase tracking-wide mb-1">
       {field.label}
@@ -112,7 +194,9 @@ function FieldInput({
               path={[...path, child.key]}
               value={getNestedValue(value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}, [child.key])}
               pools={pools}
+              allocatingPath={allocatingPath}
               onChange={onChange}
+              onAllocate={onAllocate}
             />
           ))}
         </div>
@@ -133,6 +217,36 @@ function FieldInput({
           />
           Enabled
         </label>
+      </div>
+    );
+  }
+
+  if (field.type === 'number' && pool?.ranges.length && !pool.options.length) {
+    return (
+      <div>
+        {label}
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={value === undefined || value === null ? '' : String(value)}
+            onChange={(event) => onChange(path, parseValue(event.target.value, field.type))}
+            onBlur={() => {
+              if (!valueInPool(value, pool)) {
+                toast.error(`${field.label} must be inside ${pool.name}: ${poolRangeLabel(pool)}.`);
+              }
+            }}
+            className={`${inputClass} min-w-0`}
+          />
+          <button
+            type="button"
+            onClick={() => onAllocate?.(path)}
+            disabled={!onAllocate || isAllocating}
+            className="shrink-0 px-3 py-1.5 bg-steel-800 hover:bg-steel-700 border border-steel-600 disabled:opacity-50 text-steel-100 text-xs rounded-md transition-colors cursor-pointer"
+          >
+            {isAllocating ? 'Allocating...' : 'Allocate'}
+          </button>
+        </div>
+        <p className="mt-1 text-steel-500 text-[11px]">Pool: {pool.name} ({poolRangeLabel(pool)})</p>
       </div>
     );
   }
@@ -217,6 +331,7 @@ function FieldInput({
                         path={[child.key]}
                         value={getNestedValue(row, [child.key])}
                         pools={pools}
+                        allocatingPath={allocatingPath}
                         onChange={(childPath, nextValue) => updateRow(index, childPath, nextValue)}
                       />
                     ))}
@@ -269,11 +384,15 @@ function FieldInput({
 
 export function CustomFieldsPanel({
   assetType,
+  assetId,
+  projectId,
   schema,
   value,
   onSave,
 }: {
   assetType: string;
+  assetId?: string;
+  projectId?: string;
   schema?: ProjectAssetSchema;
   value?: Record<string, unknown>;
   onSave: (value: Record<string, unknown>) => Promise<void>;
@@ -284,10 +403,46 @@ export function CustomFieldsPanel({
   );
   const [draft, setDraft] = useState<Record<string, unknown>>(() => cloneFields(value));
   const [saving, setSaving] = useState(false);
+  const [allocatingPath, setAllocatingPath] = useState('');
+  const autoAllocatedPathsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setDraft(cloneFields(value));
+    autoAllocatedPathsRef.current.clear();
   }, [value]);
+
+  const allocateValue = useCallback(async (path: string[], announce = true) => {
+    if (!projectId) {
+      toast.error('No project selected.');
+      return;
+    }
+    const key = path.join('.');
+    setAllocatingPath(key);
+    try {
+      const result = await allocateProjectPoolValue(projectId, {
+        assetType,
+        assetId,
+        fieldPath: path,
+      });
+      setDraft((current) => setNestedValue(current, path, result.value));
+      if (announce) toast.success(`Allocated ${result.value}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to allocate value';
+      toast.error(message);
+    } finally {
+      setAllocatingPath('');
+    }
+  }, [assetId, assetType, projectId]);
+
+  useEffect(() => {
+    if (!assetSchema || !projectId) return;
+    const path = firstRequiredAllocatablePath(assetSchema.fields, draft, schema?.valuePools ?? []);
+    if (!path) return;
+    const key = path.join('.');
+    if (autoAllocatedPathsRef.current.has(key)) return;
+    autoAllocatedPathsRef.current.add(key);
+    void allocateValue(path, false);
+  }, [allocateValue, assetSchema, draft, projectId, schema?.valuePools]);
 
   if (!assetSchema || assetSchema.fields.length === 0) {
     return (
@@ -309,6 +464,11 @@ export function CustomFieldsPanel({
     setSaving(true);
     try {
       const sanitized = removeRemovedAdapterFields(draft);
+      const errors = validateFieldValues(assetSchema.fields, sanitized, schema?.valuePools ?? []);
+      if (errors.length > 0) {
+        toast.error(errors[0]);
+        return;
+      }
       await onSave(sanitized);
       setDraft(sanitized);
       toast.success('Attributes saved');
@@ -344,7 +504,9 @@ export function CustomFieldsPanel({
               path={[field.key]}
               value={draft[field.key]}
               pools={schema?.valuePools ?? []}
+              allocatingPath={allocatingPath}
               onChange={(path, nextValue) => setDraft((current) => setNestedValue(current, path, nextValue))}
+              onAllocate={(path) => void allocateValue(path)}
             />
           ))}
         </div>

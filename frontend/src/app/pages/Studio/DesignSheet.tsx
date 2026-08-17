@@ -532,6 +532,8 @@ export function DesignSheet() {
 
             <CustomFieldsPanel
               assetType={character.kind}
+              assetId={character._id}
+              projectId={character.projectId}
               schema={activeProject?.assetSchema}
               value={character.customFields}
               onSave={async (customFields) => {

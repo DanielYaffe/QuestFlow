@@ -168,6 +168,7 @@ class ItemController {
           ownerId: userId,
           projectId: current.projectId,
           assetType: 'item',
+          assetId: current._id.toString(),
           values: body.customFields,
         });
         if (validationErrors.length) {

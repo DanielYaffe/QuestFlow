@@ -55,6 +55,7 @@ export async function previewExport(req: QuestlineRequest, res: Response): Promi
     });
     res.json({ filename: result.filename, content: result.content, files: result.files });
   } catch (err) {
+    console.error('[questExport] preview failed:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed' });
   }
 }
