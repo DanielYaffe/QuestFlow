@@ -80,6 +80,16 @@ function exportStatus(lastHash: string | undefined, nextHash: string): GenericAs
   return lastHash === nextHash ? 'exported' : 'changed';
 }
 
+function positiveInt(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function adapterMetadataForMaple(maple: { mapleId?: number } | undefined): Record<string, unknown> {
+  const mapleId = positiveInt(maple?.mapleId);
+  return mapleId ? { maple: { mapleId } } : {};
+}
+
 function isStoredObjectReference(value: string): boolean {
   return Boolean(value) && !/^https?:\/\//i.test(value) && !value.startsWith('data:');
 }
@@ -199,9 +209,7 @@ export async function buildGenericAssetPackage(input: BuildGenericAssetPackageIn
     };
     const imageKeys = characterImageKeys(character);
     const images = await characterImageFields(character);
-    const adapterMetadata = {
-      maple: character.maple ?? {},
-    };
+    const adapterMetadata = adapterMetadataForMaple(character.maple);
     const hash = contentHash({ assetType, fields, images: imageKeys, adapterMetadata });
     const status = exportStatus(character.exportState?.lastGenericExportHash, hash);
     const changed = status !== 'exported';
@@ -236,9 +244,7 @@ export async function buildGenericAssetPackage(input: BuildGenericAssetPackageIn
     };
     const imageKeys = itemImageKeys(item);
     const images = await itemImageFields(item);
-    const adapterMetadata = {
-      maple: item.maple ?? {},
-    };
+    const adapterMetadata = adapterMetadataForMaple(item.maple);
     const hash = contentHash({ assetType: 'item', fields, images: imageKeys, adapterMetadata });
     const status = exportStatus(item.exportState?.lastGenericExportHash, hash);
     const changed = status !== 'exported';

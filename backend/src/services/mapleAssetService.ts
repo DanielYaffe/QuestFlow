@@ -113,11 +113,20 @@ const TARGET_PATHS: Record<MapleAssetType, (id: number) => string[]> = {
   ],
 };
 
-const IMAGE_PROFILES: Record<MapleAssetType, { width: number; height: number; originX?: number; originY?: number }> = {
+const IMAGE_PROFILES: Record<MapleAssetType, {
+  width: number;
+  height: number;
+  originX?: number;
+  originY?: number;
+  contentWidth?: number;
+  contentHeight?: number;
+}> = {
   // Matches native NPC 22000's stand/0 canvas size. Generated sprites use a
   // centered x-origin because their pixel layout is not the same as NPC 22000.
   npc: { width: 67, height: 77, originY: 77 },
-  item: { width: 32, height: 32 },
+  // Maple item icons live on a 32x32 canvas, but native ETC icon artwork is
+  // usually inset. Keep the WZ canvas native-sized while avoiding huge icons.
+  item: { width: 32, height: 32, contentWidth: 24, contentHeight: 24 },
 };
 
 function hash(value: unknown): string {
@@ -467,15 +476,36 @@ async function normalizeImage(
     };
   }
 
-  const buffer = await sharp(input)
-    .resize(profile.width, profile.height, {
-      fit: 'contain',
+  const trimmed = await sharp(input)
+    .trim({ threshold: 10 })
+    .resize(profile.contentWidth ?? profile.width, profile.contentHeight ?? profile.height, {
+      fit: 'inside',
       background: { r: 0, g: 0, b: 0, alpha: 0 },
       kernel: sharp.kernel.nearest,
     })
     .png()
     .toBuffer();
-  return { buffer, usedPlaceholder: false };
+  const metadata = await sharp(trimmed).metadata();
+  const width = metadata.width ?? profile.contentWidth ?? profile.width;
+  const height = metadata.height ?? profile.contentHeight ?? profile.height;
+  return {
+    buffer: await sharp({
+      create: {
+        width: profile.width,
+        height: profile.height,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([{
+        input: trimmed,
+        left: Math.max(0, Math.floor((profile.width - width) / 2)),
+        top: Math.max(0, Math.floor((profile.height - height) / 2)),
+      }])
+      .png()
+      .toBuffer(),
+    usedPlaceholder: false,
+  };
 }
 
 async function missingImageFallback(assetType: MapleAssetType): Promise<NormalizedImageResult> {

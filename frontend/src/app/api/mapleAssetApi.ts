@@ -120,6 +120,7 @@ export async function pushMapleAssetPackage(
     baseManifestId?: string;
     npcIds?: string[];
     itemIds?: string[];
+    gitTargetId?: string;
     repoOwner?: string;
     repoName?: string;
     branch?: string;

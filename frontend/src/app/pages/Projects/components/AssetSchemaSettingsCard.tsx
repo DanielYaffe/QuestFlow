@@ -30,13 +30,15 @@ const FIELD_TYPES: AssetFieldType[] = [
   'reference',
 ];
 
+const REMOVED_ADAPTER_FIELD_KEYS = new Set(['exportEnabled', 'operation', 'nativePath']);
+
 function cloneSchema(schema: ProjectAssetSchema): ProjectAssetSchema {
   return JSON.parse(JSON.stringify(schema)) as ProjectAssetSchema;
 }
 
 function normalizeFields(fields?: ProjectAssetField[]): ProjectAssetField[] {
   return Array.isArray(fields)
-    ? fields.map((field) => ({
+    ? fields.filter((field) => !REMOVED_ADAPTER_FIELD_KEYS.has(field.key)).map((field) => ({
       key: field.key,
       label: field.label || field.key,
       type: field.type || 'text',
@@ -385,7 +387,7 @@ export function AssetSchemaSettingsCard({ project, onSaved, initiallyOpen = fals
         <h3 className="text-steel-100 text-sm font-semibold mb-3">{selectedAsset?.name ?? 'Asset'} attributes</h3>
         <div className="space-y-3 mb-4">
           {(selectedAsset?.fields ?? []).map((field, index) => (
-            <div key={`${field.key}:${index}`} className="bg-steel-900/40 border border-steel-700 rounded-md p-3">
+            <div key={`asset-field-${index}`} className="bg-steel-900/40 border border-steel-700 rounded-md p-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
               <div>
                 <label className={labelClass}>Key</label>
@@ -491,7 +493,7 @@ export function AssetSchemaSettingsCard({ project, onSaved, initiallyOpen = fals
         <h3 className="text-steel-100 text-sm font-semibold mb-3">Value pools</h3>
         <div className="space-y-3 mb-4">
           {schema.valuePools.map((pool, index) => (
-            <div key={`${pool.key}:${index}`} className="bg-steel-900/40 border border-steel-700 rounded-md p-3">
+            <div key={`value-pool-${index}`} className="bg-steel-900/40 border border-steel-700 rounded-md p-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
               <div>
                 <label className={labelClass}>Key</label>

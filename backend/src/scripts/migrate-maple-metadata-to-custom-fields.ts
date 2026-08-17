@@ -32,34 +32,9 @@ const FIELD_DEFS: IProjectAssetField[] = [
     poolKey: '',
     fields: [],
   },
-  {
-    key: 'exportEnabled',
-    label: 'Export Enabled',
-    type: 'boolean',
-    required: false,
-    nullable: true,
-    description: 'Whether this asset should be included by the target adapter.',
-    fields: [],
-  },
-  {
-    key: 'operation',
-    label: 'Operation',
-    type: 'text',
-    required: false,
-    nullable: true,
-    description: 'Target adapter operation, such as create or patch.',
-    fields: [],
-  },
-  {
-    key: 'nativePath',
-    label: 'Native Path',
-    type: 'text',
-    required: false,
-    nullable: true,
-    description: 'Optional native asset path used by the target adapter.',
-    fields: [],
-  },
 ];
+
+const REMOVED_CUSTOM_FIELD_KEYS = new Set(['exportEnabled', 'operation', 'nativePath']);
 
 function positiveInt(value: unknown): number {
   const parsed = Number(value);
@@ -123,6 +98,22 @@ function ensureField(assetType: IProjectAssetTypeSchema, field: IProjectAssetFie
   assetType.fields.push(field);
 }
 
+function removeLegacyAdapterFields(project: IProject): boolean {
+  let changed = false;
+  const schema = project.assetSchema;
+  if (!schema?.assetTypes) return false;
+
+  for (const assetType of schema.assetTypes) {
+    const filtered = (assetType.fields ?? []).filter((field) => !REMOVED_CUSTOM_FIELD_KEYS.has(field.key));
+    if (filtered.length !== (assetType.fields ?? []).length) {
+      assetType.fields = filtered;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
 async function ensureProjectSchema(project: IProject, assetType: AssetTypeKey): Promise<boolean> {
   project.assetSchema = project.assetSchema ?? { assetTypes: [], valuePools: [] };
   project.assetSchema.assetTypes = project.assetSchema.assetTypes ?? [];
@@ -146,9 +137,6 @@ async function ensureProjectSchema(project: IProject, assetType: AssetTypeKey): 
 
 function migratedCustomFields(customFields: Record<string, unknown> | undefined, maple: {
   mapleId?: number;
-  exportEnabled?: boolean;
-  operation?: string;
-  nativePath?: string;
 } | undefined): { customFields: Record<string, unknown>; syncedMapleId: number; changed: boolean } {
   const next = { ...(customFields ?? {}) };
   const customId = positiveInt(next.id);
@@ -160,17 +148,12 @@ function migratedCustomFields(customFields: Record<string, unknown> | undefined,
     next.id = legacyId;
     changed = true;
   }
-  if (maple?.exportEnabled !== undefined && next.exportEnabled === undefined) {
-    next.exportEnabled = maple.exportEnabled;
-    changed = true;
-  }
-  if (maple?.operation && next.operation === undefined) {
-    next.operation = maple.operation;
-    changed = true;
-  }
-  if (maple?.nativePath && next.nativePath === undefined) {
-    next.nativePath = maple.nativePath;
-    changed = true;
+
+  for (const key of REMOVED_CUSTOM_FIELD_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(next, key)) {
+      delete next[key];
+      changed = true;
+    }
   }
 
   return { customFields: next, syncedMapleId, changed };
@@ -184,6 +167,14 @@ async function migrate(): Promise<void> {
   let charactersUpdated = 0;
   let itemsUpdated = 0;
   let projectsUpdated = 0;
+
+  const projects = await ProjectModel.find({ 'assetSchema.assetTypes.0': { $exists: true } });
+  for (const project of projects) {
+    if (!removeLegacyAdapterFields(project)) continue;
+    project.markModified('assetSchema');
+    await project.save();
+    projectsUpdated++;
+  }
 
   const characters = await CharacterModel.find({
     $or: [
@@ -234,7 +225,9 @@ async function migrate(): Promise<void> {
     const [projectId, assetType] = key.split(':') as [string, AssetTypeKey];
     const project = await ProjectModel.findById(projectId);
     if (!project) continue;
+    const removedLegacyFields = removeLegacyAdapterFields(project);
     await ensureProjectSchema(project, assetType);
+    if (removedLegacyFields) project.markModified('assetSchema');
     projectsUpdated++;
   }
 

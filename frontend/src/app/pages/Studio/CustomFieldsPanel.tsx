@@ -12,6 +12,14 @@ function cloneFields(value?: Record<string, unknown>): Record<string, unknown> {
   return JSON.parse(JSON.stringify(value ?? {})) as Record<string, unknown>;
 }
 
+const REMOVED_ADAPTER_FIELD_KEYS = new Set(['exportEnabled', 'operation', 'nativePath']);
+
+function removeRemovedAdapterFields(value: Record<string, unknown>): Record<string, unknown> {
+  const next = cloneFields(value);
+  for (const key of REMOVED_ADAPTER_FIELD_KEYS) delete next[key];
+  return next;
+}
+
 function setNestedValue(
   root: Record<string, unknown>,
   path: string[],
@@ -300,7 +308,9 @@ export function CustomFieldsPanel({
   const save = async () => {
     setSaving(true);
     try {
-      await onSave(draft);
+      const sanitized = removeRemovedAdapterFields(draft);
+      await onSave(sanitized);
+      setDraft(sanitized);
       toast.success('Attributes saved');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save attributes';

@@ -10,7 +10,7 @@ import {
 import { pushFile, GitHubHttpError } from '../services/githubService';
 import ProjectModel from '../models/projectModel';
 import UserModel from '../models/userModel';
-import { decrypt } from '../utils/encryption';
+import { resolveGitTarget } from '../services/gitTargetService';
 
 function unauthorized(res: Response): void {
   res.status(401).json({ error: 'Unauthorized' });
@@ -151,42 +151,34 @@ export async function pushPackageToGithub(req: AuthRequest, res: Response): Prom
 
   try {
     const user = await UserModel.findById(ownerId).select('gitSettings');
-    if (!user?.gitSettings?.encryptedToken) {
-      res.status(400).json({ error: 'No GitHub token saved. Go to Settings to add one.' });
-      return;
-    }
-
-    const project = await ProjectModel.findOne({ _id: projectId, ownerId }).select('name git mapleSettings');
+    const project = await ProjectModel.findOne({ _id: projectId, ownerId }).select('name git gitTargets defaultQuestExportTargetId defaultAssetExportTargetId mapleSettings');
     if (!project) {
       res.status(404).json({ error: 'Project not found' });
       return;
     }
+    if (!user) return unauthorized(res);
 
     const userGit = user.gitSettings;
-    const projectGit = project.git;
-    const repoOwner = parseString(req.body?.repoOwner) ?? projectGit?.repoOwner ?? userGit.repoOwner ?? '';
-    const repoName = parseString(req.body?.repoName) ?? projectGit?.repoName ?? userGit.repoName ?? '';
-    const branch = parseString(req.body?.branch) ?? projectGit?.defaultBranch ?? userGit.defaultBranch ?? 'main';
-    const filePath = (parseString(req.body?.filePath) ?? 'tools/input/questflow-maple-build.json').replace(/^\/+|\/+$/g, '');
-
-    if (!repoOwner || !repoName) {
-      res.status(400).json({ error: 'Repository owner and name are required.' });
-      return;
-    }
-
-    const encryptedToken = userGit.encryptedToken;
-    if (!encryptedToken) {
-      res.status(400).json({ error: 'No GitHub token saved. Go to Settings to add one.' });
-      return;
-    }
-
-    let token: string;
+    let destination;
     try {
-      token = decrypt(encryptedToken);
-    } catch {
-      res.status(400).json({ error: 'Saved GitHub token could not be read - re-enter it in Settings.' });
+      destination = resolveGitTarget({
+        userGit,
+        project,
+        purpose: 'asset',
+        input: {
+          gitTargetId: parseString(req.body?.gitTargetId),
+          repoOwner: parseString(req.body?.repoOwner),
+          repoName: parseString(req.body?.repoName),
+          branch: parseString(req.body?.branch),
+          filePath: parseString(req.body?.filePath),
+        },
+        fallbackFilePath: 'tools/input/questflow-maple-build.json',
+      });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid GitHub export target.' });
       return;
     }
+    const filePath = destination.filePath.replace(/^\/+|\/+$/g, '');
 
     const pkg = await buildMapleAssetPackage({
       ownerId,
@@ -198,17 +190,17 @@ export async function pushPackageToGithub(req: AuthRequest, res: Response): Prom
     });
 
     const usedPath = await pushFile({
-      token,
-      owner: repoOwner,
-      repo: repoName,
-      branch,
+      token: destination.token,
+      owner: destination.owner,
+      repo: destination.repo,
+      branch: destination.branch,
       filePath,
       content: JSON.stringify(pkg, null, 2),
       commitMessage: parseString(req.body?.commitMessage) ?? `Update QuestFlow Maple asset package for ${project.name}`,
     });
 
     res.json({
-      message: `Pushed Maple asset package to ${repoOwner}/${repoName} -> ${branch}:${usedPath}`,
+      message: `Pushed Maple asset package to ${destination.owner}/${destination.repo} -> ${destination.branch}:${usedPath}`,
       path: usedPath,
       manifest: pkg.manifest,
     });
