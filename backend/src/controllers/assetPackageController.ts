@@ -9,7 +9,7 @@ import {
   GenericAssetPackageMode,
   listGenericAssetPackageStatuses,
 } from '../services/assetPackageService';
-import { decrypt } from '../utils/encryption';
+import { resolveGitTarget } from '../services/gitTargetService';
 
 function unauthorized(res: Response): void {
   res.status(401).json({ error: 'Unauthorized' });
@@ -116,37 +116,35 @@ export async function pushPackageToGithub(req: AuthRequest, res: Response): Prom
   try {
     const [user, project] = await Promise.all([
       UserModel.findById(ownerId).select('gitSettings'),
-      ProjectModel.findOne({ _id: projectId, ownerId }).select('name git'),
+      ProjectModel.findOne({ _id: projectId, ownerId }).select('name git gitTargets defaultQuestExportTargetId defaultAssetExportTargetId'),
     ]);
 
     if (!project) {
       res.status(404).json({ error: 'Project not found' });
       return;
     }
-    if (!user?.gitSettings?.encryptedToken) {
-      res.status(400).json({ error: 'No GitHub token saved. Go to Settings to add one.' });
-      return;
-    }
-
+    if (!user) return unauthorized(res);
     const userGit = user.gitSettings;
-    const projectGit = project.git;
-    const repoOwner = parseString(req.body?.repoOwner) ?? projectGit?.repoOwner ?? userGit.repoOwner ?? '';
-    const repoName = parseString(req.body?.repoName) ?? projectGit?.repoName ?? userGit.repoName ?? '';
-    const branch = parseString(req.body?.branch) ?? projectGit?.defaultBranch ?? userGit.defaultBranch ?? 'main';
-    const baseDir = normalizeAssetPackageBaseDir(parseString(req.body?.filePath) ?? 'tools/input/questflow-assets');
-
-    if (!repoOwner || !repoName) {
-      res.status(400).json({ error: 'Repository owner and name are required.' });
-      return;
-    }
-
-    let token: string;
+    let destination;
     try {
-      token = decrypt(userGit.encryptedToken!);
-    } catch {
-      res.status(400).json({ error: 'Saved GitHub token could not be read - re-enter it in Settings.' });
+      destination = resolveGitTarget({
+        userGit,
+        project,
+        purpose: 'asset',
+        input: {
+          gitTargetId: parseString(req.body?.gitTargetId),
+          repoOwner: parseString(req.body?.repoOwner),
+          repoName: parseString(req.body?.repoName),
+          branch: parseString(req.body?.branch),
+          filePath: parseString(req.body?.filePath),
+        },
+        fallbackFilePath: 'tools/input/questflow-assets',
+      });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid GitHub export target.' });
       return;
     }
+    const baseDir = normalizeAssetPackageBaseDir(destination.filePath);
 
     const buildInput = {
       ownerId,
@@ -169,10 +167,10 @@ export async function pushPackageToGithub(req: AuthRequest, res: Response): Prom
 
     const commitMessage = parseString(req.body?.commitMessage) ?? `Update QuestFlow asset package for ${project.name}`;
     const paths = await pushFiles({
-      token,
-      owner: repoOwner,
-      repo: repoName,
-      branch,
+      token: destination.token,
+      owner: destination.owner,
+      repo: destination.repo,
+      branch: destination.branch,
       commitMessage,
       files: pkg.files.map((file) => ({
         filePath: [baseDir, file.path].filter(Boolean).join('/'),
@@ -184,7 +182,7 @@ export async function pushPackageToGithub(req: AuthRequest, res: Response): Prom
     await buildGenericAssetPackage({ ...buildInput, markExported: true });
 
     res.json({
-      message: `Exported ${pkg.manifest.assets.length} asset(s) to ${repoOwner}/${repoName} -> ${branch}`,
+      message: `Exported ${pkg.manifest.assets.length} asset(s) to ${destination.owner}/${destination.repo} -> ${destination.branch}`,
       paths,
       manifest: pkg.manifest,
     });

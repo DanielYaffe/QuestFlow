@@ -8,6 +8,17 @@ export interface ProjectGitSettings {
   defaultFilePath?: string;
 }
 
+export interface ProjectGitTarget {
+  id: string;
+  name: string;
+  hasToken?: boolean;
+  token?: string;
+  repoOwner?: string;
+  repoName?: string;
+  defaultBranch?: string;
+  defaultFilePath?: string;
+}
+
 export type AssetFieldType =
   | 'text'
   | 'number'
@@ -79,6 +90,9 @@ export interface Project {
   spriteCount?: number;
   characterCount?: number;
   git?: ProjectGitSettings;
+  gitTargets?: ProjectGitTarget[];
+  defaultQuestExportTargetId?: string;
+  defaultAssetExportTargetId?: string;
   assetSchema?: ProjectAssetSchema;
   mapleSettings?: MapleProjectSettings;
   createdAt: string;
@@ -122,7 +136,7 @@ export async function createProject(
 
 export async function updateProject(
   id: string,
-  patch: Partial<Pick<Project, 'name' | 'description' | 'defaultThemeId' | 'defaultExportFormat' | 'gameId' | 'git' | 'assetSchema' | 'mapleSettings'>>,
+  patch: Partial<Pick<Project, 'name' | 'description' | 'defaultThemeId' | 'defaultExportFormat' | 'gameId' | 'git' | 'gitTargets' | 'defaultQuestExportTargetId' | 'defaultAssetExportTargetId' | 'assetSchema' | 'mapleSettings'>>,
 ): Promise<Project> {
   const { data } = await api.put<Project>(`/projects/${id}`, patch);
   return data;

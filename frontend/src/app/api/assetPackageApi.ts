@@ -69,6 +69,7 @@ export async function downloadAssetPackage(
 export async function pushAssetPackage(
   projectId: string,
   input: AssetPackageInput & {
+    gitTargetId?: string;
     repoOwner?: string;
     repoName?: string;
     branch?: string;

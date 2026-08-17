@@ -14,6 +14,16 @@ export interface IProjectGitSettings {
   defaultFilePath?: string;
 }
 
+export interface IProjectGitTarget {
+  id: string;
+  name: string;
+  encryptedToken?: string;
+  repoOwner?: string;
+  repoName?: string;
+  defaultBranch?: string;
+  defaultFilePath?: string;
+}
+
 export interface IMapleIdRange {
   min: number;
   max: number;
@@ -91,6 +101,9 @@ export interface IProject extends Document {
   // Optional GitHub repository this project's questlines export to. The auth
   // token stays shared at the user level.
   git?: IProjectGitSettings;
+  gitTargets: IProjectGitTarget[];
+  defaultQuestExportTargetId: string;
+  defaultAssetExportTargetId: string;
   assetSchema: IProjectAssetSchema;
   mapleSettings: IProjectMapleSettings;
   createdAt: Date;
@@ -142,6 +155,19 @@ export interface IProject extends Document {
  */
 const ProjectGitSettingsSchema = new Schema<IProjectGitSettings>(
   {
+    repoOwner:       { type: String, default: undefined },
+    repoName:        { type: String, default: undefined },
+    defaultBranch:   { type: String, default: 'main' },
+    defaultFilePath: { type: String, default: '' },
+  },
+  { _id: false },
+);
+
+const ProjectGitTargetSchema = new Schema<IProjectGitTarget>(
+  {
+    id:              { type: String, required: true },
+    name:            { type: String, required: true },
+    encryptedToken:  { type: String, default: undefined },
     repoOwner:       { type: String, default: undefined },
     repoName:        { type: String, default: undefined },
     defaultBranch:   { type: String, default: 'main' },
@@ -243,6 +269,9 @@ const ProjectSchema = new Schema<IProject>(
     gameId:              { type: String, default: '' },
     isInbox:             { type: Boolean, default: false },
     git:                 { type: ProjectGitSettingsSchema, default: undefined },
+    gitTargets:          { type: [ProjectGitTargetSchema], default: [] },
+    defaultQuestExportTargetId: { type: String, default: '' },
+    defaultAssetExportTargetId: { type: String, default: '' },
     assetSchema:         { type: ProjectAssetSchema, default: () => ({ assetTypes: [], valuePools: [] }) },
     mapleSettings:       { type: ProjectMapleSettingsSchema, default: () => ({}) },
   },

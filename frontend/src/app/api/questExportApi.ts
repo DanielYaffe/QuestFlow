@@ -77,6 +77,7 @@ function getExtension(format: Format): string {
 
 export interface PushToGithubPayload {
   format: Format;
+  gitTargetId?: string;
   templateId?: string;
   nodeIds?: string[];
   repoOwner?: string;

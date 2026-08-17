@@ -7,6 +7,7 @@ import ProjectModel, {
   IProjectAssetField,
   IProjectAssetSchema,
   IProjectGitSettings,
+  IProjectGitTarget,
   IProjectMapleSettings,
 } from '../models/projectModel';
 import QuestlineModel from '../models/questlineModel';
@@ -16,6 +17,7 @@ import ItemModel from '../models/itemModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { ownsGame } from '../services/gameService';
 import { getPresignedUrl } from '../utils/s3Helper';
+import { encrypt } from '../utils/encryption';
 
 interface CountRow {
   _id: string;
@@ -42,6 +44,26 @@ const gitSettingsSchema = z
   })
   .partial();
 
+const gitTargetSchema = z.object({
+  id: z.string().trim().min(1).max(100)
+    .regex(/^[A-Za-z0-9_.-]+$/, 'Target id may contain only letters, numbers, dots, hyphens, and underscores.'),
+  name: z.string().trim().min(1).max(120),
+  token: z.string().trim().optional(),
+  hasToken: z.boolean().optional(),
+  repoOwner: z.string().trim().max(100)
+    .regex(/^[A-Za-z0-9-]*$/, 'Owner may contain only letters, numbers, and hyphens.')
+    .optional(),
+  repoName: z.string().trim().max(100)
+    .regex(/^[A-Za-z0-9._-]*$/, 'Repository may contain only letters, numbers, dots, hyphens, and underscores.')
+    .optional(),
+  defaultBranch: z.string().trim().max(255)
+    .regex(/^\S*$/, 'Branch must not contain spaces.')
+    .optional(),
+  defaultFilePath: z.string().trim().max(500).optional(),
+});
+
+type GitTargetInput = z.infer<typeof gitTargetSchema>;
+
 // Validates req.body.git when present. Returns the parsed settings, or sends a
 // 400 and returns undefined when validation fails.
 function parseGitSettings(req: AuthRequest, res: Response): IProjectGitSettings | null | undefined {
@@ -52,6 +74,64 @@ function parseGitSettings(req: AuthRequest, res: Response): IProjectGitSettings 
     return undefined;
   }
   return result.data;
+}
+
+function parseGitTargets(req: AuthRequest, res: Response): GitTargetInput[] | null | undefined {
+  if (req.body.gitTargets === undefined || req.body.gitTargets === null) return null;
+  const result = z.array(gitTargetSchema).max(25).safeParse(req.body.gitTargets);
+  if (!result.success) {
+    res.status(400).json({ error: result.error.issues[0]?.message ?? 'Invalid GitHub export targets.' });
+    return undefined;
+  }
+  const ids = new Set<string>();
+  for (const target of result.data) {
+    if (ids.has(target.id)) {
+      res.status(400).json({ error: `Duplicate GitHub export target id '${target.id}'.` });
+      return undefined;
+    }
+    ids.add(target.id);
+  }
+  return result.data;
+}
+
+function mergeGitTargets(existing: IProjectGitTarget[] | undefined, incoming: GitTargetInput[]): IProjectGitTarget[] {
+  const byId = new Map((existing ?? []).map((target) => [target.id, target]));
+  return incoming.map((target) => {
+    const previous = byId.get(target.id);
+    let encryptedToken = previous?.encryptedToken;
+    if (target.token) {
+      try {
+        encryptedToken = encrypt(target.token);
+      } catch {
+        throw new Error(`Could not encrypt GitHub token for target "${target.name}". Check ENCRYPTION_KEY.`);
+      }
+    }
+    return {
+      id: target.id,
+      name: target.name,
+      encryptedToken,
+      repoOwner: target.repoOwner || undefined,
+      repoName: target.repoName || undefined,
+      defaultBranch: target.defaultBranch || 'main',
+      defaultFilePath: target.defaultFilePath || '',
+    };
+  });
+}
+
+function serializeProject(project: any) {
+  const plain = typeof project?.toObject === 'function' ? project.toObject() : project;
+  const gitTargets = Array.isArray(plain.gitTargets)
+    ? plain.gitTargets.map((target: IProjectGitTarget) => ({
+      id: target.id,
+      name: target.name,
+      hasToken: !!target.encryptedToken,
+      repoOwner: target.repoOwner ?? '',
+      repoName: target.repoName ?? '',
+      defaultBranch: target.defaultBranch ?? 'main',
+      defaultFilePath: target.defaultFilePath ?? '',
+    }))
+    : [];
+  return { ...plain, gitTargets };
 }
 
 const mapleIdRangeSchema = z.object({
@@ -215,13 +295,17 @@ class ProjectController extends BaseController {
       // to the list — the per-project repo editor needs them.
       res.json(
         projects.map((p) => ({
-          ...p,
+          ...serializeProject(p),
           questlineCount: qlMap.get(p._id.toString()) ?? 0,
           spriteCount: spriteMap.get(p._id.toString()) ?? 0,
           characterCount: charMap.get(p._id.toString()) ?? 0,
         })),
       );
     } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
       this.handleError(res, error);
     }
   }
@@ -279,6 +363,10 @@ class ProjectController extends BaseController {
       );
       res.json(rewards);
     } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
       this.handleError(res, error);
     }
   }
@@ -294,7 +382,7 @@ class ProjectController extends BaseController {
       if (project.ownerId !== userId) {
         return res.status(403).json({ error: 'Forbidden' });
       }
-      return res.json(project);
+      return res.json(serializeProject(project));
     } catch (error) {
       this.handleError(res, error);
     }
@@ -309,16 +397,20 @@ class ProjectController extends BaseController {
     }
     const git = parseGitSettings(req, res);
     if (git === undefined) return;
+    const gitTargets = parseGitTargets(req, res);
+    if (gitTargets === undefined) return;
     const mapleSettings = parseMapleSettings(req, res);
     if (mapleSettings === undefined) return;
     const assetSchema = parseAssetSchema(req, res);
     if (assetSchema === undefined) return;
     try {
-      const { name, description, defaultThemeId, defaultExportFormat } = req.body as {
+      const { name, description, defaultThemeId, defaultExportFormat, defaultQuestExportTargetId, defaultAssetExportTargetId } = req.body as {
         name?: string;
         description?: string;
         defaultThemeId?: string;
         defaultExportFormat?: string;
+        defaultQuestExportTargetId?: string;
+        defaultAssetExportTargetId?: string;
       };
       if (!name?.trim()) {
         res.status(400).json({ error: 'name is required' });
@@ -332,11 +424,18 @@ class ProjectController extends BaseController {
         defaultExportFormat: defaultExportFormat ?? 'json',
         isInbox: false,
         git: git ?? undefined,
+        gitTargets: gitTargets ? mergeGitTargets([], gitTargets) : [],
+        defaultQuestExportTargetId: defaultQuestExportTargetId ?? '',
+        defaultAssetExportTargetId: defaultAssetExportTargetId ?? '',
         ...(assetSchema ? { assetSchema } : {}),
         ...(mapleSettings ? { mapleSettings } : {}),
       });
-      res.status(201).json(project);
+      res.status(201).json(serializeProject(project));
     } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
       this.handleError(res, error);
     }
   }
@@ -346,6 +445,8 @@ class ProjectController extends BaseController {
     const userId = req.user?._id;
     const git = parseGitSettings(req, res);
     if (git === undefined) return;
+    const gitTargets = parseGitTargets(req, res);
+    if (gitTargets === undefined) return;
     const mapleSettings = parseMapleSettings(req, res);
     if (mapleSettings === undefined) return;
     const assetSchema = parseAssetSchema(req, res);
@@ -360,12 +461,14 @@ class ProjectController extends BaseController {
         res.status(403).json({ error: 'Forbidden' });
         return;
       }
-      const { name, description, defaultThemeId, defaultExportFormat, gameId } = req.body as {
+      const { name, description, defaultThemeId, defaultExportFormat, gameId, defaultQuestExportTargetId, defaultAssetExportTargetId } = req.body as {
         name?: string;
         description?: string;
         defaultThemeId?: string;
         defaultExportFormat?: string;
         gameId?: string;
+        defaultQuestExportTargetId?: string;
+        defaultAssetExportTargetId?: string;
       };
       if (name !== undefined) project.name = name;
       if (description !== undefined) project.description = description;
@@ -391,6 +494,19 @@ class ProjectController extends BaseController {
         };
         project.markModified('git');
       }
+      if (gitTargets) {
+        project.gitTargets = mergeGitTargets(project.gitTargets, gitTargets);
+        const targetIds = new Set(project.gitTargets.map((target) => target.id));
+        if (project.defaultQuestExportTargetId && !targetIds.has(project.defaultQuestExportTargetId)) {
+          project.defaultQuestExportTargetId = '';
+        }
+        if (project.defaultAssetExportTargetId && !targetIds.has(project.defaultAssetExportTargetId)) {
+          project.defaultAssetExportTargetId = '';
+        }
+        project.markModified('gitTargets');
+      }
+      if (defaultQuestExportTargetId !== undefined) project.defaultQuestExportTargetId = defaultQuestExportTargetId;
+      if (defaultAssetExportTargetId !== undefined) project.defaultAssetExportTargetId = defaultAssetExportTargetId;
       if (mapleSettings) {
         project.mapleSettings = {
           enabled: mapleSettings.enabled ?? project.mapleSettings?.enabled ?? false,
@@ -409,8 +525,12 @@ class ProjectController extends BaseController {
         project.markModified('assetSchema');
       }
       await project.save();
-      res.json(project);
+      res.json(serializeProject(project));
     } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
       this.handleError(res, error);
     }
   }
@@ -487,6 +607,17 @@ class ProjectController extends BaseController {
           defaultBranch:   source.git.defaultBranch,
           defaultFilePath: source.git.defaultFilePath,
         } : undefined,
+        gitTargets:          source.gitTargets?.map((target) => ({
+          id:              target.id,
+          name:            target.name,
+          encryptedToken:  target.encryptedToken,
+          repoOwner:       target.repoOwner,
+          repoName:        target.repoName,
+          defaultBranch:   target.defaultBranch,
+          defaultFilePath: target.defaultFilePath,
+        })) ?? [],
+        defaultQuestExportTargetId: source.defaultQuestExportTargetId,
+        defaultAssetExportTargetId: source.defaultAssetExportTargetId,
       });
       const newProjectId = copy._id.toString();
       const sourceId = source._id.toString();
@@ -511,7 +642,7 @@ class ProjectController extends BaseController {
         cloneInto(ItemModel),
       ]);
 
-      res.status(201).json(copy);
+      res.status(201).json(serializeProject(copy));
     } catch (error) {
       this.handleError(res, error);
     }

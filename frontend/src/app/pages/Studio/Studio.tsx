@@ -1,18 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Check, Download, Gem, Loader2, Palette, Plus, Skull, UploadCloud, Users } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Check, Download, Gem, Loader2, Palette, Plus, Skull, Trash2, UploadCloud, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { CharacterKind, CharacterRecord, createCharacter, listCharacters } from '../../api/characterApi';
-import { ItemRecord, createItem, listItems } from '../../api/itemApi';
+import { CharacterKind, CharacterRecord, createCharacter, deleteCharacter, listCharacters } from '../../api/characterApi';
+import { ItemRecord, createItem, deleteItem, listItems } from '../../api/itemApi';
 import {
   AssetPackageInput,
   downloadAssetPackage,
   GenericAssetPackageStatus,
   listAssetPackageStatuses,
-  pushAssetPackage,
 } from '../../api/assetPackageApi';
 import { useProject } from '../../context/ProjectContext';
 import { GroundedBadge } from '../../components/shared/GroundedBadge';
+import { ConfirmModal } from '../../components/shared/ConfirmModal';
 import { CHECKER_SM } from '../../utils/spriteStyles';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import {
@@ -24,6 +24,7 @@ import {
 } from '../../components/ui/context-menu';
 import { downloadBlob, fileSlug } from '../../utils/download';
 import { AssetSchemaSettingsCard } from '../Projects/components/AssetSchemaSettingsCard';
+import { AssetPackageGithubDialog } from './AssetPackageGithubDialog';
 
 // ---------------------------------------------------------------------------
 // Design studio — the visual identity workshop. Mobs and characters come from
@@ -38,6 +39,10 @@ const TAB_META: Record<StudioTab, { label: string; singular: string; icon: React
   npc:     { label: 'Characters', singular: 'Character', icon: Users },
   item:    { label: 'Items',      singular: 'Item',      icon: Gem },
 };
+
+function parseStudioTab(value: string | null): StudioTab | null {
+  return value === 'monster' || value === 'npc' || value === 'item' ? value : null;
+}
 
 function NewDesignDialog({ tab, isOpen, onClose }: {
   tab: StudioTab;
@@ -172,26 +177,41 @@ function requestErrorMessage(error: unknown, fallback: string): string {
 
 export function Studio() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { activeProject, activeProjectId } = useProject();
 
-  const [tab, setTab] = useState<StudioTab>('monster');
+  const routeTab = parseStudioTab(searchParams.get('tab'));
+  const tab = routeTab ?? 'monster';
   const [cards, setCards] = useState<DesignCard[]>([]);
+  const [cardsTab, setCardsTab] = useState<StudioTab | null>(null);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [genericExporting, setGenericExporting] = useState<{
     action: 'download' | 'push';
   } | null>(null);
+  const [githubExportInput, setGithubExportInput] = useState<AssetPackageInput | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<DesignCard[] | null>(null);
+  const [deletingAssets, setDeletingAssets] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const loadSeqRef = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (!activeProjectId) return;
+    const loadSeq = loadSeqRef.current + 1;
+    loadSeqRef.current = loadSeq;
+    if (!activeProjectId) {
+      setCards([]);
+      setCardsTab(tab);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const statuses: GenericAssetPackageStatus[] = await listAssetPackageStatuses(activeProjectId, { assetTypes: [tab] });
       const statusById = new Map(statuses.map((status) => [status.sourceRecordId, status]));
+      let nextCards: DesignCard[];
       if (tab === 'item') {
         const items: ItemRecord[] = await listItems({ projectId: activeProjectId });
-        setCards(items.map((i) => ({
+        nextCards = items.map((i) => ({
           id: i._id,
           name: i.name,
           subtitle: i.description || `${i.rarity} item`,
@@ -199,10 +219,10 @@ export function Studio() {
           kbRef: i.kbRef || undefined,
           exportStatus: statusById.get(i._id)?.exportStatus ?? 'exported',
           link: `/studio/items/${i._id}`,
-        })).sort((a, b) => Number(b.exportStatus === 'changed') - Number(a.exportStatus === 'changed')));
+        })).sort((a, b) => Number(b.exportStatus === 'changed') - Number(a.exportStatus === 'changed'));
       } else {
         const characters: CharacterRecord[] = await listCharacters({ projectId: activeProjectId, kind: tab });
-        setCards(characters.map((c) => ({
+        nextCards = characters.map((c) => ({
           id: c._id,
           name: c.name,
           subtitle: c.appearance || 'No appearance yet',
@@ -210,12 +230,18 @@ export function Studio() {
           kbRef: c.kbRef || undefined,
           exportStatus: statusById.get(c._id)?.exportStatus ?? 'exported',
           link: `/studio/${c._id}`,
-        })).sort((a, b) => Number(b.exportStatus === 'changed') - Number(a.exportStatus === 'changed')));
+        })).sort((a, b) => Number(b.exportStatus === 'changed') - Number(a.exportStatus === 'changed'));
       }
+      if (loadSeqRef.current !== loadSeq) return;
+      setCards(nextCards);
+      setCardsTab(tab);
     } catch {
+      if (loadSeqRef.current !== loadSeq) return;
+      setCards([]);
+      setCardsTab(tab);
       toast.error('Failed to load designs');
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === loadSeq) setLoading(false);
     }
   }, [activeProjectId, tab]);
 
@@ -224,9 +250,11 @@ export function Studio() {
 
   const meta = TAB_META[tab];
   const TabIcon = meta.icon;
+  const visibleCards = cardsTab === tab ? cards : [];
+  const visibleLoading = loading || cardsTab !== tab;
   const selectedCount = selectedIds.size;
-  const changedCount = cards.filter((card) => card.exportStatus === 'changed').length;
-  const allVisibleSelected = cards.length > 0 && cards.every((card) => selectedIds.has(card.id));
+  const changedCount = visibleCards.filter((card) => card.exportStatus === 'changed').length;
+  const allVisibleSelected = visibleCards.length > 0 && visibleCards.every((card) => selectedIds.has(card.id));
 
   const inputForIds = (ids: string[]): AssetPackageInput => {
     if (ids.length === 0) return { mode: 'changed-only', assetTypes: [tab] };
@@ -238,6 +266,11 @@ export function Studio() {
   const targetIdsForCard = (cardId: string): string[] =>
     selectedIds.has(cardId) ? Array.from(selectedIds) : [cardId];
 
+  const targetCardsForCard = (cardId: string): DesignCard[] => {
+    const ids = new Set(targetIdsForCard(cardId));
+    return visibleCards.filter((card) => ids.has(card.id));
+  };
+
   const toggleSelected = (cardId: string) => {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -248,11 +281,22 @@ export function Studio() {
   };
 
   const toggleAllVisible = () => {
-    setSelectedIds(allVisibleSelected ? new Set() : new Set(cards.map((card) => card.id)));
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(visibleCards.map((card) => card.id)));
   };
 
   const selectChanged = () => {
-    setSelectedIds(new Set(cards.filter((card) => card.exportStatus === 'changed').map((card) => card.id)));
+    setSelectedIds(new Set(visibleCards.filter((card) => card.exportStatus === 'changed').map((card) => card.id)));
+  };
+
+  const handleTabChange = (nextTab: StudioTab) => {
+    if (nextTab === tab) return;
+    setLoading(true);
+    setCards([]);
+    setCardsTab(null);
+    setSelectedIds(new Set());
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', nextTab);
+    setSearchParams(nextParams, { replace: true });
   };
 
   const handleGenericDownload = async (ids: string[]) => {
@@ -270,23 +314,59 @@ export function Studio() {
     }
   };
 
-  const handleGenericPush = async (ids: string[]) => {
-    if (!activeProjectId || genericExporting) return;
-    setGenericExporting({ action: 'push' });
+  const openGithubExportDialog = (ids: string[]) => {
+    if (!activeProjectId) {
+      toast.error('Choose a project before exporting assets.');
+      return;
+    }
+    setGithubExportInput(inputForIds(ids));
+  };
+
+  const handleDeleteAssets = async () => {
+    if (!pendingDelete || deletingAssets) return;
+    setDeletingAssets(true);
     try {
-      const result = await pushAssetPackage(activeProjectId, inputForIds(ids));
-      toast.success(result.message || 'Asset package exported');
-      void refresh();
+      const ids = pendingDelete.map((card) => card.id);
+      if (tab === 'item') {
+        await Promise.all(ids.map((id) => deleteItem(id)));
+      } else {
+        await Promise.all(ids.map((id) => deleteCharacter(id)));
+      }
+      toast.success(`${pendingDelete.length} asset${pendingDelete.length === 1 ? '' : 's'} deleted`);
+      setSelectedIds(new Set());
+      setPendingDelete(null);
+      await refresh();
     } catch (error) {
-      toast.error(requestErrorMessage(error, 'Failed to export asset package'));
+      toast.error(requestErrorMessage(error, 'Failed to delete asset'));
     } finally {
-      setGenericExporting(null);
+      setDeletingAssets(false);
     }
   };
 
   return (
     <div className="h-full overflow-y-auto bg-steel-950">
       <NewDesignDialog tab={tab} isOpen={createOpen} onClose={() => setCreateOpen(false)} />
+      <AssetPackageGithubDialog
+        isOpen={Boolean(githubExportInput)}
+        input={githubExportInput}
+        onClose={() => setGithubExportInput(null)}
+        onPushed={refresh}
+      />
+      <ConfirmModal
+        isOpen={Boolean(pendingDelete)}
+        title={pendingDelete && pendingDelete.length > 1 ? 'Delete assets?' : 'Delete asset?'}
+        message={
+          pendingDelete && pendingDelete.length > 1
+            ? `Are you sure you want to delete ${pendingDelete.length} assets? This cannot be undone.`
+            : `Are you sure you want to delete "${pendingDelete?.[0]?.name ?? 'this asset'}"? This cannot be undone.`
+        }
+        confirmLabel={deletingAssets ? 'Deleting...' : 'Delete'}
+        danger
+        onConfirm={() => void handleDeleteAssets()}
+        onCancel={() => {
+          if (!deletingAssets) setPendingDelete(null);
+        }}
+      />
 
       <main className="max-w-6xl mx-auto px-8 py-8 flex flex-col gap-6">
         <div className="flex items-center gap-3">
@@ -340,7 +420,7 @@ export function Studio() {
               return (
                 <button
                   key={id}
-                  onClick={() => setTab(id)}
+                  onClick={() => handleTabChange(id)}
                   className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm transition-colors cursor-pointer ${
                     tab === id ? 'bg-volt text-steel-950 font-semibold' : 'text-steel-400 hover:text-steel-100'
                   }`}
@@ -355,7 +435,7 @@ export function Studio() {
             <button
               type="button"
               onClick={toggleAllVisible}
-              disabled={cards.length === 0}
+              disabled={visibleCards.length === 0}
               className="px-3 py-1.5 bg-steel-850 hover:bg-steel-800 border border-steel-700 disabled:opacity-50 text-steel-200 text-xs rounded-md transition-colors cursor-pointer"
             >
               {allVisibleSelected ? 'Clear all' : 'Select all'}
@@ -380,11 +460,11 @@ export function Studio() {
           </div>
         </div>
 
-        {loading ? (
+        {visibleLoading ? (
           <div className="flex justify-center py-20">
             <Loader2 className="w-6 h-6 text-pulse animate-spin" />
           </div>
-        ) : cards.length === 0 ? (
+        ) : visibleCards.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-14 h-14 rounded-md bg-steel-850 border border-steel-700 flex items-center justify-center mb-4">
               <TabIcon className="w-7 h-7 text-steel-500" />
@@ -404,7 +484,7 @@ export function Studio() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {cards.map((c) => (
+            {visibleCards.map((c) => (
               (() => {
                 const badge = exportBadge(c.exportStatus);
                 const isSelected = selectedIds.has(c.id);
@@ -458,7 +538,7 @@ export function Studio() {
                     </ContextMenuTrigger>
                     <ContextMenuContent className="bg-steel-800 border-steel-600 text-steel-100">
                       <ContextMenuItem
-                        onSelect={() => void handleGenericPush(targetIdsForCard(c.id))}
+                        onSelect={() => openGithubExportDialog(targetIdsForCard(c.id))}
                         disabled={!activeProjectId || genericExporting !== null}
                         className="gap-2 cursor-pointer"
                       >
@@ -472,6 +552,15 @@ export function Studio() {
                       >
                         <Download className="w-4 h-4 text-pulse" />
                         Download package
+                      </ContextMenuItem>
+                      <ContextMenuSeparator className="bg-steel-700" />
+                      <ContextMenuItem
+                        onSelect={() => setPendingDelete(targetCardsForCard(c.id))}
+                        disabled={deletingAssets}
+                        className="gap-2 cursor-pointer text-red-200 focus:text-red-100 focus:bg-red-500/10"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-300" />
+                        Delete
                       </ContextMenuItem>
                       <ContextMenuSeparator className="bg-steel-700" />
                       <ContextMenuItem disabled className="text-steel-400">
