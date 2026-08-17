@@ -42,6 +42,8 @@ export interface NodeSnapshot {
   rewardIds: string[];
   exportFields?: QuestExportFields;
   templateValues?: Record<string, unknown>;
+  templateValueSources?: Record<string, unknown>;
+  generationWarnings?: string[];
 }
 
 interface NodeEditSidebarProps {
@@ -436,6 +438,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
   const [rewardIds,  setRewardIds]  = useState<string[]>([]);
   const [exportFields, setExportFields] = useState<QuestExportFields>(DEFAULT_EXPORT_FIELDS);
   const [templateValues, setTemplateValues] = useState<Record<string, unknown>>({});
+  const [templateValueSources, setTemplateValueSources] = useState<Record<string, unknown>>({});
+  const [generationWarnings, setGenerationWarnings] = useState<string[]>([]);
   const [width,      setWidth]      = useState(DEFAULT_WIDTH);
 
   // Node-scoped "Ask AI" — rewrites this step only; the suggestion lands in the draft
@@ -475,6 +479,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       setRewardIds(node.rewardIds ?? []);
       setExportFields(normalizeExportFields(node.exportFields));
       setTemplateValues(node.templateValues ?? {});
+      setTemplateValueSources(node.templateValueSources ?? {});
+      setGenerationWarnings(node.generationWarnings ?? []);
       setPhase('edit');
       setAiInstruction('');
       setAiError(null);
@@ -667,7 +673,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       }
     }
 
-    onApply({ title: title.trim(), body: body.trim(), variant, ...refs, exportFields, templateValues });
+    onApply({ title: title.trim(), body: body.trim(), variant, ...refs, exportFields, templateValues, templateValueSources, generationWarnings });
     setPhase('edit');
     onClose();
   };
@@ -883,8 +889,11 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                     title={title}
                     exportFields={exportFields}
                     templateValues={templateValues}
+                    templateValueSources={templateValueSources}
+                    generationWarnings={generationWarnings}
                     onExportFieldsChange={setExportFields}
                     onTemplateValuesChange={setTemplateValues}
+                    onTemplateValueSourcesChange={setTemplateValueSources}
                   />
                 )}
 

@@ -541,6 +541,10 @@ export function QuestBuilder() {
               templateValues: node.data.templateValues as
                 | Record<string, unknown>
                 | undefined,
+              templateValueSources: node.data.templateValueSources as
+                | Record<string, unknown>
+                | undefined,
+              generationWarnings: node.data.generationWarnings as string[] | undefined,
             },
           });
         }

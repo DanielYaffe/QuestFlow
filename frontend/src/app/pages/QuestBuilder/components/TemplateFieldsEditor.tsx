@@ -31,8 +31,11 @@ interface TemplateFieldsEditorProps {
   title: string;
   exportFields: QuestExportFields;
   templateValues: Record<string, unknown>;
+  templateValueSources?: Record<string, unknown>;
+  generationWarnings?: string[];
   onExportFieldsChange: React.Dispatch<React.SetStateAction<QuestExportFields>>;
   onTemplateValuesChange: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
+  onTemplateValueSourcesChange?: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
 }
 
 type TemplateFieldGroup = {
@@ -231,17 +234,42 @@ export function TemplateFieldsEditor({
   title,
   exportFields,
   templateValues,
+  templateValueSources = {},
+  generationWarnings = [],
   onExportFieldsChange,
   onTemplateValuesChange,
+  onTemplateValueSourcesChange,
 }: TemplateFieldsEditorProps) {
   const updateTemplateValue = (path: string, value: unknown) => {
     onTemplateValuesChange((prev) => ({ ...prev, [path]: value }));
+    onTemplateValueSourcesChange?.((prev) => ({ ...prev, [path]: { source: 'manual' } }));
   };
   const fieldGroups = React.useMemo(() => groupTemplateFields(fields), [fields]);
   const templateSchema = getTemplateSchema(template);
   const [openGroupKey, setOpenGroupKey] = React.useState<string | null>(null);
   const [dialogField, setDialogField] = React.useState<TemplateFieldSummary | null>(null);
   const activeGroup = fieldGroups.find((g) => g.key === openGroupKey) ?? null;
+
+  const sourceForField = (field: TemplateFieldSummary): string | null => {
+    const direct = templateValueSources[field.path];
+    if (direct && typeof direct === 'object' && !Array.isArray(direct)) {
+      const source = (direct as Record<string, unknown>).source;
+      return typeof source === 'string' ? source : null;
+    }
+    const childSource = Object.entries(templateValueSources).find(([path]) => path.startsWith(`${field.path}[].`))?.[1];
+    if (childSource && typeof childSource === 'object' && !Array.isArray(childSource)) {
+      const source = (childSource as Record<string, unknown>).source;
+      return typeof source === 'string' ? source : null;
+    }
+    return null;
+  };
+
+  const sourceLabel = (source: string | null): string => {
+    if (source === 'kbMapping') return 'KB mapped';
+    if (source === 'aiGuess') return 'AI guess';
+    if (source === 'manual') return 'Manual';
+    return '';
+  };
 
   const updateTemplateFieldValue = (field: TemplateFieldSummary, value: unknown) => {
     updateTemplateValue(field.path, value);
@@ -567,8 +595,20 @@ export function TemplateFieldsEditor({
                   <label className="text-steel-400 text-xs uppercase tracking-wide mb-1 block">
                     {field.label}
                     <span className="ml-2 normal-case text-steel-500">{field.templatePath ?? field.path}</span>
+                    {sourceLabel(sourceForField(field)) && (
+                      <span className={`ml-2 normal-case rounded-full px-2 py-0.5 text-[10px] ${
+                        sourceForField(field) === 'kbMapping'
+                          ? 'bg-emerald-950/50 text-emerald-300 border border-emerald-800'
+                          : 'bg-amber-950/50 text-amber-300 border border-amber-800'
+                      }`}>
+                        {sourceLabel(sourceForField(field))}
+                      </span>
+                    )}
                   </label>
                   {field.description && <p className="text-steel-500 text-xs mb-2">{field.description}</p>}
+                  {generationWarnings.some((warning) => warning.includes(field.path)) && (
+                    <p className="text-amber-300 text-xs mb-2">Generated without a validated KB mapping.</p>
+                  )}
                   {renderTemplateFieldInput(field, current)}
                 </div>
               );

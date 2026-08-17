@@ -10,6 +10,7 @@ import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVarian
 import GameThemeModel, { IGameTheme } from '../models/gameThemeModel';
 import ThemeConfigModel from '../models/themeConfigModel';
 import ExportTemplateModel from '../models/exportTemplateModel';
+import TemplateKbMappingModel, { ITemplateKbMappingEntry } from '../models/templateKbMappingModel';
 import { resolveProjectId } from '../models/projectModel';
 import { complete } from '../services/ai';
 import { hasGenApiKey } from '../config/ai';
@@ -202,6 +203,11 @@ type TemplateGenerationContractForPrompt = {
   userExamples?: string[];
 };
 
+type TemplateKbMappingForPrompt = Pick<
+  ITemplateKbMappingEntry,
+  'templatePath' | 'kbType' | 'kbFieldPath' | 'valueType' | 'purpose' | 'explanation'
+>;
+
 interface TemplateFieldForGeneration {
   path: string;
   label?: string;
@@ -256,7 +262,7 @@ function compactGenerationContract(contract?: TemplateGenerationContractForPromp
   };
 }
 
-function buildTemplateGraphGuidance(template?: TemplateContext): string {
+function buildTemplateGraphGuidance(template?: TemplateContext, mappings: TemplateKbMappingForPrompt[] = []): string {
   if (!template) return '';
   const fields = Array.isArray(template.templateSchema?.editableFields)
     ? template.templateSchema.editableFields
@@ -277,6 +283,8 @@ ${contract?.promptSummary ?? template.schemaSummary?.structureSummary ?? templat
 Template semantic hints and relationships:
 ${JSON.stringify(compactGenerationContract(contract), null, 2)}
 
+${buildTemplateKbMappingGuidance(mappings)}
+
 Dialog-capable fields:
 ${dialogFields.length ? JSON.stringify(dialogFields.map(compactTemplateField), null, 2) : '[]'}
 
@@ -294,7 +302,8 @@ Template value rules:
 - Use fieldHints and generationHints to decide what each field means and when to fill it.
 - Treat userExamples as high-priority corrections to the template interpretation.
 - Do not copy placeholder IDs or text from the template. Create dialog prompts that match the node title/body and the story.
-- Only fill requirement/reward fields when the chosen field path clearly matches the node's purpose. Leave manual ID fields empty unless reference material gives an exact ID.
+- Only fill requirement/reward fields when the chosen field path clearly matches the node's purpose.
+- For validated mapped fields, use exact values from STRUCTURED KB CANDIDATES. Leave a mapped field empty when no candidate is available.
 `;
 }
 
@@ -318,6 +327,139 @@ function buildInitialTemplateValues(
     }
   }
   return values;
+}
+
+function hasFilledTemplateValue(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function buildTemplateValueSourceMetadata(
+  values: Record<string, unknown>,
+  mappings: TemplateKbMappingForPrompt[],
+): Record<string, unknown> {
+  const mappedPaths = new Map(mappings.map((mapping) => [mapping.templatePath, mapping]));
+  const sources: Record<string, unknown> = {};
+  for (const mapping of mappings) {
+    const parsed = parseArrayItemPath(mapping.templatePath);
+    const parentValue = parsed ? values[parsed.arrayPath] : undefined;
+    const filled = parsed
+      ? Array.isArray(parentValue) && parentValue.some((row: unknown) => (
+        row && typeof row === 'object' && !Array.isArray(row) && hasFilledTemplateValue((row as Record<string, unknown>)[parsed.itemPath])
+      ))
+      : hasFilledTemplateValue(values[mapping.templatePath]);
+    if (!filled) continue;
+    sources[mapping.templatePath] = {
+      source: 'kbMapping',
+      kbType: mapping.kbType,
+      kbFieldPath: mapping.kbFieldPath,
+      purpose: mapping.purpose,
+    };
+  }
+  for (const [path, value] of Object.entries(values)) {
+    if (!hasFilledTemplateValue(value)) continue;
+    const mapping = mappedPaths.get(path);
+    if (mapping) continue;
+    sources[path] = { source: 'aiGuess' };
+  }
+  return sources;
+}
+
+function buildTemplateGenerationWarnings(
+  values: Record<string, unknown>,
+  mappings: TemplateKbMappingForPrompt[],
+): string[] {
+  const mappedPaths = new Set(mappings.map((mapping) => mapping.templatePath));
+  return Object.keys(values)
+    .filter((path) => hasFilledTemplateValue(values[path]) && !mappedPaths.has(path))
+    .slice(0, 8)
+    .map((path) => `${path} was generated without a validated KB mapping.`);
+}
+
+function getNestedFieldValue(fields: Record<string, unknown> | undefined, path: string): unknown {
+  if (path === 'entity.name' || path === 'entity.role') return undefined;
+  const cleanPath = path.startsWith('fields.') ? path.slice('fields.'.length) : path;
+  return cleanPath.split('.').reduce<unknown>((current, part) => {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    return (current as Record<string, unknown>)[part];
+  }, fields);
+}
+
+function mappedCandidateValues(
+  referenceEntities: ReferenceEntity[],
+  mappings: TemplateKbMappingForPrompt[],
+): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
+  for (const mapping of mappings) {
+    const values = new Set<string>();
+    for (const entity of referenceEntities) {
+      if (entity.type !== mapping.kbType) continue;
+      const raw = mapping.kbFieldPath === 'entity.name'
+        ? entity.name
+        : mapping.kbFieldPath === 'entity.role'
+          ? entity.role
+          : getNestedFieldValue(entity.fields, mapping.kbFieldPath);
+      if (raw === undefined || raw === null || raw === '') continue;
+      if (Array.isArray(raw)) raw.forEach((item) => values.add(String(item)));
+      else values.add(String(raw));
+    }
+    result.set(mapping.templatePath, values);
+  }
+  return result;
+}
+
+function enforceMappedTemplateValues(
+  values: Record<string, unknown>,
+  mappings: TemplateKbMappingForPrompt[],
+  allowedValues: Map<string, Set<string>>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...values };
+  for (const mapping of mappings) {
+    const allowed = allowedValues.get(mapping.templatePath);
+    if (!allowed || allowed.size === 0) {
+      clearTemplateValuePath(next, mapping.templatePath);
+      continue;
+    }
+    const parsed = parseArrayItemPath(mapping.templatePath);
+    if (parsed) {
+      const rows = next[parsed.arrayPath];
+      if (!Array.isArray(rows)) continue;
+      next[parsed.arrayPath] = rows.map((row) => {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+        const record = { ...(row as Record<string, unknown>) };
+        const value = record[parsed.itemPath];
+        if (value !== undefined && value !== null && value !== '' && !allowed.has(String(value))) {
+          delete record[parsed.itemPath];
+        }
+        return record;
+      });
+      continue;
+    }
+    const value = next[mapping.templatePath];
+    if (value !== undefined && value !== null && value !== '' && !allowed.has(String(value))) {
+      delete next[mapping.templatePath];
+    }
+  }
+  return next;
+}
+
+function clearTemplateValuePath(values: Record<string, unknown>, templatePath: string): void {
+  const parsed = parseArrayItemPath(templatePath);
+  if (parsed) {
+    const rows = values[parsed.arrayPath];
+    if (!Array.isArray(rows)) return;
+    values[parsed.arrayPath] = rows.map((row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+      const record = { ...(row as Record<string, unknown>) };
+      delete record[parsed.itemPath];
+      return record;
+    });
+    return;
+  }
+  delete values[templatePath];
 }
 
 function isEmptyTemplateGeneratedValue(value: unknown): boolean {
@@ -622,6 +764,57 @@ function normalizeGeneratedRelationshipRows(
   return nextRows;
 }
 
+function compactKbMappings(mappings: TemplateKbMappingForPrompt[]): Record<string, unknown>[] {
+  return mappings.map((mapping) => ({
+    templatePath: mapping.templatePath,
+    kbType: mapping.kbType,
+    kbFieldPath: mapping.kbFieldPath,
+    valueType: mapping.valueType,
+    purpose: mapping.purpose,
+    explanation: mapping.explanation,
+  }));
+}
+
+async function loadValidatedTemplateKbMappings(args: {
+  ownerId: string;
+  gameId?: string;
+  templateId?: string;
+}): Promise<TemplateKbMappingForPrompt[]> {
+  if (!args.gameId || !args.templateId) return [];
+  const mapping = await TemplateKbMappingModel.findOne({
+    ownerId: args.ownerId,
+    gameId: args.gameId,
+    templateId: args.templateId,
+  }).lean();
+  return (mapping?.entries ?? [])
+    .filter((entry) => entry.status === 'validated')
+    .map((entry) => ({
+      templatePath: entry.templatePath,
+      kbType: entry.kbType,
+      kbFieldPath: entry.kbFieldPath,
+      valueType: entry.valueType,
+      purpose: entry.purpose,
+      explanation: entry.explanation,
+    }));
+}
+
+function buildTemplateKbMappingGuidance(mappings: TemplateKbMappingForPrompt[]): string {
+  if (!mappings.length) {
+    return `
+Validated KB-to-template mappings: []
+No validated mappings are available. You may still fill template values when the meaning is clear, but those values are unvalidated guesses.`;
+  }
+  return `
+Validated KB-to-template mappings:
+${JSON.stringify(compactKbMappings(mappings), null, 2)}
+
+KB mapping rules:
+- When filling a mapped templatePath, choose a fitting entity from STRUCTURED KB CANDIDATES with the listed kbType.
+- Copy the exact value from kbFieldPath into templateValues. Do not invent IDs for validated mappings.
+- If no fitting KB candidate exists for a mapped field, leave that field empty instead of guessing.
+- For template paths that are not mapped, you may fill reasonable values from story/template context.`;
+}
+
 function indexRelationshipRows(rows: unknown[], identityKey: string): Map<string, number> {
   const idToIndex = new Map<string, number>();
   rows.forEach((row, index) => {
@@ -695,7 +888,15 @@ function parseArrayItemPath(path: string): { arrayPath: string; itemPath: string
 // POST /quests/generate — generate objectives + rewards
 // ---------------------------------------------------------------------------
 
-function buildTemplateObjectivesPrompt(story: string, genre: string, themeContext: string, referenceBlock: string, projectBlock: string, template: TemplateContext): string {
+function buildTemplateObjectivesPrompt(
+  story: string,
+  genre: string,
+  themeContext: string,
+  referenceBlock: string,
+  projectBlock: string,
+  template: TemplateContext,
+  mappings: TemplateKbMappingForPrompt[] = [],
+): string {
   const contract = template.templateSchema?.generationContract;
   const requirementFields = contract?.requirementRoles?.length
     ? contract.requirementRoles.join(', ')
@@ -735,12 +936,15 @@ ${dialogFields}
 Template semantic hints and relationships:
 ${JSON.stringify(compactGenerationContract(contract), null, 2)}
 
+${buildTemplateKbMappingGuidance(mappings)}
+
 Your task is to infer gameplay requirements, reward categories, and optional dialog intent that fit this template. The saved schema is the source of truth: do not force a fixed number of objectives or rewards.
 
 Rules:
 - Prefer general gameplay categories, not overly specific prose.
 - Use the detected template schema roles to decide which requirement, reward, and dialog categories make sense.
 - Use fieldHints, relationshipHints, generationHints, and userExamples as the interpretation layer for what fields mean.
+- When validated KB mappings are present, prefer objective/reward categories that can be grounded with matching STRUCTURED KB CANDIDATES.
 - Do not copy IDs, amounts, concrete item names, monster names, or placeholder values from the template into generated titles.
 - Do not assume the template has combat, collection, item reward, currency reward, experience reward, or dialog fields unless those roles are present above.
 - Reward IDs and item IDs are filled manually later, so do not invent final IDs.${referenceBlock ? `
@@ -761,8 +965,16 @@ Return this JSON structure:
 A reward object may additionally carry "kbRef" — the exact name of the reference-material item it reuses. Include it whenever the reward IS one of the listed existing items.` : ''}`;
 }
 
-function buildObjectivesPrompt(story: string, genre: string, themeContext: string, referenceBlock: string, projectBlock: string, template?: TemplateContext): string {
-  if (template) return buildTemplateObjectivesPrompt(story, genre, themeContext, referenceBlock, projectBlock, template);
+function buildObjectivesPrompt(
+  story: string,
+  genre: string,
+  themeContext: string,
+  referenceBlock: string,
+  projectBlock: string,
+  template?: TemplateContext,
+  mappings: TemplateKbMappingForPrompt[] = [],
+): string {
+  if (template) return buildTemplateObjectivesPrompt(story, genre, themeContext, referenceBlock, projectBlock, template, mappings);
 
   return `You are a professional game designer specialising in quest design for ${genre} games.
 ${themeContext ? `\n${themeContext}\n` : ''}
@@ -855,7 +1067,13 @@ export async function generateObjectives(req: AuthRequest, res: Response) {
       };
     }
 
-    const json = await complete(buildObjectivesPrompt(story, genre, themeContext, reference.referenceBlock, projectBlock, template));
+    const ownedGameId = gameId && mongoose.isValidObjectId(gameId) && await ownsGame(String(req.user?._id ?? ''), gameId) ? gameId : '';
+    const mappings = await loadValidatedTemplateKbMappings({
+      ownerId: String(req.user?._id ?? ''),
+      gameId: ownedGameId,
+      templateId: template?.id,
+    });
+    const json = await complete(buildObjectivesPrompt(story, genre, themeContext, reference.referenceBlock, projectBlock, template, mappings));
     const parsed = JSON.parse(json) as { objectives: Objective[]; rewards: Reward[] };
     // kbRef is only trusted when it names an entity we actually offered as
     // reference — anything else is a hallucination and is dropped. A reward
@@ -1020,6 +1238,7 @@ function buildGraphPrompt(
   themeContext: string,
   referenceBlock: string,
   template?: TemplateContext,
+  mappings: TemplateKbMappingForPrompt[] = [],
 ): string {
   const objectiveList = objectives.map((o, i) => `  ${i + 1}. ${o.title} — ${o.description}`).join('\n');
   const rewardList    = rewards.map((r) => `  - id="${r.id}" title="${r.title}"`).join('\n');
@@ -1042,7 +1261,7 @@ ${rewardList}
 ${hasCharacters ? `
 Characters in this story (use their exact IDs when assigning to nodes):
 ${characterList}
-` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}${buildTemplateGraphGuidance(template)}
+` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}${buildTemplateGraphGuidance(template, mappings)}
 ━━━ WHAT A NODE IS ━━━
 A node is a single SCENE in the story — one moment, one location, one decision point.
 Think of it like a chapter in a book or a room in a dungeon.
@@ -1165,7 +1384,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
 
     // KB grounding: only a Game the caller owns counts; anything else is
     // treated as "no game" and generation runs free.
-    const ownedGameId = gameId && (await ownsGame(String(userId), gameId)) ? gameId : '';
+    const ownedGameId = gameId && mongoose.isValidObjectId(gameId) && (await ownsGame(String(userId), gameId)) ? gameId : '';
     const reference = await buildReferenceContext({
       ownerId: String(userId),
       gameId: ownedGameId || undefined,
@@ -1193,6 +1412,11 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
 
     // 2. Ask the model to generate the graph
     const templateContext = templateContextFromDoc(templateDoc);
+    const mappings = await loadValidatedTemplateKbMappings({
+      ownerId: String(userId),
+      gameId: ownedGameId,
+      templateId: templateContext?.id,
+    });
     const json = await complete(buildGraphPrompt(
       story,
       genre,
@@ -1203,6 +1427,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       themeContext,
       reference.referenceBlock,
       templateContext,
+      mappings,
     ));
     const generated = JSON.parse(json) as {
       title: string;
@@ -1269,6 +1494,8 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       .filter((d) => d.created && d.kind === 'item')
       .map((d) => new mongoose.Types.ObjectId(d.id));
 
+    const allowedMappedValues = mappedCandidateValues(reference.entities, mappings);
+
     const questline = await QuestlineModel.create({
       ownerId:      userId,
       projectId:    resolvedProjectId,
@@ -1297,34 +1524,43 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
         inferredAiGuidance: templateDoc.inferredAiGuidance,
       } : undefined,
       // Nodes saved with placeholder IDs first — remapped below after we have _ids
-      nodes: generated.nodes.map((n) => ({
-        nodeId:     n.id,
-        type:       n.type ?? 'questNode',
-        title:      n.title,
-        body:       n.body,
-        variant:    n.variant ?? 'story',
-        npcIds:     n.npcIds     ?? [],
-        monsterIds: n.monsterIds ?? [],
-        rewardIds:  n.rewardIds  ?? [],
-        templateValues: buildInitialTemplateValues(templateDoc, n),
-        exportFields: {
-          questId: parseInt(n.id, 10) || undefined,
-          silent: true,
-          preQuest: generated.edges
-            .filter((e) => e.target === n.id)
-            .map((e) => parseInt(e.source, 10))
-            .filter((id) => Number.isFinite(id)).length
-            ? generated.edges
+      nodes: generated.nodes.map((n) => {
+        const templateValues = enforceMappedTemplateValues(
+          buildInitialTemplateValues(templateDoc, n),
+          mappings,
+          allowedMappedValues,
+        );
+        return {
+          nodeId:     n.id,
+          type:       n.type ?? 'questNode',
+          title:      n.title,
+          body:       n.body,
+          variant:    n.variant ?? 'story',
+          npcIds:     n.npcIds     ?? [],
+          monsterIds: n.monsterIds ?? [],
+          rewardIds:  n.rewardIds  ?? [],
+          templateValues,
+          templateValueSources: buildTemplateValueSourceMetadata(templateValues, mappings),
+          generationWarnings: buildTemplateGenerationWarnings(templateValues, mappings),
+          exportFields: {
+            questId: parseInt(n.id, 10) || undefined,
+            silent: true,
+            preQuest: generated.edges
               .filter((e) => e.target === n.id)
               .map((e) => parseInt(e.source, 10))
-              .filter((id) => Number.isFinite(id))
-            : [-1],
-          daily: false,
-          toKill: [],
-          toCollect: [],
-          rewardItems: [],
-        },
-      })),
+              .filter((id) => Number.isFinite(id)).length
+              ? generated.edges
+                .filter((e) => e.target === n.id)
+                .map((e) => parseInt(e.source, 10))
+                .filter((id) => Number.isFinite(id))
+              : [-1],
+            daily: false,
+            toKill: [],
+            toCollect: [],
+            rewardItems: [],
+          },
+        };
+      }),
       edges: generated.edges.map((e) => ({
         edgeId: e.id,
         source: e.source,
@@ -1350,6 +1586,8 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       monsterIds: n.monsterIds.map((id) => charIdMap.get(id)   ?? id),
       rewardIds:  n.rewardIds.map((id)  => rewardIdMap.get(id) ?? id),
       templateValues: n.templateValues ?? {},
+      templateValueSources: n.templateValueSources ?? {},
+      generationWarnings: n.generationWarnings ?? [],
       exportFields: n.exportFields,
     }));
     questline.nodes = remappedNodes as typeof questline.nodes;

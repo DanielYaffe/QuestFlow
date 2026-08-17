@@ -203,6 +203,8 @@ class QuestlineController extends BaseController {
           rewardIds:  n.rewardIds ?? [],
           exportFields: normalizeExportFields(n.nodeId, n.exportFields, preQuestByNodeId.get(n.nodeId)),
           templateValues: n.templateValues ?? {},
+          templateValueSources: n.templateValueSources ?? {},
+          generationWarnings: n.generationWarnings ?? [],
         },
       }));
 
@@ -262,7 +264,7 @@ class QuestlineController extends BaseController {
       }
 
       const { nodes, edges } = req.body as {
-        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; exportFields?: Partial<IQuestNodeExportFields>; templateValues?: Record<string, unknown> } }[];
+        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; exportFields?: Partial<IQuestNodeExportFields>; templateValues?: Record<string, unknown>; templateValueSources?: Record<string, unknown>; generationWarnings?: string[] } }[];
         edges: { id: string; source: string; target: string }[];
       };
 
@@ -308,6 +310,8 @@ class QuestlineController extends BaseController {
             rewardIds:  n.data.rewardIds  ?? [],
             exportFields: normalizeExportFields(n.id, n.data.exportFields, incomingPreQuestByNodeId.get(n.id)),
             templateValues: n.data.templateValues ?? {},
+            templateValueSources: n.data.templateValueSources ?? {},
+            generationWarnings: n.data.generationWarnings ?? [],
           })),
           edges: (edges ?? []).map((e) => ({
             edgeId: e.id,

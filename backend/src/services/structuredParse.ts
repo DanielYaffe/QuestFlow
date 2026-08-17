@@ -32,6 +32,7 @@ const isScalar = (v: unknown): v is string | number | boolean =>
 // --- entity extraction ------------------------------------------------------
 
 const NAME_KEYS = ['name', 'title', 'id'];
+const LABEL_KEYS = ['name', 'title'];
 const ROLE_KEYS = ['role', 'kind'];
 
 function readName(entry: Record<string, unknown>): string | undefined {
@@ -250,7 +251,7 @@ function formatValue(value: unknown): string {
 export function entityText(name: string, role: string | undefined, entry: Record<string, unknown>): string {
   const lines: string[] = [role ? `${name} (${role})` : name];
   for (const [key, value] of Object.entries(entry)) {
-    if (NAME_KEYS.includes(key) || ROLE_KEYS.includes(key)) continue;
+    if (LABEL_KEYS.includes(key) || ROLE_KEYS.includes(key)) continue;
     const formatted = formatValue(value);
     if (formatted) lines.push(`${key}: ${formatted}`);
   }
@@ -280,7 +281,7 @@ export function parseCollectionFile(text: string): ParsedEntity[] | null {
   return raw.map(({ name, entry }, i) => {
     const role = readRole(entry);
     const fields = Object.fromEntries(
-      Object.entries(entry).filter(([key]) => !NAME_KEYS.includes(key)),
+      Object.entries(entry).filter(([key]) => !LABEL_KEYS.includes(key)),
     );
     const difficulty = difficulties[i];
     return {
