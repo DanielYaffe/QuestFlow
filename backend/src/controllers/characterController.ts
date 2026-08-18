@@ -10,7 +10,7 @@ import QuestlineModel from '../models/questlineModel';
 import { resolveProjectId } from '../models/projectModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
-import { allocateId } from '../services/idAllocationService';
+import { allocateAssetFields } from '../services/assetPoolAllocation';
 import { validateAssetCustomFields } from '../services/assetSchemaValidation';
 import {
   startRotationsJob,
@@ -205,12 +205,13 @@ class CharacterController extends BaseController {
         }
       }
 
-      // A design created by hand needs an id from the project pool too, or it
-      // is written with id 0 and shares that with every other unided design.
-      // An explicitly supplied maple block always wins.
-      const allocated = body.maple
-        ? 0
-        : (await allocateId({ projectId, type: 'npc' })).id;
+      // Fill every pooled attribute the project declares for this asset type.
+      // Values the caller supplied are kept.
+      const { values: allocatedFields } = await allocateAssetFields({
+        projectId,
+        assetType: body.kind,
+        values: body.customFields ?? {},
+      });
 
       const character = await CharacterModel.create({
         ownerId: userId,
@@ -225,8 +226,8 @@ class CharacterController extends BaseController {
         spriteStyleId: body.spriteStyleId ?? '',
         ...(body.speciesData ? { speciesData: body.speciesData } : {}),
         ...(body.assets ? { assets: body.assets } : {}),
-        ...(body.customFields ? { customFields: body.customFields } : {}),
-        ...(body.maple ? { maple: body.maple } : allocated ? { maple: { mapleId: allocated } } : {}),
+        customFields: allocatedFields,
+        ...(body.maple ? { maple: body.maple } : {}),
       });
 
       res.status(201).json({ ...character.toObject(), previewUrl: await signPreview(character) });

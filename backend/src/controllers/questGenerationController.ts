@@ -29,7 +29,7 @@ import {
 import { ownsGame } from '../services/gameService';
 import { DifficultyBucket } from '../services/structuredParse';
 import { buildFallbackDialogPages } from '../services/templateDialogFallback';
-import { allocateIds } from '../services/idAllocationService';
+import { allocateQuestIds } from '../services/questIdAllocation';
 import {
   applyEntityMappings,
   buildMappedEntityPromptBlock,
@@ -1541,21 +1541,17 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
     // one. Draw unique ids from the project's pool instead. preQuest holds
     // prerequisite *quest* ids, so it has to be remapped through the same table
     // — it only looked right before because both were the node number.
-    const questIdAllocation = await allocateIds({
+    const questIds = await allocateQuestIds({
       projectId: resolvedProjectId,
-      type: 'quest',
       count: generated.nodes.length,
     });
     const questIdByNode = new Map<string, number>();
     generated.nodes.forEach((node, index) => {
-      const allocated = questIdAllocation.ids[index];
+      const allocated = questIds[index];
       // Falling back to the node number keeps the old behaviour when no quest
       // id range is configured, rather than exporting quests with no id.
       questIdByNode.set(node.id, allocated || parseInt(node.id, 10) || index + 1);
     });
-    if (questIdAllocation.error) {
-      console.warn(`[generateQuestline] quest id allocation: ${questIdAllocation.error}`);
-    }
 
     const questline = await QuestlineModel.create({
       ownerId:      userId,

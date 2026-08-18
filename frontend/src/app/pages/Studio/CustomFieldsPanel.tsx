@@ -127,27 +127,6 @@ function validateFieldValues(
   return errors;
 }
 
-function firstRequiredAllocatablePath(
-  fields: ProjectAssetField[],
-  values: Record<string, unknown>,
-  pools: ProjectValuePool[],
-  prefix: string[] = [],
-): string[] | null {
-  for (const field of fields) {
-    const path = [...prefix, field.key];
-    const value = getNestedValue(values, path);
-    const pool = poolFor(field, pools);
-    if (field.required && field.type === 'number' && pool?.ranges.length && (value === undefined || value === null || value === '')) {
-      return path;
-    }
-    if (field.type === 'object' && field.fields?.length) {
-      const nested = firstRequiredAllocatablePath(field.fields, values, pools, path);
-      if (nested) return nested;
-    }
-  }
-  return null;
-}
-
 function objectRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
     ? value.map((row) => (row && typeof row === 'object' && !Array.isArray(row) ? row as Record<string, unknown> : {}))
@@ -404,11 +383,9 @@ export function CustomFieldsPanel({
   const [draft, setDraft] = useState<Record<string, unknown>>(() => cloneFields(value));
   const [saving, setSaving] = useState(false);
   const [allocatingPath, setAllocatingPath] = useState('');
-  const autoAllocatedPathsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setDraft(cloneFields(value));
-    autoAllocatedPathsRef.current.clear();
   }, [value]);
 
   const allocateValue = useCallback(async (path: string[], announce = true) => {
@@ -433,16 +410,6 @@ export function CustomFieldsPanel({
       setAllocatingPath('');
     }
   }, [assetId, assetType, projectId]);
-
-  useEffect(() => {
-    if (!assetSchema || !projectId) return;
-    const path = firstRequiredAllocatablePath(assetSchema.fields, draft, schema?.valuePools ?? []);
-    if (!path) return;
-    const key = path.join('.');
-    if (autoAllocatedPathsRef.current.has(key)) return;
-    autoAllocatedPathsRef.current.add(key);
-    void allocateValue(path, false);
-  }, [allocateValue, assetSchema, draft, projectId, schema?.valuePools]);
 
   if (!assetSchema || assetSchema.fields.length === 0) {
     return (

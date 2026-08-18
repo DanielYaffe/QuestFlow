@@ -19,23 +19,7 @@ import { ownsGame } from '../services/gameService';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { encrypt } from '../utils/encryption';
 import { KB_TYPES, collectionName, qdrant } from '../services/qdrant';
-import { AllocatableIdType, pickFreeId, usedIds } from '../services/idAllocationService';
-import { ENTITY_ID_KEYS } from '../services/structuredParse';
-
-/**
- * Which identity space a pooled field draws from, or undefined when the pool is
- * an ordinary numeric attribute.
- *
- * Decided by the field's own name rather than the pool's key: a project may name
- * its item pool anything ("etcIds"), but a field called `id` or `npcId` is the
- * same number that lives in maple.mapleId, and a value held there is not free.
- */
-function identitySpaceFor(assetType: string, fieldPath: string[]): AllocatableIdType | undefined {
-  const leaf = fieldPath[fieldPath.length - 1] ?? '';
-  if (!(ENTITY_ID_KEYS as readonly string[]).includes(leaf)) return undefined;
-  if (assetType === 'item') return 'item';
-  return assetType === 'npc' || assetType === 'monster' ? 'npc' : undefined;
-}
+import { allocatePoolValue, findSchemaField, poolForField } from '../services/assetPoolAllocation';
 
 interface CountRow {
   _id: string;
@@ -546,52 +530,36 @@ class ProjectController extends BaseController {
         return;
       }
 
-      const assetSchema = project.assetSchema?.assetTypes?.find((entry) => entry.key === assetType);
-      const field = assetSchema ? findAssetField(assetSchema.fields ?? [], fieldPath) : null;
-      const pool = field?.poolKey
-        ? project.assetSchema?.valuePools?.find((entry) => entry.key === field.poolKey)
-        : null;
+      const assetFields = project.assetSchema?.assetTypes?.find((entry) => entry.key === assetType)?.fields;
+      const field = findSchemaField(assetFields, fieldPath);
+      const pool = poolForField(project.assetSchema, field);
       if (!field || !pool) {
         res.status(400).json({ error: 'Field is not associated with a value pool.' });
         return;
       }
-      if (pool.valueType !== 'number' || !pool.ranges?.length) {
-        res.status(400).json({ error: 'Only numeric range pools can allocate values.' });
-        return;
-      }
-
-      const idFilter = excludeAssetId ? { _id: { $ne: excludeAssetId } } : {};
-      const docs = assetType === 'item'
-        ? await ItemModel.find({ ownerId: userId, projectId: req.params.id, ...idFilter }).select('customFields').lean()
-        : await CharacterModel.find({ ownerId: userId, projectId: req.params.id, kind: assetType, ...idFilter }).select('customFields').lean();
-      const used = new Set<number>();
-      for (const doc of docs) {
-        const value = getNestedValue(doc.customFields, fieldPath);
-        if (typeof value === 'number' && Number.isFinite(value)) used.add(value);
-      }
-      const nativeReserved = await collectKbReservedPoolValues(project.gameId, field, {
+      // Values the game's own data already occupies are not the project's to
+      // hand out, so they join the used set before anything is drawn.
+      const reserved = await collectKbReservedPoolValues(project.gameId, field, {
         key: pool.key,
         name: pool.name,
         ranges: pool.ranges ?? [],
       });
-      nativeReserved.forEach((value) => used.add(value));
 
-      // An id pool is the same identity space as maple.mapleId and the KB id
-      // aliases, so a value held there is not free even though it is absent from
-      // this field. Without this the pool looked almost empty and every click
-      // returned the floor of the range.
-      const idType = identitySpaceFor(assetType, fieldPath);
-      if (idType) {
-        for (const id of await usedIds(String(req.params.id), idType, excludeAssetId || undefined)) used.add(id);
-      }
-
-      const ranges = [...pool.ranges].sort((a, b) => a.min - b.min);
-      const picked = pickFreeId(ranges, used);
-      if (picked) {
-        res.json({ value: picked, poolKey: pool.key, fieldPath: fieldPath.join('.') });
+      // Uniqueness is a property of the pool, not of one field: every field bound
+      // to it draws from the same namespace, whatever the asset type calls them.
+      const { value, error } = await allocatePoolValue({
+        taken: reserved,
+        projectId: String(req.params.id),
+        assetType,
+        path: fieldPath,
+        excludeAssetId: excludeAssetId || undefined,
+        schema: project.assetSchema,
+      });
+      if (!value) {
+        res.status(error.startsWith('No available') ? 409 : 400).json({ error });
         return;
       }
-      res.status(409).json({ error: `No available values remain in the ${pool.name} pool.` });
+      res.json({ value, poolKey: pool.key, fieldPath: fieldPath.join('.') });
     } catch (error) {
       if (error instanceof Error) {
         res.status(400).json({ error: error.message });

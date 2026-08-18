@@ -104,7 +104,6 @@ function projectSchema(project?: Project | null): ProjectAssetSchema {
   const schema = defaultSchema(project?.assetSchema);
   const npcRanges = project?.mapleSettings?.npcIdRanges ?? [];
   const itemRanges = project?.mapleSettings?.itemIdRanges ?? [];
-  const questRanges = project?.mapleSettings?.questIdRanges ?? [];
 
   upsertIdPool(schema, {
     key: 'npcIds',
@@ -119,13 +118,6 @@ function projectSchema(project?: Project | null): ProjectAssetSchema {
     valueType: 'number',
     options: [],
     ranges: itemRanges,
-  });
-  upsertIdPool(schema, {
-    key: 'questIds',
-    name: 'Quest IDs',
-    valueType: 'number',
-    options: [],
-    ranges: questRanges,
   });
   if (npcRanges.length > 0) upsertIdAttribute(schema, 'npc', 'npcIds');
   if (itemRanges.length > 0) upsertIdAttribute(schema, 'item', 'itemIds');
@@ -227,22 +219,7 @@ export function AssetSchemaSettingsCard({ project, onSaved, initiallyOpen = fals
     }
     setSaving(true);
     try {
-      // These three pools mirror the project's Maple ID ranges, which the
-      // allocator reads. Writing them back makes this card the one place the
-      // ranges are edited, rather than a read-only view of settings with no UI.
-      const next = defaultSchema(schema);
-      const rangesOf = (key: string) => next.valuePools.find((pool) => pool.key === key)?.ranges ?? [];
-      const updated = await updateProject(targetProjectId, {
-        assetSchema: next,
-        mapleSettings: {
-          enabled: project?.mapleSettings?.enabled ?? false,
-          targetVersion: project?.mapleSettings?.targetVersion ?? 'v83',
-          defaultExportMode: project?.mapleSettings?.defaultExportMode ?? 'changed-only',
-          npcIdRanges: rangesOf('npcIds'),
-          itemIdRanges: rangesOf('itemIds'),
-          questIdRanges: rangesOf('questIds'),
-        },
-      });
+      const updated = await updateProject(targetProjectId, { assetSchema: defaultSchema(schema) });
       await refreshProjects();
       onSaved?.(updated);
       toast.success('Asset attributes saved');

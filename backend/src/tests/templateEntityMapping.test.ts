@@ -80,28 +80,6 @@ describe('template entity mappings', () => {
     expect(result.sources.npcId).toMatchObject({ origins: ['kb'] });
   });
 
-  // maple.mapleId is itself a copy of a KB id taken at materialization time. If
-  // the KB file was re-uploaded since, that copy is the stale one — the live KB
-  // has to win, or the export carries an id the game no longer uses.
-  test('a stale stored id does not outrank the current KB value', () => {
-    const result = applyEntityMappings({
-      mappings,
-      entities: [entity({ projectFields: {}, canonicalFields: { id: 9270033 }, kbFields: { id: 9201074 } })],
-      refIds: ['entity-1'],
-    });
-    expect(result.values.npcId).toBe(9201074);
-    expect(result.sources.npcId).toMatchObject({ origins: ['kb'] });
-  });
-
-  test('falls back to the stored id when the KB has none', () => {
-    const result = applyEntityMappings({
-      mappings,
-      entities: [entity({ projectFields: {}, canonicalFields: { id: 4242 }, kbFields: { faction: 'Council' } })],
-      refIds: ['entity-1'],
-    });
-    expect(result.values.npcId).toBe(4242);
-  });
-
   test('preserves manual values even when empty', () => {
     const result = applyEntityMappings({
       values: { npcId: '' },

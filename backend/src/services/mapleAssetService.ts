@@ -2,8 +2,7 @@ import crypto from 'crypto';
 import sharp from 'sharp';
 import CharacterModel, { ICharacter } from '../models/characterModel';
 import ItemModel, { IItem } from '../models/itemModel';
-import { allocateId as allocateProjectId } from './idAllocationService';
-import { ENTITY_ID_KEYS } from './structuredParse';
+import { pickFreeValue } from './assetPoolAllocation';
 import ProjectModel, { IMapleIdRange, IProject } from '../models/projectModel';
 import KbDocumentModel from '../models/kbDocumentModel';
 import { downloadBufferFromS3 } from '../utils/s3Helper';
@@ -291,32 +290,20 @@ async function projectUsedIds(
   return new Set(rows.map((row) => normalizeId(row.maple?.mapleId)).filter(Boolean));
 }
 
-/**
- * The name of the project asset already holding this id, if any.
- *
- * Reads customFields as well as maple.mapleId, and both character kinds — a
- * design materialized from the knowledge base keeps the game's id in
- * customFields, and treating that as free let two designs claim one number.
- */
 async function projectDuplicate(
   projectId: string,
   assetType: MapleAssetType,
   mapleId: number,
   excludeRecordId?: string,
 ): Promise<string | undefined> {
-  const scope = excludeRecordId
-    ? { projectId, _id: { $ne: excludeRecordId } }
-    : { projectId };
-  const rows = assetType === 'npc'
-    ? await CharacterModel.find(scope).select('name maple.mapleId customFields').lean()
-    : await ItemModel.find(scope).select('name maple.mapleId customFields').lean();
-
-  return rows.find((row) => {
-    if (normalizeId(row.maple?.mapleId) === mapleId) return true;
-    const fields = row.customFields;
-    if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) return false;
-    return ENTITY_ID_KEYS.some((key) => normalizeId((fields as Record<string, unknown>)[key]) === mapleId);
-  })?.name;
+  const idFilter = excludeRecordId ? { $ne: excludeRecordId } : { $exists: true };
+  const filter = { projectId, 'maple.mapleId': mapleId, _id: idFilter };
+  if (assetType === 'npc') {
+    const existing = await CharacterModel.findOne({ ...filter, kind: 'npc' }).select('name').lean();
+    return existing?.name;
+  }
+  const existing = await ItemModel.findOne(filter).select('name').lean();
+  return existing?.name;
 }
 
 export async function checkMapleIdAvailability(args: {
@@ -366,15 +353,6 @@ export async function checkMapleIdAvailability(args: {
   };
 }
 
-/**
- * A free Maple id for a new asset.
- *
- * Delegates to the shared project allocator so the Allocate button and the
- * automatic allocation done at creation cannot disagree. The old
- * implementation here scanned lowest-first and read only `maple.mapleId`, so
- * every click returned the same first-of-pool id — nothing is written until the
- * author saves — and it could not see an id that lived in customFields.
- */
 export async function allocateMapleId(args: {
   ownerId: string;
   projectId: string;
@@ -384,22 +362,32 @@ export async function allocateMapleId(args: {
   const project = await ProjectModel.findOne({ _id: args.projectId, ownerId: args.ownerId });
   if (!project) throw new Error('Project not found');
 
-  const native = await nativeIds(project, args.assetType);
-  const { id, error } = await allocateProjectId({
-    projectId: args.projectId,
-    type: args.assetType,
-    excludeRecordId: args.excludeRecordId,
-    // Ids the target game already ships are not the project's to hand out.
-    taken: native,
-  });
-  if (!id) {
+  const ranges = rangesFor(project, args.assetType);
+  if (!ranges.length) {
     return {
       available: false,
       exhausted: true,
       assetType: args.assetType,
       mapleId: 0,
       warnings: [],
-      errors: [error || `No free ${args.assetType} Maple ID was found in the configured ranges.`],
+      errors: [`Configure at least one allowed ${args.assetType} ID range in project Maple settings.`],
+    };
+  }
+
+  const [native, projectUsed] = await Promise.all([
+    nativeIds(project, args.assetType),
+    projectUsedIds(args.projectId, args.assetType, args.excludeRecordId),
+  ]);
+  const used = new Set<number>([...native, ...projectUsed]);
+  const mapleId = pickFreeValue(ranges, used);
+  if (!mapleId) {
+    return {
+      available: false,
+      exhausted: true,
+      assetType: args.assetType,
+      mapleId: 0,
+      warnings: [],
+      errors: [`No free ${args.assetType} Maple ID was found in the configured ranges.`],
     };
   }
 
@@ -407,7 +395,7 @@ export async function allocateMapleId(args: {
     ownerId: args.ownerId,
     projectId: args.projectId,
     assetType: args.assetType,
-    mapleId: id,
+    mapleId,
     excludeRecordId: args.excludeRecordId,
     allowNativePatch: false,
   });

@@ -56,8 +56,9 @@ describe('materializeDesigns — creating', () => {
         propose({ tempId: 'ent-kb', name: 'Elder Maru', kbRef: 'Elder Maru' }),
       ], VALID_GAME);
       const doc = await CharacterModel.findById(ids['ent-kb']);
+      // The KB's own attributes land on the design as-is; nothing invents a
+      // separate identity field beside them.
       expect(doc?.customFields).toMatchObject({ id: 9001, faction: 'Council' });
-      expect(doc?.maple.mapleId).toBe(9001);
     } finally {
       await KbDocumentModel.deleteOne({ _id: kbDoc._id });
     }
@@ -93,7 +94,6 @@ describe('materializeDesigns — creating', () => {
       ], VALID_GAME);
       const doc = await CharacterModel.findById(ids['ent-stale']);
       expect(doc?.customFields).toMatchObject({ id: 2000 });
-      expect(doc?.maple.mapleId).toBe(2000);
     } finally {
       scroll.mockRestore();
       await KbDocumentModel.deleteOne({ _id: kbDoc._id });

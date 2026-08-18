@@ -21,13 +21,6 @@ export interface NormalizedMappedEntity {
   /** Author-authored fields on the Studio design. Outrank everything. */
   projectFields?: Record<string, unknown>;
   kbFields?: Record<string, unknown>;
-  /**
-   * Identity synthesized from `maple.mapleId` — itself a copy of a KB id taken
-   * when the design was materialized. Consulted last, because a copy taken
-   * before the KB file was re-uploaded is exactly the stale value the live KB
-   * should be correcting.
-   */
-  canonicalFields?: Record<string, unknown>;
   kbRole?: string;
   kbRef?: string;
   hasProjectSource: boolean;
@@ -39,7 +32,6 @@ export interface MappedEntitySeed {
   name: string;
   role?: string;
   projectFields?: Record<string, unknown>;
-  canonicalFields?: Record<string, unknown>;
   /** Either a canonical entity name or the persisted "{gameId}:{entityName}" tag. */
   kbRef?: string;
   hasProjectSource?: boolean;
@@ -117,12 +109,6 @@ function present(value: unknown): boolean {
 
 function cleanKbFieldPath(path: string): string {
   return path.startsWith('fields.') ? path.slice('fields.'.length) : path;
-}
-
-/** The design's stored id, offered only when neither the author nor the KB has one. */
-function canonicalFieldsFromMapleId(mapleId: unknown): Record<string, unknown> | undefined {
-  const id = typeof mapleId === 'number' && Number.isInteger(mapleId) && mapleId > 0 ? mapleId : 0;
-  return id ? { id, mapleId: id } : undefined;
 }
 
 function parseArrayItemPath(path: string): { arrayPath: string; itemPath: string } | null {
@@ -278,12 +264,12 @@ export async function loadMappedProjectEntities(args: {
       _id: { $in: ids },
       ownerId: args.ownerId,
       projectId: args.projectId,
-    }).select('name kind customFields kbRef maple.mapleId').lean(),
+    }).select('name kind customFields kbRef').lean(),
     ItemModel.find({
       _id: { $in: ids },
       ownerId: args.ownerId,
       projectId: args.projectId,
-    }).select('name customFields kbRef maple.mapleId').lean(),
+    }).select('name customFields kbRef').lean(),
   ]);
   const seeds: MappedEntitySeed[] = [
     ...characters.map((character) => ({
@@ -291,7 +277,6 @@ export async function loadMappedProjectEntities(args: {
       kbType: character.kind === 'monster' ? 'monsters' as const : 'characters' as const,
       name: character.name,
       projectFields: isRecord(character.customFields) ? character.customFields : {},
-      canonicalFields: canonicalFieldsFromMapleId(character.maple?.mapleId),
       kbRef: character.kbRef,
       hasProjectSource: true,
     })),
@@ -300,7 +285,6 @@ export async function loadMappedProjectEntities(args: {
       kbType: 'items' as const,
       name: item.name,
       projectFields: isRecord(item.customFields) ? item.customFields : {},
-      canonicalFields: canonicalFieldsFromMapleId(item.maple?.mapleId),
       kbRef: item.kbRef,
       hasProjectSource: true,
     })),
@@ -332,7 +316,6 @@ export async function enrichMappedEntitySeeds(args: {
       name: seed.name,
       role: seed.role,
       projectFields: seed.projectFields,
-      canonicalFields: seed.canonicalFields,
       kbFields: kbEntity?.fields,
       kbRole: kbEntity?.role,
       kbRef: seed.kbRef,
@@ -374,9 +357,7 @@ export function readMappedEntityValue(entity: NormalizedMappedEntity, kbFieldPat
   const projectValue = read(entity.projectFields);
   if (present(projectValue)) return { value: projectValue, origin: 'project' };
   const kbValue = read(entity.kbFields);
-  if (present(kbValue)) return { value: kbValue, origin: 'kb' };
-  const canonicalValue = read(entity.canonicalFields);
-  return present(canonicalValue) ? { value: canonicalValue, origin: 'project' } : undefined;
+  return present(kbValue) ? { value: kbValue, origin: 'kb' } : undefined;
 }
 
 function coerceMappedValue(value: unknown, valueType: TemplateMappingEntry['valueType']): unknown {

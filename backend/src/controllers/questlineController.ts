@@ -5,7 +5,7 @@ import CharacterModel from '../models/characterModel';
 import ItemModel from '../models/itemModel';
 import ExportTemplateModel from '../models/exportTemplateModel';
 import { resolveProjectId } from '../models/projectModel';
-import { allocateIds } from '../services/idAllocationService';
+import { allocateQuestIds } from '../services/questIdAllocation';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { getProjectId } from '../utils/projectScope';
@@ -287,9 +287,8 @@ class QuestlineController extends BaseController {
       }
       const unallocated = (nodes ?? []).filter((node) => !questIdByNodeId.has(node.id));
       if (unallocated.length && questline.projectId) {
-        const { ids } = await allocateIds({
+        const ids = await allocateQuestIds({
           projectId: questline.projectId,
-          type: 'quest',
           count: unallocated.length,
           taken: claimedQuestIds,
         });

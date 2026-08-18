@@ -19,7 +19,7 @@ import {
 } from '../services/itemService';
 import { resolveProjectId } from '../models/projectModel';
 import { getPresignedUrl } from '../utils/s3Helper';
-import { allocateId } from '../services/idAllocationService';
+import { allocateAssetFields } from '../services/assetPoolAllocation';
 import { validateAssetCustomFields } from '../services/assetSchemaValidation';
 
 // ---------------------------------------------------------------------------
@@ -132,9 +132,11 @@ class ItemController {
           return;
         }
       }
-      const allocatedItemId = body.maple?.mapleId
-        ? 0
-        : (await allocateId({ projectId, type: 'item' })).id;
+      const { values: allocatedFields } = await allocateAssetFields({
+        projectId,
+        assetType: 'item',
+        values: body.customFields ?? {},
+      });
       const item = await createItem({
         ownerId: userId,
         projectId,
@@ -142,8 +144,8 @@ class ItemController {
         description: body.description,
         rarity: isItemRarity(body.rarity) ? body.rarity : undefined,
         tags: body.tags,
-        customFields: body.customFields,
-        maple: body.maple ?? (allocatedItemId ? ({ mapleId: allocatedItemId } as IItem['maple']) : undefined),
+        customFields: allocatedFields,
+        maple: body.maple,
       });
       res.status(201).json(await shape(item));
     } catch (error) {

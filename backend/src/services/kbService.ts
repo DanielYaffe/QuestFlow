@@ -1,7 +1,7 @@
 import { KbType, deleteDocumentPoints } from './qdrant';
 import { embedBatch } from './ai';
 import { chunkText } from './chunk';
-import { canonicalEntityId, ENTITY_ID_KEYS, parseCollectionFile, ParsedEntity } from './structuredParse';
+import { parseCollectionFile, ParsedEntity } from './structuredParse';
 import KbDocumentModel, { IKbDocument } from '../models/kbDocumentModel';
 import CharacterModel from '../models/characterModel';
 import { kbQueue } from '../queues/kbQueue';
@@ -65,20 +65,14 @@ function mergeMissingFields(
 }
 
 /**
- * Merge KB fields into a design's custom fields, but let the KB restate the
- * canonical id outright. Everything else is descriptive and an author edit wins;
- * an id is identity, and a copy taken from an older version of this same
- * document is precisely what needs correcting.
+ * Merge KB fields into a design's custom fields. The KB restates the attributes
+ * it owns; anything the author added that the KB does not mention is kept.
  */
-function mergeFieldsWithCanonicalId(
+function mergeFieldsFromKb(
   current: Record<string, unknown>,
   source: Record<string, unknown>,
 ): Record<string, unknown> {
-  const merged = mergeMissingFields(current, source);
-  for (const key of ENTITY_ID_KEYS) {
-    if (key in source) merged[key] = source[key];
-  }
-  return merged;
+  return { ...mergeMissingFields(current, source), ...source };
 }
 
 function characterPatchFromEntity(entity: ParsedEntity, type: KbType): Record<string, unknown> {
@@ -86,7 +80,6 @@ function characterPatchFromEntity(entity: ParsedEntity, type: KbType): Record<st
   const appearance = stringField(fields, ['appearance', 'look', 'visual', 'description']);
   const lore = stringField(fields, ['notes', 'lore', 'background', 'bio', 'description']);
   const dialogueTraits = stringListField(fields, ['traits', 'dialogueTraits', 'dialogue_traits', 'personality']);
-  const mapleId = canonicalEntityId(fields);
 
   const patch: Record<string, unknown> = {
     name: entity.name,
@@ -95,7 +88,6 @@ function characterPatchFromEntity(entity: ParsedEntity, type: KbType): Record<st
   if (appearance) patch.appearance = appearance;
   if (lore) patch.lore = lore;
   if (dialogueTraits.length > 0) patch.dialogueTraits = dialogueTraits;
-  if (mapleId) patch['maple.mapleId'] = mapleId;
   return patch;
 }
 
@@ -120,7 +112,7 @@ export async function syncCharacterReferencesFromKb(doc: IKbDocument): Promise<v
         $set: {
           ...characterPatchFromEntity(entity, doc.type),
           kbRef: `${doc.gameId}:${entity.name}`,
-          customFields: mergeFieldsWithCanonicalId(
+          customFields: mergeFieldsFromKb(
             isRecord(character.customFields) ? character.customFields : {},
             entity.fields,
           ),
