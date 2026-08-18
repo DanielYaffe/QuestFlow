@@ -130,6 +130,27 @@ async function loadProject(projectId: string): Promise<IProject | null> {
 }
 
 /**
+ * A free value from `ranges` that nothing in `used` holds, or 0 when the pool is
+ * full. Drawn at random: a lowest-first scan returns the same number on every
+ * call until the caller actually saves, which is why the Allocate button kept
+ * offering the floor of the pool.
+ */
+export function pickFreeId(ranges: IMapleIdRange[], used: Set<number>): number {
+  const size = poolSize(ranges);
+  if (size <= 0) return 0;
+  for (let attempt = 0; attempt < RANDOM_ATTEMPTS; attempt += 1) {
+    const candidate = idAtOffset(ranges, Math.floor(Math.random() * size));
+    if (candidate && !used.has(candidate)) return candidate;
+  }
+  // A pool this full is worth scanning rather than guessing at.
+  for (let offset = 0; offset < size; offset += 1) {
+    const candidate = idAtOffset(ranges, offset);
+    if (candidate && !used.has(candidate)) return candidate;
+  }
+  return 0;
+}
+
+/**
  * A free id from the project's pool for this type, or an error explaining why
  * there is none. `taken` lets a caller allocating several ids in one pass
  * exclude the ones it has already handed out but not yet written.
@@ -149,18 +170,8 @@ export async function allocateId(args: {
   const used = await usedIds(args.projectId, args.type, args.excludeRecordId);
   for (const id of args.taken ?? []) used.add(id);
 
-  const size = poolSize(ranges);
-  for (let attempt = 0; attempt < RANDOM_ATTEMPTS; attempt += 1) {
-    const candidate = idAtOffset(ranges, Math.floor(Math.random() * size));
-    if (candidate && !used.has(candidate)) return { id: candidate, error: '' };
-  }
-
-  // A pool this full is worth scanning rather than guessing at.
-  for (let offset = 0; offset < size; offset += 1) {
-    const candidate = idAtOffset(ranges, offset);
-    if (candidate && !used.has(candidate)) return { id: candidate, error: '' };
-  }
-  return { id: 0, error: EXHAUSTED(args.type) };
+  const id = pickFreeId(ranges, used);
+  return id ? { id, error: '' } : { id: 0, error: EXHAUSTED(args.type) };
 }
 
 /**
@@ -183,20 +194,9 @@ export async function allocateIds(args: {
   const used = await usedIds(args.projectId, args.type);
   for (const id of args.taken ?? []) used.add(id);
 
-  const size = poolSize(ranges);
   const ids: number[] = [];
   for (let index = 0; index < args.count; index += 1) {
-    let allocated = 0;
-    for (let attempt = 0; attempt < RANDOM_ATTEMPTS && !allocated; attempt += 1) {
-      const candidate = idAtOffset(ranges, Math.floor(Math.random() * size));
-      if (candidate && !used.has(candidate)) allocated = candidate;
-    }
-    if (!allocated) {
-      for (let offset = 0; offset < size && !allocated; offset += 1) {
-        const candidate = idAtOffset(ranges, offset);
-        if (candidate && !used.has(candidate)) allocated = candidate;
-      }
-    }
+    const allocated = pickFreeId(ranges, used);
     if (!allocated) return { ids, error: EXHAUSTED(args.type) };
     used.add(allocated);
     ids.push(allocated);

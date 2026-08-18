@@ -19,6 +19,23 @@ import { ownsGame } from '../services/gameService';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { encrypt } from '../utils/encryption';
 import { KB_TYPES, collectionName, qdrant } from '../services/qdrant';
+import { AllocatableIdType, pickFreeId, usedIds } from '../services/idAllocationService';
+import { ENTITY_ID_KEYS } from '../services/structuredParse';
+
+/**
+ * Which identity space a pooled field draws from, or undefined when the pool is
+ * an ordinary numeric attribute.
+ *
+ * Decided by the field's own name rather than the pool's key: a project may name
+ * its item pool anything ("etcIds"), but a field called `id` or `npcId` is the
+ * same number that lives in maple.mapleId, and a value held there is not free.
+ */
+function identitySpaceFor(assetType: string, fieldPath: string[]): AllocatableIdType | undefined {
+  const leaf = fieldPath[fieldPath.length - 1] ?? '';
+  if (!(ENTITY_ID_KEYS as readonly string[]).includes(leaf)) return undefined;
+  if (assetType === 'item') return 'item';
+  return assetType === 'npc' || assetType === 'monster' ? 'npc' : undefined;
+}
 
 interface CountRow {
   _id: string;
@@ -559,14 +576,20 @@ class ProjectController extends BaseController {
       });
       nativeReserved.forEach((value) => used.add(value));
 
+      // An id pool is the same identity space as maple.mapleId and the KB id
+      // aliases, so a value held there is not free even though it is absent from
+      // this field. Without this the pool looked almost empty and every click
+      // returned the floor of the range.
+      const idType = identitySpaceFor(assetType, fieldPath);
+      if (idType) {
+        for (const id of await usedIds(String(req.params.id), idType, excludeAssetId || undefined)) used.add(id);
+      }
+
       const ranges = [...pool.ranges].sort((a, b) => a.min - b.min);
-      for (const range of ranges) {
-        for (let candidate = range.min; candidate <= range.max; candidate += 1) {
-          if (!used.has(candidate)) {
-            res.json({ value: candidate, poolKey: pool.key, fieldPath: fieldPath.join('.') });
-            return;
-          }
-        }
+      const picked = pickFreeId(ranges, used);
+      if (picked) {
+        res.json({ value: picked, poolKey: pool.key, fieldPath: fieldPath.join('.') });
+        return;
       }
       res.status(409).json({ error: `No available values remain in the ${pool.name} pool.` });
     } catch (error) {
