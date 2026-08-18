@@ -284,6 +284,34 @@ export async function materializeDesigns(args: ResolveArgs): Promise<Materialize
           else await CharacterModel.updateOne(filter, { $set: set });
         }
       }
+      // A design that predates automatic allocation carries no id at all, so
+      // every mapped field referencing it resolves to nothing and the node
+      // silently falls back to another character. Casting it into a quest is
+      // the moment to give it one. customFields is checked too — an id may
+      // live only there — so this never mints a second id for a design that
+      // already has one.
+      const currentId = row ? (canonicalEntityId(row.customFields) || row.mapleId) : 0;
+      if (row && !currentId) {
+        const allocation = await allocateId({
+          projectId,
+          type: isItem ? 'item' : 'npc',
+          excludeRecordId: resolvedId,
+          taken: allocatedThisBatch,
+        });
+        if (allocation.id) {
+          row.mapleId = allocation.id;
+          allocatedThisBatch.add(allocation.id);
+          const filter = { _id: resolvedId, projectId };
+          const patch = { $set: { 'maple.mapleId': allocation.id } };
+          if (isItem) await ItemModel.updateOne(filter, patch);
+          else await CharacterModel.updateOne(filter, patch);
+        } else if (allocation.error) {
+          allocationWarnings.add(allocation.error);
+        }
+      } else if (currentId) {
+        allocatedThisBatch.add(currentId);
+      }
+
       ids[proposal.tempId] = resolvedId;
       designs.push({ tempId: proposal.tempId, id: resolvedId, kind: proposal.kind, name, kbRef, created: false });
       continue;

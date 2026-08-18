@@ -853,6 +853,18 @@ function isSequenceForwardRelationshipHint(hint: { kind?: string; from: { itemPa
 }
 
 /**
+ * Node references the model actually named, dropped to those we materialized.
+ *
+ * The prompt lists characters by temp id ("char-1"), but it also sees mapped
+ * entity values, and it sometimes assigns one of those — a game NPC id — as the
+ * reference instead. An id no design answers to renders as a broken chip and
+ * contributes nothing to mapping, so it is not worth persisting.
+ */
+function knownRefs(ids: string[] | undefined, idMap: Map<string, string>): string[] {
+  return (ids ?? []).filter((id) => idMap.has(id));
+}
+
+/**
  * The quest ids a node's incoming edges point at. `[-1]` is the template's
  * "no prerequisite" marker, so an entry node keeps it.
  */
@@ -1597,9 +1609,9 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
           title:      n.title,
           body:       n.body,
           variant:    n.variant ?? 'story',
-          npcIds:     n.npcIds     ?? [],
-          monsterIds: n.monsterIds ?? [],
-          rewardIds:  n.rewardIds  ?? [],
+          npcIds:     knownRefs(n.npcIds, charIdMap),
+          monsterIds: knownRefs(n.monsterIds, charIdMap),
+          rewardIds:  knownRefs(n.rewardIds, rewardIdMap),
           templateValues: mappedState.values,
           templateValueSources: mappedState.sources,
           generationWarnings: mappedState.warnings,

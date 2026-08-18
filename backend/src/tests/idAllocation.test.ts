@@ -142,6 +142,18 @@ describe('id allocation', () => {
     expect(new Set(ids).size).toBe(4);
   });
 
+  // The manual Allocate button returned the same first-of-pool id on every
+  // click, because nothing is written until the author saves. Successive draws
+  // must differ once the caller reports what it already holds.
+  test('successive draws differ rather than repeating the pool floor', async () => {
+    const seen = new Set<number>();
+    for (let i = 0; i < 8; i += 1) {
+      const { id } = await allocateId({ projectId, type: 'npc', taken: seen });
+      seen.add(id);
+    }
+    expect(seen.size).toBe(8);
+  });
+
   test('spreads across several ranges', async () => {
     const split = await makeProject({ npc: [{ min: 100, max: 101 }, { min: 500, max: 501 }] });
     const { ids } = await allocateIds({ projectId: split, type: 'npc', count: 4 });
