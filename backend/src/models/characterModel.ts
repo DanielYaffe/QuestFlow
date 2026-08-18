@@ -33,6 +33,21 @@ export interface ICharacterAssets {
   spriteHistoryIndex?: number;     // undo/redo cursor into rawSpriteCandidates
 }
 
+export interface IMapleAssetMetadata {
+  mapleId: number;
+  exportEnabled: boolean;
+  operation: 'create' | 'patch';
+  nativePath: string;
+  lastExportHash: string;
+  validationWarnings: string[];
+  validationErrors: string[];
+}
+
+export interface IAssetExportState {
+  lastGenericExportHash: string;
+  lastGenericExportedAt?: Date;
+}
+
 export interface ICharacterSpeciesData {
   species_name: string;
   type1: string;
@@ -74,6 +89,9 @@ export interface ICharacter extends Document {
   // Monster-only
   speciesData: ICharacterSpeciesData;
   assets: ICharacterAssets;
+  customFields: Record<string, unknown>;
+  exportState: IAssetExportState;
+  maple: IMapleAssetMetadata;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -119,6 +137,27 @@ const SpeciesDataSchema = new Schema<ICharacterSpeciesData>(
     base_max_ap:         { type: Number, default: 0 },
     move_tags:           { type: [String], default: [] },
     bestiary_bio:        { type: String, default: '' },
+  },
+  { _id: false },
+);
+
+const MapleAssetMetadataSchema = new Schema<IMapleAssetMetadata>(
+  {
+    mapleId:            { type: Number, default: 0, index: true },
+    exportEnabled:      { type: Boolean, default: false },
+    operation:          { type: String, enum: ['create', 'patch'], default: 'create' },
+    nativePath:         { type: String, default: '' },
+    lastExportHash:     { type: String, default: '' },
+    validationWarnings: { type: [String], default: [] },
+    validationErrors:   { type: [String], default: [] },
+  },
+  { _id: false },
+);
+
+const AssetExportStateSchema = new Schema<IAssetExportState>(
+  {
+    lastGenericExportHash: { type: String, default: '' },
+    lastGenericExportedAt: { type: Date },
   },
   { _id: false },
 );
@@ -179,6 +218,9 @@ const CharacterSchema = new Schema<ICharacter>(
     dialogueTraits: { type: [String], default: [] },
     speciesData:    { type: SpeciesDataSchema, default: () => ({}) },
     assets:         { type: AssetsSchema, default: () => ({}) },
+    customFields:   { type: Schema.Types.Mixed, default: () => ({}) },
+    exportState:    { type: AssetExportStateSchema, default: () => ({}) },
+    maple:          { type: MapleAssetMetadataSchema, default: () => ({}) },
   },
   { timestamps: true },
 );

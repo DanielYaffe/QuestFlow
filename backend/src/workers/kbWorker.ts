@@ -2,7 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { redis } from '../queues/connection';
 import { KbIngestJobData, KbJobData, KB_QUEUE_NAME, KB_RECONCILE_JOB } from '../queues/kbQueue';
 import { ensureCollection, deleteDocumentPoints, upsertPoints } from '../services/qdrant';
-import { buildPoints } from '../services/kbService';
+import { buildPoints, syncCharacterReferencesFromKb } from '../services/kbService';
 import KbDocumentModel from '../models/kbDocumentModel';
 
 // ---------------------------------------------------------------------------
@@ -62,6 +62,11 @@ async function processKbJob(job: Job<KbIngestJobData>): Promise<void> {
   );
   if (updated.matchedCount === 0) {
     await deleteDocumentPoints(gameId, type, docId);
+  } else {
+    // Once the structured source is ready, backfill mapping-relevant fields
+    // (including the canonical entity id) onto any Studio designs already
+    // linked to entities in this document.
+    await syncCharacterReferencesFromKb(doc);
   }
 }
 

@@ -1,6 +1,29 @@
-import { AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, PanelBottom, Loader2, Check, Wand2, Undo2, Redo2 } from 'lucide-react';
+import {
+  AlignHorizontalDistributeCenter,
+  AlignVerticalDistributeCenter,
+  PanelBottom,
+  Loader2,
+  Check,
+  Wand2,
+  Undo2,
+  Redo2,
+  Trash2,
+  Workflow,
+} from 'lucide-react';
+
+type QuestlineOption = {
+  _id: string;
+  title: string;
+};
 
 interface QuestBuilderHeaderProps {
+  questlines: QuestlineOption[];
+  currentQuestlineId: string;
+  currentQuestlineTitle: string;
+  isQuestlineListLoading: boolean;
+  isDeletingQuestline: boolean;
+  onSelectQuestline: (questlineId: string) => void;
+  onDeleteQuestline: () => void;
   onAutoLayout: (direction: 'TB' | 'LR') => void;
   layoutDirection: 'TB' | 'LR';
   isSidebarOpen: boolean;
@@ -16,10 +39,31 @@ interface QuestBuilderHeaderProps {
   hasUnsavedChanges: boolean;
 }
 
-export function QuestBuilderHeader({ onAutoLayout, layoutDirection, isSidebarOpen, onToggleSidebar, onExport, canUndo, canRedo, onUndo, onRedo, isAiEditOpen, onOpenAiEdit, isSaving, hasUnsavedChanges }: QuestBuilderHeaderProps) {
+export function QuestBuilderHeader({
+  questlines,
+  currentQuestlineId,
+  currentQuestlineTitle,
+  isQuestlineListLoading,
+  isDeletingQuestline,
+  onSelectQuestline,
+  onDeleteQuestline,
+  onAutoLayout,
+  layoutDirection,
+  isSidebarOpen,
+  onToggleSidebar,
+  onExport,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  isAiEditOpen,
+  onOpenAiEdit,
+  isSaving,
+  hasUnsavedChanges,
+}: QuestBuilderHeaderProps) {
   return (
-    <header className="bg-steel-850 border-b border-steel-700 px-6 py-4 flex items-center justify-between z-10">
-      <div className="flex items-center gap-3">
+    <header className="bg-steel-850 border-b border-steel-700 px-6 py-4 flex items-center justify-between gap-4 z-10">
+      <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onToggleSidebar}
           title={isSidebarOpen ? 'Hide dock' : 'Show dock'}
@@ -35,9 +79,43 @@ export function QuestBuilderHeader({ onAutoLayout, layoutDirection, isSidebarOpe
           <h1 className="text-steel-100 text-xl">Quest Builder</h1>
           <p className="text-steel-400 text-sm">Design your game quest flow</p>
         </div>
+
+        <div className="ml-4 flex items-center gap-2 min-w-0">
+          <Workflow className="w-4 h-4 text-pulse shrink-0" />
+          <select
+            value={currentQuestlineId}
+            onChange={(event) => onSelectQuestline(event.target.value)}
+            disabled={isQuestlineListLoading || isDeletingQuestline}
+            title="Switch questflow"
+            className="w-64 max-w-[28vw] bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-sm text-steel-100 outline-none focus:border-pulse disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {!questlines.some((q) => q._id === currentQuestlineId) && (
+              <option value={currentQuestlineId}>
+                {currentQuestlineTitle || 'Current questflow'}
+              </option>
+            )}
+            {questlines.map((questline) => (
+              <option key={questline._id} value={questline._id}>
+                {questline.title || 'Untitled questflow'}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={onDeleteQuestline}
+            disabled={isDeletingQuestline || !currentQuestlineId}
+            title="Delete current questflow"
+            className="p-2 rounded-md border border-red-900/70 bg-red-950/30 text-red-300 hover:bg-red-900/40 hover:text-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDeletingQuestline ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+          </button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 shrink-0">
         {/* Undo / redo history */}
         <div className="flex items-center bg-steel-800 border border-steel-600 rounded-lg overflow-hidden">
           <button

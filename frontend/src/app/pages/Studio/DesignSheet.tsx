@@ -33,6 +33,7 @@ import {
   SpritePickerDialog,
   StylePickerDialog,
 } from './StudioDialogs';
+import { CustomFieldsPanel } from './CustomFieldsPanel';
 
 function errorMessage(err: unknown, fallback: string): string {
   if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -160,6 +161,7 @@ export function DesignSheet() {
   }
 
   const isMob = character.kind === 'monster';
+  const backToStudioPath = `/studio?tab=${character.kind}`;
   const style = resolveStyle(styles, character.spriteStyleId);
   const spriteKey = character.assets.snappedSpriteS3Key
     || character.assets.rawSpriteCandidates[character.assets.rawSpriteCandidates.length - 1]
@@ -322,7 +324,7 @@ export function DesignSheet() {
         {/* Header */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/studio')}
+            onClick={() => navigate(backToStudioPath)}
             className="w-8 h-8 flex items-center justify-center bg-steel-850 hover:bg-steel-800 border border-steel-700 text-steel-400 hover:text-steel-100 rounded-md transition-colors cursor-pointer"
             title="Back to studio"
           >
@@ -527,6 +529,18 @@ export function DesignSheet() {
                 </div>
               </div>
             </Section>
+
+            <CustomFieldsPanel
+              assetType={character.kind}
+              assetId={character._id}
+              projectId={character.projectId}
+              schema={activeProject?.assetSchema}
+              value={character.customFields}
+              onSave={async (customFields) => {
+                const fresh = await updateCharacter(character._id, { customFields });
+                applyCharacter(fresh);
+              }}
+            />
 
             {/* Stats — mobs only */}
             {isMob && species && (

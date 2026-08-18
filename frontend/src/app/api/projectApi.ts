@@ -1,4 +1,5 @@
 import api from './axiosInstance';
+import { MapleProjectSettings } from './mapleAssetApi';
 
 export interface ProjectGitSettings {
   repoOwner?: string;
@@ -7,6 +8,71 @@ export interface ProjectGitSettings {
   defaultFilePath?: string;
 }
 
+export interface ProjectGitTarget {
+  id: string;
+  name: string;
+  hasToken?: boolean;
+  token?: string;
+  repoOwner?: string;
+  repoName?: string;
+  defaultBranch?: string;
+  defaultFilePath?: string;
+}
+
+export type AssetFieldType =
+  | 'text'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'object'
+  | 'list'
+  | 'image'
+  | 'enum'
+  | 'reference';
+
+export interface ProjectValuePoolOption {
+  label: string;
+  value: string | number | boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ProjectValueRange {
+  min: number;
+  max: number;
+}
+
+export interface ProjectValuePool {
+  key: string;
+  name: string;
+  description?: string;
+  valueType: 'text' | 'number' | 'boolean';
+  options: ProjectValuePoolOption[];
+  ranges: ProjectValueRange[];
+}
+
+export interface ProjectAssetField {
+  key: string;
+  label: string;
+  type: AssetFieldType;
+  required: boolean;
+  nullable: boolean;
+  description?: string;
+  poolKey?: string;
+  itemType?: AssetFieldType;
+  fields?: ProjectAssetField[];
+}
+
+export interface ProjectAssetTypeSchema {
+  key: string;
+  name: string;
+  description?: string;
+  fields: ProjectAssetField[];
+}
+
+export interface ProjectAssetSchema {
+  assetTypes: ProjectAssetTypeSchema[];
+  valuePools: ProjectValuePool[];
+}
 // Unified project shape — superset of both efforts. The multi-project flow uses
 // name/description/ownerId; the architecture-phase1 flow adds per-project defaults,
 // the Inbox flag, and content counts returned by GET /projects; the export flow
@@ -24,6 +90,11 @@ export interface Project {
   spriteCount?: number;
   characterCount?: number;
   git?: ProjectGitSettings;
+  gitTargets?: ProjectGitTarget[];
+  defaultQuestExportTargetId?: string;
+  defaultAssetExportTargetId?: string;
+  assetSchema?: ProjectAssetSchema;
+  mapleSettings?: MapleProjectSettings;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +107,7 @@ export interface CreateProjectInput {
   description?: string;
   defaultThemeId?: string;
   defaultExportFormat?: string;
+  assetSchema?: ProjectAssetSchema;
 }
 
 export async function fetchProjects(): Promise<Project[]> {
@@ -64,9 +136,21 @@ export async function createProject(
 
 export async function updateProject(
   id: string,
-  patch: Partial<Pick<Project, 'name' | 'description' | 'defaultThemeId' | 'defaultExportFormat' | 'gameId' | 'git'>>,
+  patch: Partial<Pick<Project, 'name' | 'description' | 'defaultThemeId' | 'defaultExportFormat' | 'gameId' | 'git' | 'gitTargets' | 'defaultQuestExportTargetId' | 'defaultAssetExportTargetId' | 'assetSchema' | 'mapleSettings'>>,
 ): Promise<Project> {
   const { data } = await api.put<Project>(`/projects/${id}`, patch);
+  return data;
+}
+
+export async function allocateProjectPoolValue(
+  projectId: string,
+  input: {
+    assetType: string;
+    fieldPath: string[];
+    assetId?: string;
+  },
+): Promise<{ value: string | number | boolean; poolKey: string; fieldPath: string }> {
+  const { data } = await api.post(`/projects/${projectId}/asset-pools/allocate`, input);
   return data;
 }
 

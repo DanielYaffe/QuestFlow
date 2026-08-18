@@ -14,6 +14,81 @@ export interface IProjectGitSettings {
   defaultFilePath?: string;
 }
 
+export interface IProjectGitTarget {
+  id: string;
+  name: string;
+  encryptedToken?: string;
+  repoOwner?: string;
+  repoName?: string;
+  defaultBranch?: string;
+  defaultFilePath?: string;
+}
+
+export interface IMapleIdRange {
+  min: number;
+  max: number;
+}
+
+export type ProjectAssetFieldType =
+  | 'text'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'object'
+  | 'list'
+  | 'image'
+  | 'enum'
+  | 'reference';
+
+export interface IProjectValuePoolOption {
+  label: string;
+  value: string | number | boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface IProjectValuePool {
+  key: string;
+  name: string;
+  description?: string;
+  valueType: 'text' | 'number' | 'boolean';
+  options: IProjectValuePoolOption[];
+  ranges: IMapleIdRange[];
+}
+
+export interface IProjectAssetField {
+  key: string;
+  label: string;
+  type: ProjectAssetFieldType;
+  required: boolean;
+  nullable: boolean;
+  description?: string;
+  poolKey?: string;
+  itemType?: ProjectAssetFieldType;
+  fields?: IProjectAssetField[];
+}
+
+export interface IProjectAssetTypeSchema {
+  key: string;
+  name: string;
+  description?: string;
+  fields: IProjectAssetField[];
+}
+
+export interface IProjectAssetSchema {
+  assetTypes: IProjectAssetTypeSchema[];
+  valuePools: IProjectValuePool[];
+}
+
+export interface IProjectMapleSettings {
+  enabled: boolean;
+  targetVersion: 'v83';
+  defaultExportMode: 'changed-only' | 'full-snapshot';
+  npcIdRanges: IMapleIdRange[];
+  itemIdRanges: IMapleIdRange[];
+  /** Pool that quest ids are drawn from. Quests are ided per node on export. */
+  questIdRanges: IMapleIdRange[];
+}
+
 export interface IProject extends Document {
   _id: mongoose.Types.ObjectId;
   ownerId: string;
@@ -28,6 +103,11 @@ export interface IProject extends Document {
   // Optional GitHub repository this project's questlines export to. The auth
   // token stays shared at the user level.
   git?: IProjectGitSettings;
+  gitTargets: IProjectGitTarget[];
+  defaultQuestExportTargetId: string;
+  defaultAssetExportTargetId: string;
+  assetSchema: IProjectAssetSchema;
+  mapleSettings: IProjectMapleSettings;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,6 +165,103 @@ const ProjectGitSettingsSchema = new Schema<IProjectGitSettings>(
   { _id: false },
 );
 
+const ProjectGitTargetSchema = new Schema<IProjectGitTarget>(
+  {
+    id:              { type: String, required: true },
+    name:            { type: String, required: true },
+    encryptedToken:  { type: String, default: undefined },
+    repoOwner:       { type: String, default: undefined },
+    repoName:        { type: String, default: undefined },
+    defaultBranch:   { type: String, default: 'main' },
+    defaultFilePath: { type: String, default: '' },
+  },
+  { _id: false },
+);
+
+const MapleIdRangeSchema = new Schema<IMapleIdRange>(
+  {
+    min: { type: Number, required: true },
+    max: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
+const ProjectValuePoolOptionSchema = new Schema<IProjectValuePoolOption>(
+  {
+    label:    { type: String, required: true },
+    value:    { type: Schema.Types.Mixed, required: true },
+    metadata: { type: Schema.Types.Mixed, default: undefined },
+  },
+  { _id: false },
+);
+
+const ProjectValuePoolSchema = new Schema<IProjectValuePool>(
+  {
+    key:         { type: String, required: true },
+    name:        { type: String, required: true },
+    description: { type: String, default: '' },
+    valueType:   { type: String, enum: ['text', 'number', 'boolean'], default: 'text' },
+    options:     { type: [ProjectValuePoolOptionSchema], default: [] },
+    ranges:      { type: [MapleIdRangeSchema], default: [] },
+  },
+  { _id: false },
+);
+
+const ProjectAssetFieldSchema = new Schema<IProjectAssetField>(
+  {
+    key:         { type: String, required: true },
+    label:       { type: String, required: true },
+    type:        {
+      type: String,
+      enum: ['text', 'number', 'boolean', 'date', 'object', 'list', 'image', 'enum', 'reference'],
+      required: true,
+    },
+    required:    { type: Boolean, default: false },
+    nullable:    { type: Boolean, default: true },
+    description: { type: String, default: '' },
+    poolKey:     { type: String, default: '' },
+    itemType:    {
+      type: String,
+      enum: ['text', 'number', 'boolean', 'date', 'object', 'list', 'image', 'enum', 'reference'],
+      default: undefined,
+    },
+  },
+  { _id: false },
+);
+ProjectAssetFieldSchema.add({
+  fields: { type: [ProjectAssetFieldSchema], default: [] },
+});
+
+const ProjectAssetTypeSchema = new Schema<IProjectAssetTypeSchema>(
+  {
+    key:         { type: String, required: true },
+    name:        { type: String, required: true },
+    description: { type: String, default: '' },
+    fields:      { type: [ProjectAssetFieldSchema], default: [] },
+  },
+  { _id: false },
+);
+
+const ProjectAssetSchema = new Schema<IProjectAssetSchema>(
+  {
+    assetTypes: { type: [ProjectAssetTypeSchema], default: [] },
+    valuePools: { type: [ProjectValuePoolSchema], default: [] },
+  },
+  { _id: false },
+);
+
+const ProjectMapleSettingsSchema = new Schema<IProjectMapleSettings>(
+  {
+    enabled:            { type: Boolean, default: false },
+    targetVersion:      { type: String, enum: ['v83'], default: 'v83' },
+    defaultExportMode:  { type: String, enum: ['changed-only', 'full-snapshot'], default: 'changed-only' },
+    npcIdRanges:        { type: [MapleIdRangeSchema], default: [] },
+    itemIdRanges:       { type: [MapleIdRangeSchema], default: [] },
+    questIdRanges:      { type: [MapleIdRangeSchema], default: [] },
+  },
+  { _id: false },
+);
+
 const ProjectSchema = new Schema<IProject>(
   {
     ownerId:             { type: String, required: true, index: true },
@@ -95,6 +272,11 @@ const ProjectSchema = new Schema<IProject>(
     gameId:              { type: String, default: '' },
     isInbox:             { type: Boolean, default: false },
     git:                 { type: ProjectGitSettingsSchema, default: undefined },
+    gitTargets:          { type: [ProjectGitTargetSchema], default: [] },
+    defaultQuestExportTargetId: { type: String, default: '' },
+    defaultAssetExportTargetId: { type: String, default: '' },
+    assetSchema:         { type: ProjectAssetSchema, default: () => ({ assetTypes: [], valuePools: [] }) },
+    mapleSettings:       { type: ProjectMapleSettingsSchema, default: () => ({}) },
   },
   { timestamps: true },
 );

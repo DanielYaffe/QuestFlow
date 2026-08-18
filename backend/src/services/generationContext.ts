@@ -16,6 +16,7 @@ export interface ReferenceEntity {
   name: string;
   role?: string;
   type: KbType;
+  fields?: Record<string, unknown>;
 }
 
 // Why the KB did or didn't contribute. Ungrounded generation is the normal case
@@ -101,6 +102,7 @@ const SECTION_LABELS: Record<KbType, string> = {
 };
 
 const MAX_ENTRY_CHARS = 300;
+const MAX_FIELD_CHARS = 80;
 
 // Looser than retrieve()'s 0.5 default: reference material is optional
 // guidance, and a short story premise scores low against entity sheets — a
@@ -116,6 +118,36 @@ function formatChunk(chunk: RetrievedChunk): string {
     return `- ${body}${stage}`;
   }
   return `- (from "${chunk.title}") ${body}`;
+}
+
+function flattenFields(value: unknown, prefix = '', out: Record<string, unknown> = {}): Record<string, unknown> {
+  if (value === null || value === undefined) return out;
+  if (Array.isArray(value)) {
+    out[prefix || 'value'] = value.slice(0, 5);
+    return out;
+  }
+  if (typeof value === 'object') {
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      flattenFields(child, prefix ? `${prefix}.${key}` : key, out);
+    }
+    return out;
+  }
+  out[prefix || 'value'] = value;
+  return out;
+}
+
+function compactFieldValue(value: unknown): unknown {
+  if (typeof value === 'string' && value.length > MAX_FIELD_CHARS) return `${value.slice(0, MAX_FIELD_CHARS)}...`;
+  return value;
+}
+
+function formatCandidate(type: KbType, chunk: RetrievedChunk): string {
+  const fieldEntries = Object.entries(flattenFields(chunk.fields ?? {}))
+    .slice(0, 12)
+    .map(([path, value]) => `${path}: ${JSON.stringify(compactFieldValue(value))}`);
+  const fieldLine = fieldEntries.length ? ` fields={ ${fieldEntries.join(', ')} }` : '';
+  const roleLine = chunk.entityRole ? ` role="${chunk.entityRole}"` : '';
+  return `- kbType="${type}" name="${chunk.entity ?? chunk.title}"${roleLine}${fieldLine}`;
 }
 
 /**
@@ -155,24 +187,33 @@ export async function buildReferenceContext(args: {
   );
 
   const sections: string[] = [];
+  const candidateSections: string[] = [];
   const entities: ReferenceEntity[] = [];
   const seenEntities = new Set<string>();
 
   for (const { type, chunks } of groups) {
     if (chunks.length === 0) continue;
     sections.push(`${SECTION_LABELS[type]}:\n${chunks.map(formatChunk).join('\n')}`);
+    const candidateRows = chunks
+      .filter((chunk) => chunk.entity !== undefined || chunk.fields)
+      .map((chunk) => formatCandidate(type, chunk));
+    if (candidateRows.length) candidateSections.push(`${SECTION_LABELS[type]} candidates:\n${candidateRows.join('\n')}`);
     for (const chunk of chunks) {
       if (chunk.entity === undefined || seenEntities.has(chunk.entity)) continue;
       seenEntities.add(chunk.entity);
-      entities.push({ name: chunk.entity, role: chunk.entityRole, type });
+      entities.push({ name: chunk.entity, role: chunk.entityRole, type, fields: chunk.fields });
     }
   }
 
   if (sections.length === 0) return ungrounded('no-matches', gameRef);
 
+  const candidateBlock = candidateSections.length
+    ? `\n\nSTRUCTURED KB CANDIDATES:\n${candidateSections.join('\n\n')}`
+    : '';
+
   const referenceBlock = `
 REFERENCE MATERIAL (optional) — existing data from this game's world:
-${sections.join('\n\n')}
+${sections.join('\n\n')}${candidateBlock}
 
 You MAY use or take inspiration from the material above, and you may also freely invent new elements that fit this world. When something you need already exists above, prefer referencing the existing entity over re-creating a near-duplicate.${progression ? `\nThis quest is aimed at the ${progression} game, so lean toward references of a fitting difficulty — but this is a preference, not a rule.` : ''}`;
 

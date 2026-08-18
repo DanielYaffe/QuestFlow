@@ -8,10 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../components/ui/dialog';
-import { getGitSettings } from '../../../api/userSettingsApi';
 import { pushToGithub, Format } from '../../../api/questExportApi';
+import { ProjectGitTarget, updateProject } from '../../../api/projectApi';
 import { useProject } from '../../../context/ProjectContext';
-import { updateProject } from '../../../api/projectApi';
 
 interface PushToGithubDialogProps {
   isOpen: boolean;
@@ -23,6 +22,7 @@ interface PushToGithubDialogProps {
 }
 
 interface FormValues {
+  gitTargetId: string;
   repoOwner: string;
   repoName: string;
   branch: string;
@@ -31,61 +31,68 @@ interface FormValues {
   saveAsDefault: boolean;
 }
 
+const EMPTY_TARGETS: ProjectGitTarget[] = [];
+
+function selectDefaultTarget(targets: ProjectGitTarget[], defaultId?: string): ProjectGitTarget | undefined {
+  return targets.find((target) => target.id === defaultId) ?? targets[0];
+}
+
 export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templateId, nodeIds }: PushToGithubDialogProps) {
   const { activeProject, activeProjectId, refreshProjects } = useProject();
-  const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<FormValues>({
-    defaultValues: { repoOwner: '', repoName: '', branch: 'main', filePath: '', commitMessage: 'Update quest', saveAsDefault: false },
+  const targets = activeProject?.gitTargets ?? EMPTY_TARGETS;
+  const { register, handleSubmit, reset, watch, setValue, formState: { isSubmitting } } = useForm<FormValues>({
+    defaultValues: {
+      gitTargetId: '',
+      repoOwner: '',
+      repoName: '',
+      branch: 'main',
+      filePath: '',
+      commitMessage: 'Update quest',
+      saveAsDefault: false,
+    },
   });
+  const selectedTargetId = watch('gitTargetId');
 
   useEffect(() => {
     if (!isOpen) return;
-    // Prefill from the active project's repo first; fall back to the user-level
-    // git settings for legacy single-repo setups.
-    const pg = activeProject?.git;
-    reset((prev) => ({
-      ...prev,
-      repoOwner: pg?.repoOwner || prev.repoOwner,
-      repoName:  pg?.repoName  || prev.repoName,
-      branch:    pg?.defaultBranch   || prev.branch,
-      filePath:  pg?.defaultFilePath || prev.filePath,
+    const target = selectDefaultTarget(targets, activeProject?.defaultQuestExportTargetId);
+    const legacy = activeProject?.git;
+    reset({
+      gitTargetId: target?.id ?? '',
+      repoOwner: target?.repoOwner ?? legacy?.repoOwner ?? '',
+      repoName: target?.repoName ?? legacy?.repoName ?? '',
+      branch: target?.defaultBranch ?? legacy?.defaultBranch ?? 'main',
+      filePath: target?.defaultFilePath ?? legacy?.defaultFilePath ?? '',
+      commitMessage: 'Update quest',
       saveAsDefault: false,
-    }));
-    if (!pg?.repoOwner && !pg?.repoName) {
-      getGitSettings()
-        .then((s) => {
-          reset((prev) => ({
-            ...prev,
-            repoOwner: s.repoOwner || prev.repoOwner,
-            repoName:  s.repoName  || prev.repoName,
-            branch:    s.defaultBranch   || prev.branch,
-            filePath:  s.defaultFilePath || prev.filePath,
-          }));
-        })
-        .catch(() => {});
-    }
-  }, [isOpen, reset, activeProject]);
+    });
+  }, [activeProject, isOpen, reset, targets]);
+
+  useEffect(() => {
+    if (!selectedTargetId) return;
+    const target = targets.find((item) => item.id === selectedTargetId);
+    if (!target) return;
+    setValue('repoOwner', target.repoOwner ?? '');
+    setValue('repoName', target.repoName ?? '');
+    setValue('branch', target.defaultBranch ?? 'main');
+    setValue('filePath', target.defaultFilePath ?? '');
+  }, [selectedTargetId, setValue, targets]);
 
   const onSubmit = async (values: FormValues) => {
     try {
       if (values.saveAsDefault && activeProjectId) {
-        await updateProject(activeProjectId, {
-          git: {
-            repoOwner:       values.repoOwner || undefined,
-            repoName:        values.repoName  || undefined,
-            defaultBranch:   values.branch    || undefined,
-            defaultFilePath: values.filePath  || undefined,
-          },
-        });
+        await updateProject(activeProjectId, { defaultQuestExportTargetId: values.gitTargetId });
         await refreshProjects();
       }
       const res = await pushToGithub(questlineId, {
         format,
         templateId,
         nodeIds,
-        repoOwner:     values.repoOwner || undefined,
-        repoName:      values.repoName  || undefined,
-        branch:        values.branch    || undefined,
-        filePath:      values.filePath  || undefined,
+        gitTargetId: values.gitTargetId || undefined,
+        repoOwner: values.repoOwner || undefined,
+        repoName: values.repoName || undefined,
+        branch: values.branch || undefined,
+        filePath: values.filePath || undefined,
         commitMessage: values.commitMessage || undefined,
       });
       toast.success(res.message);
@@ -106,6 +113,22 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div>
+            <label className="block text-steel-400 text-sm mb-1">Export Target</label>
+            <select
+              {...register('gitTargetId')}
+              className="w-full bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-steel-100 focus:outline-none focus:border-pulse text-sm"
+            >
+              <option value="">Manual repository</option>
+              {targets.map((target) => (
+                <option key={target.id} value={target.id}>{target.name}</option>
+              ))}
+            </select>
+            {targets.length === 0 && (
+              <p className="text-steel-500 text-xs mt-1">Add named targets in Settings to switch between repositories quickly.</p>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-steel-400 text-sm mb-1">Owner</label>
@@ -113,7 +136,7 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
                 type="text"
                 placeholder="my-org"
                 {...register('repoOwner', { required: true })}
-                className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
+                className="w-full bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
             <div>
@@ -122,7 +145,7 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
                 type="text"
                 placeholder="my-game"
                 {...register('repoName', { required: true })}
-                className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
+                className="w-full bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
           </div>
@@ -134,16 +157,16 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
                 type="text"
                 placeholder="main"
                 {...register('branch')}
-                className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
+                className="w-full bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
             <div>
               <label className="block text-steel-400 text-sm mb-1">File Path</label>
               <input
                 type="text"
-                placeholder="Assets/Quests"
+                placeholder="custom_quests"
                 {...register('filePath')}
-                className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
+                className="w-full bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse text-sm"
               />
             </div>
           </div>
@@ -154,31 +177,31 @@ export function PushToGithubDialog({ isOpen, onClose, questlineId, format, templ
               type="text"
               placeholder="Update quest"
               {...register('commitMessage')}
-              className="w-full bg-steel-800 border border-steel-600 rounded-lg px-3 py-2 text-steel-100 placeholder-steel-400 focus:outline-none focus:border-pulse text-sm"
+              className="w-full bg-steel-800 border border-steel-600 rounded-md px-3 py-2 text-steel-100 placeholder-steel-500 focus:outline-none focus:border-pulse text-sm"
             />
           </div>
 
-          <label className="flex items-center gap-2 text-zinc-400 text-sm cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-steel-400 text-sm cursor-pointer select-none">
             <input
               type="checkbox"
               {...register('saveAsDefault')}
-              className="h-4 w-4 rounded border-zinc-700 bg-zinc-800 text-purple-600 focus:ring-purple-500"
+              className="h-4 w-4 rounded border-steel-600 bg-steel-800 text-pulse focus:ring-pulse"
             />
-            Save as this project&apos;s default repository
+            Use this target as the Quest Builder default
           </label>
 
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg transition-colors text-sm"
+              className="px-4 py-2 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-md transition-colors text-sm"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 disabled:opacity-50 text-steel-950 font-semibold rounded-lg transition-colors text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-volt hover:brightness-95 disabled:opacity-50 text-steel-950 font-semibold rounded-md transition-[filter] text-sm"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Github className="w-4 h-4" />}
               {isSubmitting ? 'Pushing...' : 'Push'}

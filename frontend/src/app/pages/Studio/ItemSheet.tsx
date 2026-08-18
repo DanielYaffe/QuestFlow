@@ -31,6 +31,7 @@ import {
   SpritePickerDialog,
   StylePickerDialog,
 } from './StudioDialogs';
+import { CustomFieldsPanel } from './CustomFieldsPanel';
 
 // ---------------------------------------------------------------------------
 // Item design sheet — sprite + identity + publish-to-KB for a studio Item.
@@ -148,6 +149,7 @@ export function ItemSheet() {
   }
 
   const style = resolveStyle(styles, item.spriteStyleId);
+  const backToStudioPath = '/studio?tab=item';
   const spriteKey = item.assets.snappedSpriteS3Key
     || item.assets.rawSpriteCandidates[item.assets.rawSpriteCandidates.length - 1]
     || '';
@@ -236,7 +238,7 @@ export function ItemSheet() {
     try {
       await deleteItem(item._id);
       toast.success('Item deleted');
-      navigate('/studio');
+      navigate(backToStudioPath);
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to delete'));
     }
@@ -290,7 +292,7 @@ export function ItemSheet() {
         {/* Header */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/studio')}
+            onClick={() => navigate(backToStudioPath)}
             className="w-8 h-8 flex items-center justify-center bg-steel-850 hover:bg-steel-800 border border-steel-700 text-steel-400 hover:text-steel-100 rounded-md transition-colors cursor-pointer"
             title="Back to studio"
           >
@@ -434,6 +436,19 @@ export function ItemSheet() {
               </div>
             </div>
           </Section>
+
+          <div className="lg:col-span-2">
+            <CustomFieldsPanel
+              assetType="item"
+              assetId={item._id}
+              projectId={item.projectId}
+              schema={activeProject?.assetSchema}
+              value={item.customFields}
+              onSave={async (customFields) => {
+                applyItem(await updateItem(item._id, { customFields }));
+              }}
+            />
+          </div>
         </div>
       </main>
     </div>

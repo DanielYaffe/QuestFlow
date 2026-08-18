@@ -9,4 +9,5 @@ dist/
 .claude/
 coverage/
 tools/
+docs/plans/
 runpod-build/

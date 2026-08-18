@@ -31,6 +31,8 @@ export interface TestGitConnectionPayload {
   repoOwner: string;
   repoName: string;
   branch?: string;
+  projectId?: string;
+  gitTargetId?: string;
 }
 
 export async function testGitConnection(

@@ -5,6 +5,7 @@ import CharacterModel from '../models/characterModel';
 import ItemModel from '../models/itemModel';
 import ExportTemplateModel from '../models/exportTemplateModel';
 import { resolveProjectId } from '../models/projectModel';
+import { allocateQuestIds } from '../services/questIdAllocation';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
 import { getProjectId } from '../utils/projectScope';
@@ -203,6 +204,8 @@ class QuestlineController extends BaseController {
           rewardIds:  n.rewardIds ?? [],
           exportFields: normalizeExportFields(n.nodeId, n.exportFields, preQuestByNodeId.get(n.nodeId)),
           templateValues: n.templateValues ?? {},
+          templateValueSources: n.templateValueSources ?? {},
+          generationWarnings: n.generationWarnings ?? [],
         },
       }));
 
@@ -229,6 +232,9 @@ class QuestlineController extends BaseController {
         schemaSummary: latestTemplate.schemaSummary,
         analysisStatus: latestTemplate.analysisStatus,
         inferredAiGuidance: latestTemplate.inferredAiGuidance,
+        // Read from the live template, not the frozen snapshot: marking a field
+        // required is meant to take effect on quests that already exist.
+        requiredFieldPaths: latestTemplate.requiredFieldPaths ?? [],
       } : questline.templateSnapshot;
 
       res.json({
@@ -262,15 +268,41 @@ class QuestlineController extends BaseController {
       }
 
       const { nodes, edges } = req.body as {
-        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; exportFields?: Partial<IQuestNodeExportFields>; templateValues?: Record<string, unknown> } }[];
+        nodes: { id: string; type?: string; data: { title: string; body: string; variant?: string; npcIds?: string[]; monsterIds?: string[]; rewardIds?: string[]; exportFields?: Partial<IQuestNodeExportFields>; templateValues?: Record<string, unknown>; templateValueSources?: Record<string, unknown>; generationWarnings?: string[] } }[];
         edges: { id: string; source: string; target: string }[];
       };
 
+      // A node added in the builder arrives with no quest id, and falling back
+      // to its position gave it a number that both sits outside the project's
+      // pool and repeats in every other questline. Allocate for those instead,
+      // excluding the ids this graph already holds so a save never reassigns.
+      const questIdByNodeId = new Map<string, number>();
+      const claimedQuestIds = new Set<number>();
+      for (const node of nodes ?? []) {
+        const existing = node.data.exportFields?.questId;
+        if (existing) {
+          questIdByNodeId.set(node.id, existing);
+          claimedQuestIds.add(existing);
+        }
+      }
+      const unallocated = (nodes ?? []).filter((node) => !questIdByNodeId.has(node.id));
+      if (unallocated.length && questline.projectId) {
+        const ids = await allocateQuestIds({
+          projectId: questline.projectId,
+          count: unallocated.length,
+          taken: claimedQuestIds,
+        });
+        unallocated.forEach((node, index) => {
+          const allocated = ids[index];
+          // No configured pool leaves the old positional id rather than none.
+          questIdByNodeId.set(node.id, allocated || defaultQuestId(node.id));
+        });
+      } else {
+        for (const node of unallocated) questIdByNodeId.set(node.id, defaultQuestId(node.id));
+      }
+
       const incomingPreQuestByNodeId = new Map<string, number[]>();
-      const rawQuestIdByNodeId = new Map<string, number>();
-      (nodes ?? []).forEach((node) => {
-        rawQuestIdByNodeId.set(node.id, node.data.exportFields?.questId ?? defaultQuestId(node.id));
-      });
+      const rawQuestIdByNodeId = questIdByNodeId;
       (edges ?? []).forEach((edge) => {
         const sourceQuestId = rawQuestIdByNodeId.get(edge.source) ?? defaultQuestId(edge.source);
         const current = incomingPreQuestByNodeId.get(edge.target) ?? [];
@@ -306,8 +338,17 @@ class QuestlineController extends BaseController {
             npcIds:     n.data.npcIds     ?? [],
             monsterIds: n.data.monsterIds ?? [],
             rewardIds:  n.data.rewardIds  ?? [],
-            exportFields: normalizeExportFields(n.id, n.data.exportFields, incomingPreQuestByNodeId.get(n.id)),
+            exportFields: normalizeExportFields(
+              n.id,
+              // The allocated id has to be persisted, not just used to build
+              // preQuest — otherwise the node keeps its positional questId while
+              // its successors point at the allocated one.
+              { ...n.data.exportFields, questId: questIdByNodeId.get(n.id) ?? n.data.exportFields?.questId },
+              incomingPreQuestByNodeId.get(n.id),
+            ),
             templateValues: n.data.templateValues ?? {},
+            templateValueSources: n.data.templateValueSources ?? {},
+            generationWarnings: n.data.generationWarnings ?? [],
           })),
           edges: (edges ?? []).map((e) => ({
             edgeId: e.id,

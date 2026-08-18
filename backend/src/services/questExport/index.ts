@@ -2,6 +2,7 @@ import QuestlineModel from '../../models/questlineModel';
 import ExportTemplateModel from '../../models/exportTemplateModel';
 import CharacterModel from '../../models/characterModel';
 import ItemModel from '../../models/itemModel';
+import mongoose from 'mongoose';
 import { buildExportPayload } from './buildExportPayload';
 import { formats } from './formats';
 import { CanonicalNode, ExportFile, Format, ExportResult } from './types';
@@ -347,8 +348,10 @@ export async function exportQuestline(
     throw new Error('Questline not found');
   }
 
-  const characterDocs = await CharacterModel.find({ _id: { $in: questline.characterIds ?? [] } }).lean();
-  const itemDocs = await ItemModel.find({ _id: { $in: questline.itemIds ?? [] } }).lean();
+  const characterIds = (questline.characterIds ?? []).filter((id) => mongoose.isValidObjectId(id));
+  const itemIds = (questline.itemIds ?? []).filter((id) => mongoose.isValidObjectId(id));
+  const characterDocs = await CharacterModel.find({ _id: { $in: characterIds } }).lean();
+  const itemDocs = await ItemModel.find({ _id: { $in: itemIds } }).lean();
   const payload = buildExportPayload(
     questline,
     characterDocs.map((c) => ({ _id: c._id, name: c.name, appearance: c.appearance ?? '', background: c.lore ?? '' })),

@@ -13,13 +13,15 @@ import {
   ProposedDesign,
   materializeAiEditDesigns,
   remapRefs,
+  remapTemplateState,
   requestAiEdit,
+  resolveTemplateMappings,
 } from '../../../api/questAiEditApi';
 import { GroundedBadge } from '../../../components/shared/GroundedBadge';
 import { CharacterPicker } from './CharacterPicker';
-import { TemplateFieldsEditor, getTemplateFieldSchema } from './TemplateFieldsEditor';
+import { TemplateFieldsEditor, getTemplateFieldSchema, unmetRequiredPaths } from './TemplateFieldsEditor';
 
-type AiFieldKey = 'title' | 'body' | 'variant' | 'npcs' | 'monsters' | 'rewards';
+type AiFieldKey = 'title' | 'body' | 'variant' | 'npcs' | 'monsters' | 'rewards' | 'template';
 const AI_FIELD_LABEL: Record<AiFieldKey, string> = {
   title: 'title',
   body: 'description',
@@ -27,6 +29,7 @@ const AI_FIELD_LABEL: Record<AiFieldKey, string> = {
   npcs: 'NPCs',
   monsters: 'monsters',
   rewards: 'rewards',
+  template: 'template fields',
 };
 
 // ---------------------------------------------------------------------------
@@ -42,6 +45,8 @@ export interface NodeSnapshot {
   rewardIds: string[];
   exportFields?: QuestExportFields;
   templateValues?: Record<string, unknown>;
+  templateValueSources?: Record<string, unknown>;
+  generationWarnings?: string[];
 }
 
 interface NodeEditSidebarProps {
@@ -436,6 +441,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
   const [rewardIds,  setRewardIds]  = useState<string[]>([]);
   const [exportFields, setExportFields] = useState<QuestExportFields>(DEFAULT_EXPORT_FIELDS);
   const [templateValues, setTemplateValues] = useState<Record<string, unknown>>({});
+  const [templateValueSources, setTemplateValueSources] = useState<Record<string, unknown>>({});
+  const [generationWarnings, setGenerationWarnings] = useState<string[]>([]);
   const [width,      setWidth]      = useState(DEFAULT_WIDTH);
 
   // Node-scoped "Ask AI" — rewrites this step only; the suggestion lands in the draft
@@ -463,6 +470,9 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
   const startX   = useRef(0);
   const startW   = useRef(DEFAULT_WIDTH);
   const attachedRef = useRef<string | null>(null);
+  // The cast the mapped template fields currently reflect. null until the node's
+  // own values are loaded, so opening a node never rewrites it on its own.
+  const resolvedRefsKey = useRef<string | null>(null);
 
   // Populate fields when node changes
   useEffect(() => {
@@ -475,14 +485,58 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       setRewardIds(node.rewardIds ?? []);
       setExportFields(normalizeExportFields(node.exportFields));
       setTemplateValues(node.templateValues ?? {});
+      setTemplateValueSources(node.templateValueSources ?? {});
+      setGenerationWarnings(node.generationWarnings ?? []);
       setPhase('edit');
       setAiInstruction('');
       setAiError(null);
       setAiFields([]);
       setPendingDesigns([]);
       setGrounding(null);
+      resolvedRefsKey.current = null;
     }
   }, [node]);
+
+  // Mapped template fields follow the node's cast. Generation and AI edits run
+  // the mapper server-side; attaching a design by hand is the third way the cast
+  // changes, so it goes through the same endpoint instead of a second
+  // implementation here. Fields the author typed are marked manual and survive.
+  useEffect(() => {
+    if (!isOpen || !node || !questlineId) return;
+    const key = JSON.stringify([
+      [...npcIds].sort(),
+      [...monsterIds].sort(),
+      [...rewardIds].sort(),
+    ]);
+    // First pass after a node loads only records what it already reflects —
+    // re-resolving there would mark an untouched node as changed.
+    if (resolvedRefsKey.current === null) {
+      resolvedRefsKey.current = key;
+      return;
+    }
+    if (resolvedRefsKey.current === key) return;
+    resolvedRefsKey.current = key;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const state = await resolveTemplateMappings(questlineId, {
+          npcIds,
+          monsterIds,
+          rewardIds,
+          templateValues,
+          templateValueSources,
+        });
+        if (cancelled) return;
+        setTemplateValues(state.values);
+        setTemplateValueSources(state.sources);
+        setGenerationWarnings(state.warnings);
+      } catch {
+        // Mapping is an enrichment — leave the draft exactly as the author left it.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, node, questlineId, npcIds, monsterIds, rewardIds, templateValues, templateValueSources]);
 
   // Fetch project characters + project items when sidebar opens. Both pickers pull
   // from the project (the design source of truth), not just this questline — picking
@@ -570,7 +624,9 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       !arraysEqual([...monsterIds].sort(), [...(node.monsterIds ?? [])].sort()) ||
       !arraysEqual([...rewardIds].sort(),  [...(node.rewardIds ?? [])].sort()) ||
       !exportFieldsEqual(exportFields, node.exportFields) ||
-      !templateValuesEqual(templateValues, node.templateValues)
+      !templateValuesEqual(templateValues, node.templateValues) ||
+      JSON.stringify(templateValueSources) !== JSON.stringify(node.templateValueSources ?? {}) ||
+      JSON.stringify(generationWarnings) !== JSON.stringify(node.generationWarnings ?? [])
     );
 
   // Ask the AI to rewrite THIS step only, then drop its suggestion into the draft
@@ -622,6 +678,16 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
         setPendingDesigns(entities ?? []);
       }
 
+      if (change.templateState) {
+        const currentState = { values: templateValues, sources: templateValueSources, warnings: generationWarnings };
+        if (JSON.stringify(change.templateState) !== JSON.stringify(currentState)) {
+          setTemplateValues(change.templateState.values);
+          setTemplateValueSources(change.templateState.sources);
+          setGenerationWarnings(change.templateState.warnings);
+          touched.push('template');
+        }
+      }
+
       if (touched.length === 0) {
         toast('No changes suggested', { description: 'The AI returned the same content for this step.' });
         return;
@@ -638,7 +704,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
     } finally {
       setAiLoading(false);
     }
-  }, [node, nodeId, aiLoading, questlineId, nodes, edges, title, body, variant, npcIds, monsterIds, rewardIds]);
+  }, [node, nodeId, aiLoading, questlineId, nodes, edges, title, body, variant, npcIds, monsterIds, rewardIds, templateValues, templateValueSources, generationWarnings]);
 
   const handleClose = () => { setPhase('edit'); onClose(); };
 
@@ -648,6 +714,11 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
   const handleApply = async () => {
     if (applying) return;
     let refs = { npcIds, monsterIds, rewardIds };
+    let finalTemplateState = {
+      values: templateValues,
+      sources: templateValueSources,
+      warnings: generationWarnings,
+    };
     const needed = pendingDesigns.filter((d) =>
       [...npcIds, ...monsterIds, ...rewardIds].includes(d.tempId),
     );
@@ -657,6 +728,7 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       try {
         const { ids } = await materializeAiEditDesigns(questlineId, needed);
         refs = remapRefs(refs, ids);
+        finalTemplateState = remapTemplateState(finalTemplateState, ids);
       } catch {
         toast('Couldn’t create the new designs', {
           description: 'Nothing was changed — please try again.',
@@ -667,7 +739,16 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
       }
     }
 
-    onApply({ title: title.trim(), body: body.trim(), variant, ...refs, exportFields, templateValues });
+    onApply({
+      title: title.trim(),
+      body: body.trim(),
+      variant,
+      ...refs,
+      exportFields,
+      templateValues: finalTemplateState.values,
+      templateValueSources: finalTemplateState.sources,
+      generationWarnings: finalTemplateState.warnings,
+    });
     setPhase('edit');
     onClose();
   };
@@ -687,6 +768,8 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
     || pendingDesigns.find((d) => d.tempId === id)?.kbRef
     || undefined;
   const templateFieldSchema = getTemplateFieldSchema(template);
+  // Fields the template author marked must-fill that this node leaves empty.
+  const unmetRequired = unmetRequiredPaths(template, templateValues);
 
   return (
     <AnimatePresence>
@@ -876,6 +959,20 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                   loading={!rewardsLoaded}
                 />
 
+                {unmetRequired.length > 0 && (
+                  <div className="rounded-lg border border-red-800/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
+                    <p className="font-medium">
+                      {unmetRequired.length} required template field{unmetRequired.length === 1 ? '' : 's'} still empty
+                    </p>
+                    <ul className="mt-1 space-y-0.5 font-mono text-[11px] text-red-300/80">
+                      {unmetRequired.slice(0, 6).map((path) => <li key={path}>{path}</li>)}
+                    </ul>
+                    {unmetRequired.length > 6 && (
+                      <p className="mt-1 text-red-300/70">and {unmetRequired.length - 6} more</p>
+                    )}
+                  </div>
+                )}
+
                 {templateFieldSchema.length > 0 && (
                   <TemplateFieldsEditor
                     template={template ?? null}
@@ -883,8 +980,11 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                     title={title}
                     exportFields={exportFields}
                     templateValues={templateValues}
+                    templateValueSources={templateValueSources}
+                    generationWarnings={generationWarnings}
                     onExportFieldsChange={setExportFields}
                     onTemplateValuesChange={setTemplateValues}
+                    onTemplateValueSourcesChange={setTemplateValueSources}
                   />
                 )}
 
@@ -1098,6 +1198,12 @@ export function NodeEditSidebar({ isOpen, node, questlineId, projectId, nodeId, 
                   getKbRef={getKbRef}
                   changed={!arraysEqual([...rewardIds].sort(), [...(node.rewardIds ?? [])].sort())}
                 />
+
+                {!templateValuesEqual(templateValues, node.templateValues) && (
+                  <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-300">
+                    Template mappings updated for this node.
+                  </div>
+                )}
 
                 <div className="pt-2 border-t border-steel-700 flex gap-3 mt-auto">
                   <button

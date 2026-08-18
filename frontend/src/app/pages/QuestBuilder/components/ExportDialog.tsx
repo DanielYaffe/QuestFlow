@@ -62,8 +62,9 @@ export function ExportDialog({ isOpen, onClose, questlineId, initialSelectedNode
           });
           setFilename(result.filename);
           setContent(result.content);
-        } catch {
-          setError('Failed to generate preview. Please try again.');
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Failed to generate preview';
+          setError(`Failed to generate preview: ${message}`);
         } finally {
           setIsLoading(false);
         }

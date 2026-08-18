@@ -1,4 +1,5 @@
 import api from './axiosInstance';
+import axios from 'axios';
 
 export type Format =
   | 'questflow-json'
@@ -20,10 +21,17 @@ export async function previewExport(
   format: Format,
   options: { templateId?: string; nodeIds?: string[] } = {},
 ): Promise<{ filename: string; content: string; files?: { filename: string; content: string }[] }> {
-  const { data } = await api.get(`/questlines/${questlineId}/export/preview`, {
-    params: { format, templateId: options.templateId, nodeIds: options.nodeIds?.join(',') },
-  });
-  return data;
+  try {
+    const { data } = await api.get(`/questlines/${questlineId}/export/preview`, {
+      params: { format, templateId: options.templateId, nodeIds: options.nodeIds?.join(',') },
+    });
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError<{ error?: string }>(error)) {
+      throw new Error(error.response?.data?.error ?? 'Failed to generate preview');
+    }
+    throw error;
+  }
 }
 
 export async function downloadExport(
@@ -77,6 +85,7 @@ function getExtension(format: Format): string {
 
 export interface PushToGithubPayload {
   format: Format;
+  gitTargetId?: string;
   templateId?: string;
   nodeIds?: string[];
   repoOwner?: string;

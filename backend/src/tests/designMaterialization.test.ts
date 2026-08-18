@@ -1,13 +1,16 @@
 import mongoose from 'mongoose';
-import { describe, expect, test, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { describe, expect, jest, test, beforeAll, afterAll, beforeEach } from '@jest/globals';
 import initApp from '../server';
 import CharacterModel from '../models/characterModel';
 import ItemModel from '../models/itemModel';
 import { materializeDesigns, ProposedDesign } from '../services/designMaterialization';
+import KbDocumentModel from '../models/kbDocumentModel';
+import { qdrant } from '../services/qdrant';
 
 const OWNER = 'owner-materialize-test';
 const PROJECT = 'project-materialize-test';
 const GAME = 'game123';
+const VALID_GAME = '507f1f77bcf86cd799439011';
 
 const propose = (p: Partial<ProposedDesign> & { tempId: string; name: string }): ProposedDesign => ({
   kind: 'npc',
@@ -34,10 +37,69 @@ beforeEach(async () => {
 afterAll(async () => {
   await CharacterModel.deleteMany({ projectId: PROJECT });
   await ItemModel.deleteMany({ projectId: PROJECT });
+  await KbDocumentModel.deleteMany({ gameId: VALID_GAME });
   await mongoose.connection.close();
 });
 
 describe('materializeDesigns — creating', () => {
+  test('copies exact KB fields and the canonical id into a materialized Studio character', async () => {
+    const kbDoc = await KbDocumentModel.create({
+      gameId: VALID_GAME,
+      type: 'characters',
+      title: 'NPCs',
+      originalText: '## Elder Maru\nid: 9001\nfaction: Council',
+      status: 'ready',
+    });
+
+    try {
+      const { ids } = await run([
+        propose({ tempId: 'ent-kb', name: 'Elder Maru', kbRef: 'Elder Maru' }),
+      ], VALID_GAME);
+      const doc = await CharacterModel.findById(ids['ent-kb']);
+      // The KB's own attributes land on the design as-is; nothing invents a
+      // separate identity field beside them.
+      expect(doc?.customFields).toMatchObject({ id: 9001, faction: 'Council' });
+    } finally {
+      await KbDocumentModel.deleteOne({ _id: kbDoc._id });
+    }
+  });
+
+  // The observed production failure: a document re-uploaded with richer fields
+  // leaves the old vector payload in place until a re-embed runs, so the payload
+  // has no id at all. Identity comes from the document, so this still resolves.
+  test('reads the canonical id from the source document, not a stale vector payload', async () => {
+    const kbDoc = await KbDocumentModel.create({
+      gameId: VALID_GAME,
+      type: 'characters',
+      title: 'NPCs',
+      originalText: JSON.stringify([{ name: 'FortySeven', id: 2000, kind: 'npc' }]),
+      status: 'ready',
+    });
+    const scroll = jest.spyOn(qdrant, 'scroll').mockResolvedValue({
+      points: [{
+        id: 'stale-point',
+        payload: {
+          entity: 'FortySeven',
+          docId: String(kbDoc._id),
+          // What the live KB actually holds: embedded before ids existed.
+          fields: { kind: 'npc', summary: 'FortySeven is an NPC.' },
+        },
+      }],
+      next_page_offset: null,
+    } as Awaited<ReturnType<typeof qdrant.scroll>>);
+
+    try {
+      const { ids } = await run([
+        propose({ tempId: 'ent-stale', name: 'FortySeven', kbRef: 'FortySeven' }),
+      ], VALID_GAME);
+      const doc = await CharacterModel.findById(ids['ent-stale']);
+      expect(doc?.customFields).toMatchObject({ id: 2000 });
+    } finally {
+      scroll.mockRestore();
+      await KbDocumentModel.deleteOne({ _id: kbDoc._id });
+    }
+  });
+
   test('creates a character and stamps the KB provenance tag', async () => {
     const { ids, designs } = await run([
       propose({ tempId: 'ent-1', kind: 'monster', name: 'Balrog', appearance: 'shadow and flame', lore: 'ancient terror', kbRef: 'Balrog' }),
@@ -171,6 +233,6 @@ describe('materializeDesigns — linking instead of duplicating', () => {
 
   test('an empty proposal list touches nothing', async () => {
     const result = await run([]);
-    expect(result).toEqual({ ids: {}, designs: [] });
+    expect(result).toEqual({ ids: {}, designs: [], allocationWarnings: [] });
   });
 });

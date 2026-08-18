@@ -11,6 +11,7 @@ export interface RetrievedChunk {
   // Present only on points written by the structured (per-entity) ingest path.
   entity?: string;
   entityRole?: string;
+  fields?: Record<string, unknown>;
   difficulty?: number;
   difficultyBucket?: DifficultyBucket;
 }
@@ -43,6 +44,8 @@ function field<T>(payload: unknown, key: string, is: (v: unknown) => v is T): T 
 }
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
 const isBucket = (v: unknown): v is DifficultyBucket =>
   v === 'early' || v === 'mid' || v === 'late';
 
@@ -85,6 +88,7 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrievedChunk[]>
       title: readyTitles.get(docId) ?? '',
       entity: field(r.payload, 'entity', isStr),
       entityRole: field(r.payload, 'entityRole', isStr),
+      fields: field(r.payload, 'fields', isRecord),
       difficulty: field(r.payload, 'difficulty', isNum),
       difficultyBucket: field(r.payload, 'difficultyBucket', isBucket),
     }];

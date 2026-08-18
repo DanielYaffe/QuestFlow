@@ -32,6 +32,7 @@ const isScalar = (v: unknown): v is string | number | boolean =>
 // --- entity extraction ------------------------------------------------------
 
 const NAME_KEYS = ['name', 'title', 'id'];
+const LABEL_KEYS = ['name', 'title'];
 const ROLE_KEYS = ['role', 'kind'];
 
 function readName(entry: Record<string, unknown>): string | undefined {
@@ -162,6 +163,34 @@ function extractMarkdownEntities(text: string): RawEntity[] | null {
   });
 }
 
+// --- canonical entity id ------------------------------------------------------
+
+/**
+ * Field names a source collection may use for an entity's canonical id, most
+ * specific first. This is the one place that decides what "the id" means, so
+ * ingestion, materialization, and mapping cannot drift apart on it — they did,
+ * each carrying its own slightly different copy of this list.
+ *
+ * It is a list of *aliases*, not a schema: nothing here assumes a particular
+ * game or export template. A KB that names the field something else is still
+ * mapped correctly through an explicit `kbFieldPath` — this is only the fallback
+ * used when code has to find the id on its own.
+ */
+export const ENTITY_ID_KEYS = [
+  'id', 'mapleId', 'maple_id', 'npcId', 'npc_id', 'mobId', 'mob_id', 'itemId', 'item_id',
+] as const;
+
+/** The entity's canonical id, or 0 when none of the known aliases carries one. */
+export function canonicalEntityId(fields: Record<string, unknown> | undefined): number {
+  if (!fields) return 0;
+  for (const key of ENTITY_ID_KEYS) {
+    const value = fields[key];
+    if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim());
+  }
+  return 0;
+}
+
 // --- stat heuristics & progression ------------------------------------------
 
 const STAT_GROUPS: { group: string; pattern: RegExp; weight: number }[] = [
@@ -250,7 +279,7 @@ function formatValue(value: unknown): string {
 export function entityText(name: string, role: string | undefined, entry: Record<string, unknown>): string {
   const lines: string[] = [role ? `${name} (${role})` : name];
   for (const [key, value] of Object.entries(entry)) {
-    if (NAME_KEYS.includes(key) || ROLE_KEYS.includes(key)) continue;
+    if (LABEL_KEYS.includes(key) || ROLE_KEYS.includes(key)) continue;
     const formatted = formatValue(value);
     if (formatted) lines.push(`${key}: ${formatted}`);
   }
@@ -280,7 +309,7 @@ export function parseCollectionFile(text: string): ParsedEntity[] | null {
   return raw.map(({ name, entry }, i) => {
     const role = readRole(entry);
     const fields = Object.fromEntries(
-      Object.entries(entry).filter(([key]) => !NAME_KEYS.includes(key)),
+      Object.entries(entry).filter(([key]) => !LABEL_KEYS.includes(key)),
     );
     const difficulty = difficulties[i];
     return {

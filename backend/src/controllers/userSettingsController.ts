@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import UserModel from '../models/userModel';
+import ProjectModel from '../models/projectModel';
 import { encrypt, decrypt } from '../utils/encryption';
 import { verifyRepoAccess } from '../services/githubService';
 
@@ -44,7 +45,14 @@ export async function updateGitSettings(req: AuthRequest, res: Response) {
 
     if (!user.gitSettings) user.gitSettings = {};
 
-    if (token) user.gitSettings.encryptedToken = encrypt(token);
+    if (token) {
+      try {
+        user.gitSettings.encryptedToken = encrypt(token);
+      } catch {
+        res.status(400).json({ error: 'Could not encrypt GitHub token. Check ENCRYPTION_KEY.' });
+        return;
+      }
+    }
     if (repoOwner       !== undefined) user.gitSettings.repoOwner       = repoOwner;
     if (repoName        !== undefined) user.gitSettings.repoName        = repoName;
     if (defaultBranch   !== undefined) user.gitSettings.defaultBranch   = defaultBranch;
@@ -72,11 +80,13 @@ export async function updateGitSettings(req: AuthRequest, res: Response) {
 // saved one, so the user can test before saving a new token.
 export async function testGitConnection(req: AuthRequest, res: Response) {
   const userId = req.user?._id;
-  const { token: bodyToken, repoOwner, repoName, branch } = req.body as {
+  const { token: bodyToken, repoOwner, repoName, branch, projectId, gitTargetId } = req.body as {
     token?: string;
     repoOwner?: string;
     repoName?: string;
     branch?: string;
+    projectId?: string;
+    gitTargetId?: string;
   };
 
   const owner = repoOwner?.trim();
@@ -90,11 +100,20 @@ export async function testGitConnection(req: AuthRequest, res: Response) {
     let token = bodyToken?.trim();
     if (!token) {
       const user = await UserModel.findById(userId).select('gitSettings');
-      if (!user?.gitSettings?.encryptedToken) {
-        res.status(400).json({ error: 'No GitHub token saved. Add one above first.' });
+      if (projectId && gitTargetId) {
+        const project = await ProjectModel.findOne({ _id: projectId, ownerId: userId }).select('gitTargets');
+        const target = project?.gitTargets?.find((item) => item.id === gitTargetId);
+        if (target?.encryptedToken) {
+          token = decrypt(target.encryptedToken);
+        }
+      }
+      if (!token && user?.gitSettings?.encryptedToken) {
+        token = decrypt(user.gitSettings.encryptedToken);
+      }
+      if (!token) {
+        res.status(400).json({ error: 'No GitHub token saved. Add one to this target or above first.' });
         return;
       }
-      token = decrypt(user.gitSettings.encryptedToken);
     }
 
     await verifyRepoAccess({ token, owner, repo, branch: branch?.trim() || undefined });

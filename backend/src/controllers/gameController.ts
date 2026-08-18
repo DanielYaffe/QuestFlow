@@ -13,18 +13,19 @@ import { KB_TYPES, KbType } from '../services/qdrant';
 // ---------------------------------------------------------------------------
 
 const kbTypeSchema = z.enum(KB_TYPES as [KbType, ...KbType[]]);
+const KB_TEXT_MAX_CHARS = 50_000_000;
 
 const ingestSchema = z.object({
   type: kbTypeSchema,
   title: z.string().trim().min(1).max(200),
-  text: z.string().min(1).max(1_000_000),
+  text: z.string().min(1).max(KB_TEXT_MAX_CHARS),
   sourceFilename: z.string().max(300).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const editSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
-  text: z.string().min(1).max(1_000_000).optional(),
+  text: z.string().min(1).max(KB_TEXT_MAX_CHARS).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 

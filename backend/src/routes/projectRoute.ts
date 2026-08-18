@@ -82,6 +82,8 @@ projectRouter.get('/:id/rewards', projectController.getRewards.bind(projectContr
 
 projectRouter.get('/:id', projectController.getById.bind(projectController));
 
+projectRouter.post('/:id/asset-pools/allocate', projectController.allocateAssetPoolValue.bind(projectController));
+
 /**
  * @swagger
  * /projects:

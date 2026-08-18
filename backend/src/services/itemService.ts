@@ -51,6 +51,8 @@ export async function createItem(input: {
   description?: string;
   rarity?: ItemRarity;
   tags?: string[];
+  customFields?: Record<string, unknown>;
+  maple?: IItem['maple'];
   // KB provenance tag ("{gameId}:{entityName}") when this item is materialized
   // from a knowledge-base entity. '' = not KB-linked.
   kbRef?: string;
@@ -62,7 +64,10 @@ export async function createItem(input: {
     description: input.description ?? '',
     rarity: input.rarity ?? 'common',
     tags: input.tags ?? [],
+    customFields: input.customFields ?? {},
+    ...(input.maple ? { maple: input.maple } : {}),
     kbRef: input.kbRef ?? '',
+    ...(input.maple ? { maple: input.maple } : {}),
   });
 }
 
@@ -76,6 +81,8 @@ export async function updateItem(
     tags?: string[];
     spriteStyleId?: string;
     assets?: IItem['assets'];
+    customFields?: IItem['customFields'];
+    maple?: IItem['maple'];
   },
 ): Promise<IItem> {
   const item = await findOwnedItem(ownerId, itemId);
@@ -87,6 +94,14 @@ export async function updateItem(
   if (patch.assets !== undefined) {
     item.assets = patch.assets;
     item.markModified('assets');
+  }
+  if (patch.customFields !== undefined) {
+    item.customFields = patch.customFields;
+    item.markModified('customFields');
+  }
+  if (patch.maple !== undefined) {
+    item.maple = { ...item.maple, ...patch.maple };
+    item.markModified('maple');
   }
   await item.save();
   return item;

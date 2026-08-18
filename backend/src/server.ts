@@ -21,6 +21,8 @@ import userSettingsRouter from "./routes/userSettingsRoute";
 import exportTemplateRouter from "./routes/exportTemplateRoute";
 import gameRouter from "./routes/gameRoute";
 import adminRouter from "./routes/adminRoute";
+import mapleAssetRouter from "./routes/mapleAssetRoute";
+import assetPackageRouter from "./routes/assetPackageRoute";
 import { seedQuestStyles } from "./models/questStyleModel";
 import { seedBaseVariants } from "./models/nodeVariantConfigModel";
 import { seedThemes } from "./models/seedThemes";
@@ -42,8 +44,8 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customSiteTitle: 'QuestFlow API Documentation'
 }));
 
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cors())
 
 app.use('/auth', authRouter);
@@ -64,6 +66,8 @@ app.use('/users', userSettingsRouter);
 app.use('/export-templates', exportTemplateRouter);
 app.use('/games', gameRouter);
 app.use('/admin', adminRouter);
+app.use('/asset-packages', assetPackageRouter);
+app.use('/maple-assets', mapleAssetRouter);
 
 const db = mongoose.connection;
 db.on("error", (error) => console.error(error));

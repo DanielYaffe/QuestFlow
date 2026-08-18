@@ -13,6 +13,9 @@ import {
 } from '../../api/gameApi';
 import { TYPE_LABELS, FORMAT_HELP, ACCEPTED_FORMATS } from './kbContent';
 
+const MAX_KB_FILE_BYTES = 50 * 1024 * 1024;
+const MAX_KB_FILE_LABEL = '50 MB';
+
 // Full-page knowledge-base document editor.
 //   #/games/:gameId/docs/new     — create (drag-drop a file or paste text)
 //   #/games/:gameId/docs/:docId  — edit an existing document
@@ -59,8 +62,8 @@ export function KbDocumentEditor() {
   }, [isEdit, gameId, docId, navigate]);
 
   const handleFile = (file: File) => {
-    if (file.size > 1_000_000) {
-      toast.error('File too large (max 1 MB)');
+    if (file.size > MAX_KB_FILE_BYTES) {
+      toast.error(`File too large (max ${MAX_KB_FILE_LABEL})`);
       return;
     }
     const reader = new FileReader();

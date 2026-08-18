@@ -17,6 +17,21 @@ export interface IItemAssets {
   spriteHistoryIndex?: number;   // undo/redo cursor into rawSpriteCandidates
 }
 
+export interface IMapleAssetMetadata {
+  mapleId: number;
+  exportEnabled: boolean;
+  operation: 'create' | 'patch';
+  nativePath: string;
+  lastExportHash: string;
+  validationWarnings: string[];
+  validationErrors: string[];
+}
+
+export interface IAssetExportState {
+  lastGenericExportHash: string;
+  lastGenericExportedAt?: Date;
+}
+
 export interface IItem extends Document {
   _id: mongoose.Types.ObjectId;
   ownerId: string;
@@ -32,6 +47,9 @@ export interface IItem extends Document {
   // Sprite style this design generates in (SpriteStyle.styleId). '' = unset.
   spriteStyleId: string;
   assets: IItemAssets;
+  customFields: Record<string, unknown>;
+  exportState: IAssetExportState;
+  maple: IMapleAssetMetadata;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +59,27 @@ const ItemAssetsSchema = new Schema<IItemAssets>(
     rawSpriteCandidates: { type: [String], default: [] },
     snappedSpriteS3Key:  { type: String, default: '' },
     spriteHistoryIndex:  { type: Number },
+  },
+  { _id: false },
+);
+
+const MapleAssetMetadataSchema = new Schema<IMapleAssetMetadata>(
+  {
+    mapleId:            { type: Number, default: 0, index: true },
+    exportEnabled:      { type: Boolean, default: false },
+    operation:          { type: String, enum: ['create', 'patch'], default: 'create' },
+    nativePath:         { type: String, default: '' },
+    lastExportHash:     { type: String, default: '' },
+    validationWarnings: { type: [String], default: [] },
+    validationErrors:   { type: [String], default: [] },
+  },
+  { _id: false },
+);
+
+const AssetExportStateSchema = new Schema<IAssetExportState>(
+  {
+    lastGenericExportHash: { type: String, default: '' },
+    lastGenericExportedAt: { type: Date },
   },
   { _id: false },
 );
@@ -57,6 +96,9 @@ const ItemSchema = new Schema<IItem>(
     kbDocId:     { type: String, default: '' },
     spriteStyleId: { type: String, default: '' },
     assets:      { type: ItemAssetsSchema, default: () => ({}) },
+    customFields: { type: Schema.Types.Mixed, default: () => ({}) },
+    exportState: { type: AssetExportStateSchema, default: () => ({}) },
+    maple:       { type: MapleAssetMetadataSchema, default: () => ({}) },
   },
   { timestamps: true },
 );

@@ -10,6 +10,7 @@ import NodeVariantConfigModel, { BASE_VARIANT_SEEDS } from '../models/nodeVarian
 import GameThemeModel, { IGameTheme } from '../models/gameThemeModel';
 import ThemeConfigModel from '../models/themeConfigModel';
 import ExportTemplateModel from '../models/exportTemplateModel';
+import TemplateKbMappingModel, { ITemplateKbMappingEntry } from '../models/templateKbMappingModel';
 import { resolveProjectId } from '../models/projectModel';
 import { complete } from '../services/ai';
 import { hasGenApiKey } from '../config/ai';
@@ -27,6 +28,17 @@ import {
 } from '../services/designMaterialization';
 import { ownsGame } from '../services/gameService';
 import { DifficultyBucket } from '../services/structuredParse';
+import { buildFallbackDialogPages } from '../services/templateDialogFallback';
+import { allocateQuestIds } from '../services/questIdAllocation';
+import {
+  applyEntityMappings,
+  buildMappedEntityPromptBlock,
+  enrichMappedEntitySeeds,
+  loadMappedProjectEntities,
+  MappedEntitySeed,
+  NormalizedMappedEntity,
+  questGiverRefId,
+} from '../services/templateEntityMappingService';
 
 const BASE_VARIANT_KEYS = new Set(BASE_VARIANT_SEEDS.map((s) => s.key));
 
@@ -202,6 +214,11 @@ type TemplateGenerationContractForPrompt = {
   userExamples?: string[];
 };
 
+type TemplateKbMappingForPrompt = Pick<
+  ITemplateKbMappingEntry,
+  'templatePath' | 'kbType' | 'kbFieldPath' | 'valueType' | 'purpose' | 'explanation'
+>;
+
 interface TemplateFieldForGeneration {
   path: string;
   label?: string;
@@ -256,7 +273,7 @@ function compactGenerationContract(contract?: TemplateGenerationContractForPromp
   };
 }
 
-function buildTemplateGraphGuidance(template?: TemplateContext): string {
+function buildTemplateGraphGuidance(template?: TemplateContext, mappings: TemplateKbMappingForPrompt[] = []): string {
   if (!template) return '';
   const fields = Array.isArray(template.templateSchema?.editableFields)
     ? template.templateSchema.editableFields
@@ -277,6 +294,8 @@ ${contract?.promptSummary ?? template.schemaSummary?.structureSummary ?? templat
 Template semantic hints and relationships:
 ${JSON.stringify(compactGenerationContract(contract), null, 2)}
 
+${buildTemplateKbMappingGuidance(mappings)}
+
 Dialog-capable fields:
 ${dialogFields.length ? JSON.stringify(dialogFields.map(compactTemplateField), null, 2) : '[]'}
 
@@ -294,7 +313,8 @@ Template value rules:
 - Use fieldHints and generationHints to decide what each field means and when to fill it.
 - Treat userExamples as high-priority corrections to the template interpretation.
 - Do not copy placeholder IDs or text from the template. Create dialog prompts that match the node title/body and the story.
-- Only fill requirement/reward fields when the chosen field path clearly matches the node's purpose. Leave manual ID fields empty unless reference material gives an exact ID.
+- Only fill requirement/reward fields when the chosen field path clearly matches the node's purpose.
+- For validated mapped fields, use exact values from STRUCTURED KB CANDIDATES. Leave a mapped field empty when no candidate is available.
 `;
 }
 
@@ -320,6 +340,139 @@ function buildInitialTemplateValues(
   return values;
 }
 
+function hasFilledTemplateValue(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function buildTemplateValueSourceMetadata(
+  values: Record<string, unknown>,
+  mappings: TemplateKbMappingForPrompt[],
+): Record<string, unknown> {
+  const mappedPaths = new Map(mappings.map((mapping) => [mapping.templatePath, mapping]));
+  const sources: Record<string, unknown> = {};
+  for (const mapping of mappings) {
+    const parsed = parseArrayItemPath(mapping.templatePath);
+    const parentValue = parsed ? values[parsed.arrayPath] : undefined;
+    const filled = parsed
+      ? Array.isArray(parentValue) && parentValue.some((row: unknown) => (
+        row && typeof row === 'object' && !Array.isArray(row) && hasFilledTemplateValue((row as Record<string, unknown>)[parsed.itemPath])
+      ))
+      : hasFilledTemplateValue(values[mapping.templatePath]);
+    if (!filled) continue;
+    sources[mapping.templatePath] = {
+      source: 'kbMapping',
+      kbType: mapping.kbType,
+      kbFieldPath: mapping.kbFieldPath,
+      purpose: mapping.purpose,
+    };
+  }
+  for (const [path, value] of Object.entries(values)) {
+    if (!hasFilledTemplateValue(value)) continue;
+    const mapping = mappedPaths.get(path);
+    if (mapping) continue;
+    sources[path] = { source: 'aiGuess' };
+  }
+  return sources;
+}
+
+function buildTemplateGenerationWarnings(
+  values: Record<string, unknown>,
+  mappings: TemplateKbMappingForPrompt[],
+): string[] {
+  const mappedPaths = new Set(mappings.map((mapping) => mapping.templatePath));
+  return Object.keys(values)
+    .filter((path) => hasFilledTemplateValue(values[path]) && !mappedPaths.has(path))
+    .slice(0, 8)
+    .map((path) => `${path} was generated without a validated KB mapping.`);
+}
+
+function getNestedFieldValue(fields: Record<string, unknown> | undefined, path: string): unknown {
+  if (path === 'entity.name' || path === 'entity.role') return undefined;
+  const cleanPath = path.startsWith('fields.') ? path.slice('fields.'.length) : path;
+  return cleanPath.split('.').reduce<unknown>((current, part) => {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    return (current as Record<string, unknown>)[part];
+  }, fields);
+}
+
+function mappedCandidateValues(
+  referenceEntities: ReferenceEntity[],
+  mappings: TemplateKbMappingForPrompt[],
+): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
+  for (const mapping of mappings) {
+    const values = new Set<string>();
+    for (const entity of referenceEntities) {
+      if (entity.type !== mapping.kbType) continue;
+      const raw = mapping.kbFieldPath === 'entity.name'
+        ? entity.name
+        : mapping.kbFieldPath === 'entity.role'
+          ? entity.role
+          : getNestedFieldValue(entity.fields, mapping.kbFieldPath);
+      if (raw === undefined || raw === null || raw === '') continue;
+      if (Array.isArray(raw)) raw.forEach((item) => values.add(String(item)));
+      else values.add(String(raw));
+    }
+    result.set(mapping.templatePath, values);
+  }
+  return result;
+}
+
+function enforceMappedTemplateValues(
+  values: Record<string, unknown>,
+  mappings: TemplateKbMappingForPrompt[],
+  allowedValues: Map<string, Set<string>>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...values };
+  for (const mapping of mappings) {
+    const allowed = allowedValues.get(mapping.templatePath);
+    if (!allowed || allowed.size === 0) {
+      clearTemplateValuePath(next, mapping.templatePath);
+      continue;
+    }
+    const parsed = parseArrayItemPath(mapping.templatePath);
+    if (parsed) {
+      const rows = next[parsed.arrayPath];
+      if (!Array.isArray(rows)) continue;
+      next[parsed.arrayPath] = rows.map((row) => {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+        const record = { ...(row as Record<string, unknown>) };
+        const value = record[parsed.itemPath];
+        if (value !== undefined && value !== null && value !== '' && !allowed.has(String(value))) {
+          delete record[parsed.itemPath];
+        }
+        return record;
+      });
+      continue;
+    }
+    const value = next[mapping.templatePath];
+    if (value !== undefined && value !== null && value !== '' && !allowed.has(String(value))) {
+      delete next[mapping.templatePath];
+    }
+  }
+  return next;
+}
+
+function clearTemplateValuePath(values: Record<string, unknown>, templatePath: string): void {
+  const parsed = parseArrayItemPath(templatePath);
+  if (parsed) {
+    const rows = values[parsed.arrayPath];
+    if (!Array.isArray(rows)) return;
+    values[parsed.arrayPath] = rows.map((row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+      const record = { ...(row as Record<string, unknown>) };
+      delete record[parsed.itemPath];
+      return record;
+    });
+    return;
+  }
+  delete values[templatePath];
+}
+
 function isEmptyTemplateGeneratedValue(value: unknown): boolean {
   if (value === undefined || value === null) return true;
   if (typeof value === 'string') return value.trim() === '';
@@ -328,83 +481,10 @@ function isEmptyTemplateGeneratedValue(value: unknown): boolean {
   return false;
 }
 
-function buildFallbackDialogPages(
-  templateDoc: any,
-  field: TemplateFieldForGeneration,
-  node: { id: string; title: string; body: string; npcIds?: string[] },
-): Record<string, unknown>[] {
-  const itemSchema = field.itemSchema ?? [];
-  const allowedKeys = new Set(itemSchema.map((item) => item.path));
-  const identityKey = identityItemKeyForField(templateDoc, field) ?? itemSchema[0]?.path;
-  const promptKey = promptItemKeyForField(templateDoc, field, identityKey);
-  const pathKey = field.path.replace(/[^\w]+/g, '_');
-  const baseId = `${node.id}_${pathKey}`;
-  const npcId = firstNumericId(node.npcIds) ?? 0;
-  const body = node.body || node.title;
-  const page: Record<string, unknown> = {};
 
-  if (identityKey) page[identityKey] = `${baseId}_page_1`;
-  if (promptKey) page[promptKey] = body;
 
-  for (const item of itemSchema) {
-    if (page[item.path] !== undefined) continue;
-    if (item.valueType === 'number' && /npc/i.test(item.path)) page[item.path] = npcId;
-  }
 
-  return Object.keys(page).length ? [makeDialogPage(allowedKeys, page)] : [];
-}
 
-function makeDialogPage(allowedKeys: Set<string>, page: Record<string, unknown>): Record<string, unknown> {
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(page)) {
-    if (!allowedKeys.has(key) || value === undefined || value === '') continue;
-    cleaned[key] = value;
-  }
-  if (!('prompt' in cleaned) && allowedKeys.has('prompt')) cleaned.prompt = '';
-  return cleaned;
-}
-
-function firstNumericId(values: unknown): number | undefined {
-  if (!Array.isArray(values)) return undefined;
-  for (const value of values) {
-    const match = String(value).match(/\d+/);
-    if (!match) continue;
-    const parsed = Number(match[0]);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
-}
-
-function identityItemKeyForField(templateDoc: any, field: TemplateFieldForGeneration): string | undefined {
-  const relationship = relationshipHintsForField(templateDoc, field.path).find((hint) => parseArrayItemPath(hint.to)?.itemPath);
-  return relationship ? parseArrayItemPath(relationship.to)?.itemPath : undefined;
-}
-
-function promptItemKeyForField(templateDoc: any, field: TemplateFieldForGeneration, identityKey?: string): string | undefined {
-  const hints = templateDoc?.templateSchema?.generationContract?.fieldHints;
-  const itemSchema = field.itemSchema ?? [];
-  if (Array.isArray(hints)) {
-    const hinted = hints.find((hint) => {
-      const parsed = typeof hint?.path === 'string' ? parseArrayItemPath(hint.path) : null;
-      if (!parsed || parsed.arrayPath !== field.path) return false;
-      const text = `${hint.meaning ?? ''} ${hint.generationUse ?? ''}`.toLowerCase();
-      return /player-facing|dialog|dialogue|prompt|line|message|speech|text/.test(text);
-    });
-    if (hinted) return parseArrayItemPath(hinted.path)?.itemPath;
-  }
-  return itemSchema.find((item) => item.valueType === 'string' && item.path !== identityKey)?.path;
-}
-
-function relationshipHintsForField(templateDoc: any, fieldPath: string): Array<{ from: string; to: string }> {
-  const hints = templateDoc?.templateSchema?.generationContract?.relationshipHints;
-  if (!Array.isArray(hints)) return [];
-  return hints.filter((hint) => {
-    if (!hint || typeof hint.from !== 'string' || typeof hint.to !== 'string') return false;
-    const from = parseArrayItemPath(hint.from);
-    const to = parseArrayItemPath(hint.to);
-    return Boolean(from && to && from.arrayPath === fieldPath && to.arrayPath === fieldPath);
-  });
-}
 
 function sanitizeGeneratedTemplateValues(templateDoc: any, raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -585,12 +665,15 @@ function normalizeGeneratedRelationshipRows(
   const nextRows = rows.map((row) => (
     row && typeof row === 'object' && !Array.isArray(row) ? { ...row as Record<string, unknown> } : row
   ));
-  const idToIndex = new Map<string, number>();
-  nextRows.forEach((row, index) => {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
-    const id = (row as Record<string, unknown>)[identityKey];
-    if (id !== undefined && id !== null && id !== '') idToIndex.set(String(id), index);
-  });
+  const idToIndex = indexRelationshipRows(nextRows, identityKey);
+  ensureGeneratedRowIdentities(nextRows, identityKey, idToIndex);
+
+  const forwardSequenceHints = parsedHints.filter((hint) => (
+    !isReverseRelationshipHint(hint) && isSequenceForwardRelationshipHint(hint)
+  ));
+  for (const forwardHint of forwardSequenceHints) {
+    normalizeForwardSequence(nextRows, identityKey, forwardHint.from.itemPath, idToIndex);
+  }
 
   for (const hint of parsedHints) {
     if (isReverseRelationshipHint(hint) || !isSequenceForwardRelationshipHint(hint)) continue;
@@ -616,25 +699,147 @@ function normalizeGeneratedRelationshipRows(
     });
   }
 
-  const connectedIds = new Set<string>();
-  for (const row of nextRows) {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    const sourceId = (row as Record<string, unknown>)[identityKey];
-    if (sourceId === undefined || sourceId === null || sourceId === '') continue;
-    for (const hint of parsedHints) {
-      const targetId = (row as Record<string, unknown>)[hint.from.itemPath];
-      if (targetId === undefined || targetId === null || targetId === '' || !idToIndex.has(String(targetId))) continue;
-      connectedIds.add(String(sourceId));
-      connectedIds.add(String(targetId));
-    }
-  }
+  return nextRows;
+}
 
-  if (!connectedIds.size) return nextRows;
-  return nextRows.filter((row, index) => {
-    if (index === 0) return true;
-    if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+function compactKbMappings(mappings: TemplateKbMappingForPrompt[]): Record<string, unknown>[] {
+  return mappings.map((mapping) => ({
+    templatePath: mapping.templatePath,
+    kbType: mapping.kbType,
+    kbFieldPath: mapping.kbFieldPath,
+    valueType: mapping.valueType,
+    purpose: mapping.purpose,
+    explanation: mapping.explanation,
+  }));
+}
+
+async function loadValidatedTemplateKbMappings(args: {
+  ownerId: string;
+  gameId?: string;
+  templateId?: string;
+}): Promise<TemplateKbMappingForPrompt[]> {
+  if (!args.gameId || !args.templateId) return [];
+  const mapping = await TemplateKbMappingModel.findOne({
+    ownerId: args.ownerId,
+    gameId: args.gameId,
+    templateId: args.templateId,
+  }).lean();
+  return (mapping?.entries ?? [])
+    .filter((entry) => entry.status === 'validated')
+    .map((entry) => ({
+      templatePath: entry.templatePath,
+      kbType: entry.kbType,
+      kbFieldPath: entry.kbFieldPath,
+      valueType: entry.valueType,
+      purpose: entry.purpose,
+      explanation: entry.explanation,
+    }));
+}
+
+async function loadWizardMappedEntities(args: {
+  ownerId: string;
+  projectId: string;
+  gameId: string;
+  characters: GeneratedCharacter[];
+  rewards: Reward[];
+}): Promise<NormalizedMappedEntity[]> {
+  const existingIds = args.characters.flatMap((character) => (
+    character.existingId ? [character.existingId] : []
+  ));
+  const existing = await loadMappedProjectEntities({
+    ownerId: args.ownerId,
+    projectId: args.projectId,
+    gameId: args.gameId,
+    refIds: existingIds,
+  });
+  const existingById = new Map(existing.map((entity) => [entity.refId, entity]));
+  const seeds: MappedEntitySeed[] = [
+    ...args.characters.map((character) => {
+      const projectEntity = character.existingId ? existingById.get(character.existingId) : undefined;
+      return {
+        refId: character.id,
+        kbType: character.role === 'monster' ? 'monsters' as const : 'characters' as const,
+        name: character.name,
+        projectFields: projectEntity?.projectFields,
+        kbRef: projectEntity?.kbRef ?? character.kbRef,
+        hasProjectSource: Boolean(projectEntity),
+      };
+    }),
+    ...args.rewards.map((reward) => ({
+      refId: reward.id,
+      kbType: 'items' as const,
+      name: reward.title,
+      kbRef: reward.kbRef,
+      hasProjectSource: false,
+    })),
+  ];
+  return enrichMappedEntitySeeds({ gameId: args.gameId, seeds });
+}
+
+function buildTemplateKbMappingGuidance(mappings: TemplateKbMappingForPrompt[]): string {
+  if (!mappings.length) {
+    return `
+Validated KB-to-template mappings: []
+No validated mappings are available. You may still fill template values when the meaning is clear, but those values are unvalidated guesses.`;
+  }
+  return `
+Validated KB-to-template mappings:
+${JSON.stringify(compactKbMappings(mappings), null, 2)}
+
+KB mapping rules:
+- When filling a mapped templatePath, choose a fitting entity from STRUCTURED KB CANDIDATES with the listed kbType.
+- Copy the exact value from kbFieldPath into templateValues. Do not invent IDs for validated mappings.
+- If no fitting KB candidate exists for a mapped field, leave that field empty instead of guessing.
+- For template paths that are not mapped, you may fill reasonable values from story/template context.`;
+}
+
+function indexRelationshipRows(rows: unknown[], identityKey: string): Map<string, number> {
+  const idToIndex = new Map<string, number>();
+  rows.forEach((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
     const id = (row as Record<string, unknown>)[identityKey];
-    return id !== undefined && id !== null && connectedIds.has(String(id));
+    if (id !== undefined && id !== null && id !== '') idToIndex.set(String(id), index);
+  });
+  return idToIndex;
+}
+
+function ensureGeneratedRowIdentities(
+  rows: unknown[],
+  identityKey: string,
+  idToIndex: Map<string, number>,
+): void {
+  rows.forEach((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
+    const record = row as Record<string, unknown>;
+    const rawId = record[identityKey];
+    if (rawId !== undefined && rawId !== null && rawId !== '') return;
+    let generatedId = `page_${index + 1}`;
+    while (idToIndex.has(generatedId)) generatedId = `page_${index + 1}_${idToIndex.size + 1}`;
+    record[identityKey] = generatedId;
+    idToIndex.set(generatedId, index);
+  });
+}
+
+function normalizeForwardSequence(
+  rows: unknown[],
+  identityKey: string,
+  forwardKey: string,
+  idToIndex: Map<string, number>,
+): void {
+  rows.forEach((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
+    if (index >= rows.length - 1) return;
+
+    const record = row as Record<string, unknown>;
+    const currentTarget = record[forwardKey];
+    if (currentTarget !== undefined && currentTarget !== null && currentTarget !== '' && idToIndex.has(String(currentTarget))) {
+      return;
+    }
+
+    const nextRow = rows[index + 1];
+    if (!nextRow || typeof nextRow !== 'object' || Array.isArray(nextRow)) return;
+    const nextId = (nextRow as Record<string, unknown>)[identityKey];
+    if (nextId !== undefined && nextId !== null && nextId !== '') record[forwardKey] = String(nextId);
   });
 }
 
@@ -645,6 +850,36 @@ function isReverseRelationshipHint(hint: { from: { itemPath: string }; meaning?:
 function isSequenceForwardRelationshipHint(hint: { kind?: string; from: { itemPath: string }; meaning?: string }): boolean {
   if (hint.kind === 'branch') return false;
   return /next|forward/i.test(`${hint.from.itemPath} ${hint.meaning ?? ''}`);
+}
+
+/**
+ * Node references the model actually named, dropped to those we materialized.
+ *
+ * The prompt lists characters by temp id ("char-1"), but it also sees mapped
+ * entity values, and it sometimes assigns one of those — a game NPC id — as the
+ * reference instead. An id no design answers to renders as a broken chip and
+ * contributes nothing to mapping, so it is not worth persisting.
+ */
+function knownRefs(ids: string[] | undefined, idMap: Map<string, string>): string[] {
+  return (ids ?? []).filter((id) => idMap.has(id));
+}
+
+/**
+ * The quest ids a node's incoming edges point at. `[-1]` is the template's
+ * "no prerequisite" marker, so an entry node keeps it.
+ */
+function prerequisiteQuestIds(
+  edges: Array<{ source: string; target: string }>,
+  nodeId: string,
+  questIdByNode: Map<string, number>,
+): number[] {
+  const ids = edges
+    .filter((edge) => edge.target === nodeId)
+    .flatMap((edge) => {
+      const questId = questIdByNode.get(edge.source);
+      return questId ? [questId] : [];
+    });
+  return ids.length ? [...new Set(ids)] : [-1];
 }
 
 function parseArrayItemPath(path: string): { arrayPath: string; itemPath: string } | null {
@@ -661,7 +896,15 @@ function parseArrayItemPath(path: string): { arrayPath: string; itemPath: string
 // POST /quests/generate — generate objectives + rewards
 // ---------------------------------------------------------------------------
 
-function buildTemplateObjectivesPrompt(story: string, genre: string, themeContext: string, referenceBlock: string, projectBlock: string, template: TemplateContext): string {
+function buildTemplateObjectivesPrompt(
+  story: string,
+  genre: string,
+  themeContext: string,
+  referenceBlock: string,
+  projectBlock: string,
+  template: TemplateContext,
+  mappings: TemplateKbMappingForPrompt[] = [],
+): string {
   const contract = template.templateSchema?.generationContract;
   const requirementFields = contract?.requirementRoles?.length
     ? contract.requirementRoles.join(', ')
@@ -701,12 +944,15 @@ ${dialogFields}
 Template semantic hints and relationships:
 ${JSON.stringify(compactGenerationContract(contract), null, 2)}
 
+${buildTemplateKbMappingGuidance(mappings)}
+
 Your task is to infer gameplay requirements, reward categories, and optional dialog intent that fit this template. The saved schema is the source of truth: do not force a fixed number of objectives or rewards.
 
 Rules:
 - Prefer general gameplay categories, not overly specific prose.
 - Use the detected template schema roles to decide which requirement, reward, and dialog categories make sense.
 - Use fieldHints, relationshipHints, generationHints, and userExamples as the interpretation layer for what fields mean.
+- When validated KB mappings are present, prefer objective/reward categories that can be grounded with matching STRUCTURED KB CANDIDATES.
 - Do not copy IDs, amounts, concrete item names, monster names, or placeholder values from the template into generated titles.
 - Do not assume the template has combat, collection, item reward, currency reward, experience reward, or dialog fields unless those roles are present above.
 - Reward IDs and item IDs are filled manually later, so do not invent final IDs.${referenceBlock ? `
@@ -727,8 +973,16 @@ Return this JSON structure:
 A reward object may additionally carry "kbRef" — the exact name of the reference-material item it reuses. Include it whenever the reward IS one of the listed existing items.` : ''}`;
 }
 
-function buildObjectivesPrompt(story: string, genre: string, themeContext: string, referenceBlock: string, projectBlock: string, template?: TemplateContext): string {
-  if (template) return buildTemplateObjectivesPrompt(story, genre, themeContext, referenceBlock, projectBlock, template);
+function buildObjectivesPrompt(
+  story: string,
+  genre: string,
+  themeContext: string,
+  referenceBlock: string,
+  projectBlock: string,
+  template?: TemplateContext,
+  mappings: TemplateKbMappingForPrompt[] = [],
+): string {
+  if (template) return buildTemplateObjectivesPrompt(story, genre, themeContext, referenceBlock, projectBlock, template, mappings);
 
   return `You are a professional game designer specialising in quest design for ${genre} games.
 ${themeContext ? `\n${themeContext}\n` : ''}
@@ -821,7 +1075,13 @@ export async function generateObjectives(req: AuthRequest, res: Response) {
       };
     }
 
-    const json = await complete(buildObjectivesPrompt(story, genre, themeContext, reference.referenceBlock, projectBlock, template));
+    const ownedGameId = gameId && mongoose.isValidObjectId(gameId) && await ownsGame(String(req.user?._id ?? ''), gameId) ? gameId : '';
+    const mappings = await loadValidatedTemplateKbMappings({
+      ownerId: String(req.user?._id ?? ''),
+      gameId: ownedGameId,
+      templateId: template?.id,
+    });
+    const json = await complete(buildObjectivesPrompt(story, genre, themeContext, reference.referenceBlock, projectBlock, template, mappings));
     const parsed = JSON.parse(json) as { objectives: Objective[]; rewards: Reward[] };
     // kbRef is only trusted when it names an entity we actually offered as
     // reference — anything else is a hallucination and is dropped. A reward
@@ -986,6 +1246,8 @@ function buildGraphPrompt(
   themeContext: string,
   referenceBlock: string,
   template?: TemplateContext,
+  mappings: TemplateKbMappingForPrompt[] = [],
+  mappedEntityBlock = '',
 ): string {
   const objectiveList = objectives.map((o, i) => `  ${i + 1}. ${o.title} — ${o.description}`).join('\n');
   const rewardList    = rewards.map((r) => `  - id="${r.id}" title="${r.title}"`).join('\n');
@@ -1008,7 +1270,7 @@ ${rewardList}
 ${hasCharacters ? `
 Characters in this story (use their exact IDs when assigning to nodes):
 ${characterList}
-` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}${buildTemplateGraphGuidance(template)}
+` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}${mappedEntityBlock}${buildTemplateGraphGuidance(template, mappings)}
 ━━━ WHAT A NODE IS ━━━
 A node is a single SCENE in the story — one moment, one location, one decision point.
 Think of it like a chapter in a book or a room in a dungeon.
@@ -1131,7 +1393,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
 
     // KB grounding: only a Game the caller owns counts; anything else is
     // treated as "no game" and generation runs free.
-    const ownedGameId = gameId && (await ownsGame(String(userId), gameId)) ? gameId : '';
+    const ownedGameId = gameId && mongoose.isValidObjectId(gameId) && (await ownsGame(String(userId), gameId)) ? gameId : '';
     const reference = await buildReferenceContext({
       ownerId: String(userId),
       gameId: ownedGameId || undefined,
@@ -1159,6 +1421,20 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
 
     // 2. Ask the model to generate the graph
     const templateContext = templateContextFromDoc(templateDoc);
+    const mappings = await loadValidatedTemplateKbMappings({
+      ownerId: String(userId),
+      gameId: ownedGameId,
+      templateId: templateContext?.id,
+    });
+    const wizardMappedEntities = mappings.length
+      ? await loadWizardMappedEntities({
+          ownerId: String(userId),
+          projectId: resolvedProjectId,
+          gameId: ownedGameId,
+          characters: characters ?? [],
+          rewards: rewards ?? [],
+        })
+      : [];
     const json = await complete(buildGraphPrompt(
       story,
       genre,
@@ -1169,6 +1445,8 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       themeContext,
       reference.referenceBlock,
       templateContext,
+      mappings,
+      buildMappedEntityPromptBlock(mappings, wizardMappedEntities),
     ));
     const generated = JSON.parse(json) as {
       title: string;
@@ -1235,6 +1513,46 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       .filter((d) => d.created && d.kind === 'item')
       .map((d) => new mongoose.Types.ObjectId(d.id));
 
+    const castableTypes = new Set(['characters', 'monsters', 'items']);
+    const nonCastableMappings = mappings.filter((mapping) => !castableTypes.has(mapping.kbType));
+    const allowedMappedValues = mappedCandidateValues(reference.entities, nonCastableMappings);
+    const materializedById = await loadMappedProjectEntities({
+      ownerId: String(userId),
+      projectId: resolvedProjectId,
+      gameId: ownedGameId,
+      refIds: designs.map((design) => design.id),
+    });
+    const mappedEntities = materializedById;
+
+    // Every node of a quest is dialogue with the NPC who hands it out, so a
+    // combat or collect node that casts nobody still needs that speaker.
+    // Resolved against real design ids, not the wizard's temp ids.
+    const questGiverId = questGiverRefId(
+      generated.nodes.map((node) => ({
+        id: node.id,
+        npcIds: (node.npcIds ?? []).map((id) => charIdMap.get(id) ?? id),
+      })),
+      generated.edges ?? [],
+    );
+    const questGiver = mappedEntities.find((entity) => entity.refId === questGiverId);
+
+    // Quest ids used to be the node's position ("1", "2", …), so every
+    // questline in a project exported quests 1..N and collided with every other
+    // one. Draw unique ids from the project's pool instead. preQuest holds
+    // prerequisite *quest* ids, so it has to be remapped through the same table
+    // — it only looked right before because both were the node number.
+    const questIds = await allocateQuestIds({
+      projectId: resolvedProjectId,
+      count: generated.nodes.length,
+    });
+    const questIdByNode = new Map<string, number>();
+    generated.nodes.forEach((node, index) => {
+      const allocated = questIds[index];
+      // Falling back to the node number keeps the old behaviour when no quest
+      // id range is configured, rather than exporting quests with no id.
+      questIdByNode.set(node.id, allocated || parseInt(node.id, 10) || index + 1);
+    });
+
     const questline = await QuestlineModel.create({
       ownerId:      userId,
       projectId:    resolvedProjectId,
@@ -1263,34 +1581,47 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
         inferredAiGuidance: templateDoc.inferredAiGuidance,
       } : undefined,
       // Nodes saved with placeholder IDs first — remapped below after we have _ids
-      nodes: generated.nodes.map((n) => ({
-        nodeId:     n.id,
-        type:       n.type ?? 'questNode',
-        title:      n.title,
-        body:       n.body,
-        variant:    n.variant ?? 'story',
-        npcIds:     n.npcIds     ?? [],
-        monsterIds: n.monsterIds ?? [],
-        rewardIds:  n.rewardIds  ?? [],
-        templateValues: buildInitialTemplateValues(templateDoc, n),
-        exportFields: {
-          questId: parseInt(n.id, 10) || undefined,
-          silent: true,
-          preQuest: generated.edges
-            .filter((e) => e.target === n.id)
-            .map((e) => parseInt(e.source, 10))
-            .filter((id) => Number.isFinite(id)).length
-            ? generated.edges
-              .filter((e) => e.target === n.id)
-              .map((e) => parseInt(e.source, 10))
-              .filter((id) => Number.isFinite(id))
-            : [-1],
-          daily: false,
-          toKill: [],
-          toCollect: [],
-          rewardItems: [],
-        },
-      })),
+      nodes: generated.nodes.map((n) => {
+        const generatedValues = enforceMappedTemplateValues(
+          buildInitialTemplateValues(templateDoc, n),
+          nonCastableMappings,
+          allowedMappedValues,
+        );
+        const mappedState = applyEntityMappings({
+          values: generatedValues,
+          sources: buildTemplateValueSourceMetadata(generatedValues, nonCastableMappings),
+          mappings,
+          entities: mappedEntities,
+          refIds: [
+            ...(n.npcIds ?? []).map((id) => charIdMap.get(id) ?? id),
+            ...(n.monsterIds ?? []).map((id) => charIdMap.get(id) ?? id),
+            ...(n.rewardIds ?? []).map((id) => rewardIdMap.get(id) ?? id),
+          ],
+          questGiver,
+        });
+        return {
+          nodeId:     n.id,
+          type:       n.type ?? 'questNode',
+          title:      n.title,
+          body:       n.body,
+          variant:    n.variant ?? 'story',
+          npcIds:     knownRefs(n.npcIds, charIdMap),
+          monsterIds: knownRefs(n.monsterIds, charIdMap),
+          rewardIds:  knownRefs(n.rewardIds, rewardIdMap),
+          templateValues: mappedState.values,
+          templateValueSources: mappedState.sources,
+          generationWarnings: mappedState.warnings,
+          exportFields: {
+            questId: questIdByNode.get(n.id),
+            silent: true,
+            preQuest: prerequisiteQuestIds(generated.edges, n.id, questIdByNode),
+            daily: false,
+            toKill: [],
+            toCollect: [],
+            rewardItems: [],
+          },
+        };
+      }),
       edges: generated.edges.map((e) => ({
         edgeId: e.id,
         source: e.source,
@@ -1316,6 +1647,8 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       monsterIds: n.monsterIds.map((id) => charIdMap.get(id)   ?? id),
       rewardIds:  n.rewardIds.map((id)  => rewardIdMap.get(id) ?? id),
       templateValues: n.templateValues ?? {},
+      templateValueSources: n.templateValueSources ?? {},
+      generationWarnings: n.generationWarnings ?? [],
       exportFields: n.exportFields,
     }));
     questline.nodes = remappedNodes as typeof questline.nodes;

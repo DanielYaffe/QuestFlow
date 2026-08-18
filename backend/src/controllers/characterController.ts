@@ -10,6 +10,8 @@ import QuestlineModel from '../models/questlineModel';
 import { resolveProjectId } from '../models/projectModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
+import { allocateAssetFields } from '../services/assetPoolAllocation';
+import { validateAssetCustomFields } from '../services/assetSchemaValidation';
 import {
   startRotationsJob,
   buildRotationSheet,
@@ -176,6 +178,8 @@ class CharacterController extends BaseController {
         spriteStyleId?: string;
         speciesData?: unknown;
         assets?: unknown;
+        customFields?: Record<string, unknown>;
+        maple?: unknown;
       };
 
       if (!body.name?.trim()) {
@@ -188,6 +192,26 @@ class CharacterController extends BaseController {
       }
 
       const projectId = await resolveProjectId(userId, body.projectId);
+      if (body.customFields) {
+        const validationErrors = await validateAssetCustomFields({
+          ownerId: userId,
+          projectId,
+          assetType: body.kind,
+          values: body.customFields,
+        });
+        if (validationErrors.length) {
+          res.status(400).json({ error: validationErrors[0], errors: validationErrors });
+          return;
+        }
+      }
+
+      // Fill every pooled attribute the project declares for this asset type.
+      // Values the caller supplied are kept.
+      const { values: allocatedFields } = await allocateAssetFields({
+        projectId,
+        assetType: body.kind,
+        values: body.customFields ?? {},
+      });
 
       const character = await CharacterModel.create({
         ownerId: userId,
@@ -202,6 +226,8 @@ class CharacterController extends BaseController {
         spriteStyleId: body.spriteStyleId ?? '',
         ...(body.speciesData ? { speciesData: body.speciesData } : {}),
         ...(body.assets ? { assets: body.assets } : {}),
+        customFields: allocatedFields,
+        ...(body.maple ? { maple: body.maple } : {}),
       });
 
       res.status(201).json({ ...character.toObject(), previewUrl: await signPreview(character) });
@@ -235,6 +261,8 @@ class CharacterController extends BaseController {
         spriteStyleId?: string;
         speciesData?: typeof character.speciesData;
         assets?: typeof character.assets;
+        customFields?: typeof character.customFields;
+        maple?: typeof character.maple;
       };
 
       if (body.name !== undefined) character.name = body.name;
@@ -246,6 +274,25 @@ class CharacterController extends BaseController {
       if (body.spriteStyleId !== undefined) character.spriteStyleId = body.spriteStyleId;
       if (body.speciesData !== undefined) character.speciesData = body.speciesData;
       if (body.assets !== undefined) character.assets = body.assets;
+      if (body.customFields !== undefined) {
+        const targetProjectId = body.projectId !== undefined
+          ? await resolveProjectId(userId, body.projectId)
+          : character.projectId;
+        const validationErrors = await validateAssetCustomFields({
+          ownerId: userId,
+          projectId: targetProjectId,
+          assetType: character.kind,
+          assetId: character._id.toString(),
+          values: body.customFields,
+        });
+        if (validationErrors.length) {
+          res.status(400).json({ error: validationErrors[0], errors: validationErrors });
+          return;
+        }
+        character.customFields = body.customFields;
+        character.markModified('customFields');
+      }
+      if (body.maple !== undefined) character.maple = { ...character.maple, ...body.maple };
       if (body.projectId !== undefined) {
         character.projectId = await resolveProjectId(userId, body.projectId);
       }

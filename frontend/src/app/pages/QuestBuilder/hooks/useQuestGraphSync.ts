@@ -3,10 +3,14 @@ import { QuestNodeData } from '../../../types/quest';
 
 export type QuestFlowNode = Node<QuestNodeData>;
 
-export function defaultExportFields(nodeId: string) {
-  const numericId = Number(nodeId);
+export function defaultExportFields(_nodeId: string) {
   return {
-    questId: Number.isFinite(numericId) ? numericId : undefined,
+    // Deliberately absent. A node's quest id used to default to its position,
+    // which put it outside the project's ID pool and gave the same number to
+    // every questline's nth node. The server allocates one on save instead; a
+    // node that already has an id keeps it, because the caller spreads its own
+    // exportFields over these defaults.
+    questId: undefined as number | undefined,
     silent: true,
     preQuest: [-1],
     daily: false,

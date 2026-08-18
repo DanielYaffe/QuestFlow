@@ -44,6 +44,7 @@ function toDto(template: any) {
     fieldSchema: template.fieldSchema,
     templateSchema: template.templateSchema,
     schemaSummary: template.schemaSummary,
+    requiredFieldPaths: template.requiredFieldPaths ?? [],
     analysisStatus: template.analysisStatus,
     analysisError: template.analysisError,
     analyzedAt: template.analyzedAt,
@@ -172,6 +173,93 @@ export async function updateExportTemplate(req: AuthRequest, res: Response): Pro
     res.json(toDto(template));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid template' });
+  }
+}
+
+/** Every path an author can mark required, including array-item paths. */
+function templateFieldPaths(template: { templateSchema?: unknown; fieldSchema?: unknown }): Set<string> {
+  const schema = template.templateSchema as { editableFields?: unknown } | undefined;
+  const source = Array.isArray(schema?.editableFields) && schema.editableFields.length
+    ? schema.editableFields
+    : Array.isArray(template.fieldSchema) ? template.fieldSchema : [];
+  const paths = new Set<string>();
+  for (const raw of source as Array<{ path?: unknown; itemSchema?: unknown }>) {
+    if (typeof raw?.path !== 'string') continue;
+    paths.add(raw.path);
+    if (!Array.isArray(raw.itemSchema)) continue;
+    for (const item of raw.itemSchema as Array<{ path?: unknown }>) {
+      if (typeof item?.path === 'string') paths.add(`${raw.path}[].${item.path}`);
+    }
+  }
+  return paths;
+}
+
+/**
+ * @swagger
+ * /export-templates/{id}/required-fields:
+ *   put:
+ *     summary: Set which template fields must be filled on every quest node
+ *     tags: [ExportTemplates]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - paths
+ *             properties:
+ *               paths:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: The updated template
+ *       400:
+ *         description: Bad request
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Template not found
+ */
+export async function saveRequiredFieldPaths(req: AuthRequest, res: Response): Promise<void> {
+  const userId = req.user?._id;
+  const { paths } = req.body as { paths?: unknown };
+  if (!Array.isArray(paths)) {
+    res.status(400).json({ error: 'paths must be an array' });
+    return;
+  }
+
+  try {
+    const template = await ExportTemplateModel.findById(req.params.id);
+    if (!template) {
+      res.status(404).json({ error: 'Template not found' });
+      return;
+    }
+    if (template.isBuiltIn || template.ownerId !== userId) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    // Only paths this template actually has — a stale path would raise a
+    // warning on every node for a field the editor cannot even show.
+    const known = templateFieldPaths(template);
+    template.requiredFieldPaths = [...new Set(
+      paths.filter((path): path is string => typeof path === 'string' && known.has(path)),
+    )];
+    await template.save();
+    res.json(toDto(template));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Could not save required fields' });
   }
 }
 

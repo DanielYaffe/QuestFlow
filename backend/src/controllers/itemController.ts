@@ -19,6 +19,8 @@ import {
 } from '../services/itemService';
 import { resolveProjectId } from '../models/projectModel';
 import { getPresignedUrl } from '../utils/s3Helper';
+import { allocateAssetFields } from '../services/assetPoolAllocation';
+import { validateAssetCustomFields } from '../services/assetSchemaValidation';
 
 // ---------------------------------------------------------------------------
 // Item endpoints — studio item designs. Controllers call itemService only.
@@ -109,6 +111,8 @@ class ItemController {
       description?: string;
       rarity?: unknown;
       tags?: string[];
+      customFields?: Record<string, unknown>;
+      maple?: IItem['maple'];
     };
     if (!body.name?.trim()) {
       res.status(400).json({ error: 'name is required' });
@@ -116,6 +120,23 @@ class ItemController {
     }
     try {
       const projectId = await resolveProjectId(userId, body.projectId);
+      if (body.customFields) {
+        const validationErrors = await validateAssetCustomFields({
+          ownerId: userId,
+          projectId,
+          assetType: 'item',
+          values: body.customFields,
+        });
+        if (validationErrors.length) {
+          res.status(400).json({ error: validationErrors[0], errors: validationErrors });
+          return;
+        }
+      }
+      const { values: allocatedFields } = await allocateAssetFields({
+        projectId,
+        assetType: 'item',
+        values: body.customFields ?? {},
+      });
       const item = await createItem({
         ownerId: userId,
         projectId,
@@ -123,6 +144,8 @@ class ItemController {
         description: body.description,
         rarity: isItemRarity(body.rarity) ? body.rarity : undefined,
         tags: body.tags,
+        customFields: allocatedFields,
+        maple: body.maple,
       });
       res.status(201).json(await shape(item));
     } catch (error) {
@@ -141,8 +164,24 @@ class ItemController {
       tags?: string[];
       spriteStyleId?: string;
       assets?: IItem['assets'];
+      customFields?: IItem['customFields'];
+      maple?: IItem['maple'];
     };
     try {
+      if (body.customFields) {
+        const current = await getItem(userId, String(req.params.id));
+        const validationErrors = await validateAssetCustomFields({
+          ownerId: userId,
+          projectId: current.projectId,
+          assetType: 'item',
+          assetId: current._id.toString(),
+          values: body.customFields,
+        });
+        if (validationErrors.length) {
+          res.status(400).json({ error: validationErrors[0], errors: validationErrors });
+          return;
+        }
+      }
       const item = await updateItem(userId, String(req.params.id), {
         name: body.name,
         description: body.description,
@@ -150,6 +189,8 @@ class ItemController {
         tags: body.tags,
         spriteStyleId: body.spriteStyleId,
         assets: body.assets,
+        customFields: body.customFields,
+        maple: body.maple,
       });
       res.json(await shapeStudio(item));
     } catch (error) {
