@@ -24,6 +24,7 @@ export interface MapleProjectSettings {
   defaultExportMode: MapleExportMode;
   npcIdRanges: MapleIdRange[];
   itemIdRanges: MapleIdRange[];
+  questIdRanges: MapleIdRange[];
 }
 
 export interface MapleIdAvailability {

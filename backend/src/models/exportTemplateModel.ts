@@ -23,6 +23,13 @@ export interface IExportTemplate extends Document {
     dialogFields: string[];
     structureSummary: string;
   };
+  /**
+   * Template paths the author marked as must-fill ("dialogue.start.pages[].npcId").
+   * Kept beside templateSchema rather than inside it because every save re-runs
+   * the AI analysis and rewrites editableFields — an author's choice must not
+   * depend on the model restating it.
+   */
+  requiredFieldPaths: string[];
   analysisStatus: 'pending' | 'ready' | 'fallback' | 'failed';
   analysisError: string;
   analyzedAt?: Date;
@@ -59,6 +66,7 @@ const ExportTemplateSchema = new Schema<IExportTemplate>(
       dialogFields:      { type: [String], default: [] },
       structureSummary:  { type: String, default: '' },
     },
+    requiredFieldPaths:   { type: [String], default: [] },
     analysisStatus:       { type: String, enum: ['pending', 'ready', 'fallback', 'failed'], default: 'fallback' },
     analysisError:        { type: String, default: '' },
     analyzedAt:           { type: Date },

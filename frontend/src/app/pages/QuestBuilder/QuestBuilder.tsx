@@ -58,6 +58,7 @@ import {
   materializeAiEditDesigns,
   proposalsFor,
   remapRefs,
+  remapTemplateState,
 } from "../../api/questAiEditApi";
 import { NodeVariant } from "@/types/quest";
 
@@ -799,6 +800,9 @@ export function QuestBuilder() {
           const refs = change.refs
             ? remapRefs(change.refs.after, designIds)
             : null;
+          const templateState = change.templateState
+            ? remapTemplateState(change.templateState, designIds)
+            : null;
           setNodes((nds) =>
             nds.map((n) =>
               n.id === change.nodeId
@@ -810,6 +814,11 @@ export function QuestBuilder() {
                       body: change.after.body,
                       variant: change.after.variant,
                       ...(refs ?? {}),
+                      ...(templateState ? {
+                        templateValues: templateState.values,
+                        templateValueSources: templateState.sources,
+                        generationWarnings: templateState.warnings,
+                      } : {}),
                       aiHighlight: "updated",
                     },
                   }
@@ -836,6 +845,15 @@ export function QuestBuilder() {
             data: {
               ...change.node,
               ...(change.refs ? remapRefs(change.refs.after, designIds) : {}),
+              exportFields: defaultExportFields(newId),
+              ...(change.templateState ? (() => {
+                const state = remapTemplateState(change.templateState, designIds);
+                return {
+                  templateValues: state.values,
+                  templateValueSources: state.sources,
+                  generationWarnings: state.warnings,
+                };
+              })() : { templateValues: {} }),
               layoutDirection,
               aiHighlight: "added",
               onAddPath: (pos: "top" | "bottom" | "left" | "right") =>

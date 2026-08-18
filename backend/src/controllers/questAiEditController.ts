@@ -6,6 +6,7 @@ import { hasGenApiKey } from '../config/ai';
 import CharacterModel from '../models/characterModel';
 import ItemModel from '../models/itemModel';
 import ProjectModel from '../models/projectModel';
+import ExportTemplateModel from '../models/exportTemplateModel';
 import { buildReferenceContext, GroundingState } from '../services/generationContext';
 import {
   loadProjectCharacters,
@@ -20,6 +21,19 @@ import {
   readRefs,
   RefLists,
 } from '../services/aiEditParse';
+import {
+  applyEntityMappings,
+  buildMappedEntityPromptBlock,
+  enrichMappedEntitySeeds,
+  loadMappedProjectEntities,
+  loadValidatedTemplateMappings,
+  MappedEntitySeed,
+  normalizeReferenceEntities,
+  NormalizedMappedEntity,
+  questGiverRefId,
+  TemplateMappingEntry,
+  TemplateMappingState,
+} from '../services/templateEntityMappingService';
 
 // ---------------------------------------------------------------------------
 // Input shapes (deserialized from frontend React Flow state)
@@ -37,6 +51,9 @@ interface NodeSnapshot {
     npcIds?: string[];
     monsterIds?: string[];
     rewardIds?: string[];
+    templateValues?: Record<string, unknown>;
+    templateValueSources?: Record<string, unknown>;
+    generationWarnings?: string[];
   };
 }
 
@@ -106,11 +123,12 @@ function buildAiEditPrompt(args: {
   designBlock: string;
   projectBlock: string;
   referenceBlock: string;
+  templateBlock: string;
   instruction: string;
 }): string {
   const {
     storyPrompt, genre, nodes, edges, focusNodeId, refLineFor,
-    designBlock, projectBlock, referenceBlock, instruction,
+    designBlock, projectBlock, referenceBlock, templateBlock, instruction,
   } = args;
 
   const nodeTitleMap = new Map(nodes.map((n) => [n.id, n.data?.title ?? n.id]));
@@ -132,7 +150,7 @@ ${storyPrompt}
 """
 Genre: ${genre}`;
 
-  const tail = `${designBlock}${projectBlock}${referenceBlock ? `\n${referenceBlock}\n` : ''}
+  const tail = `${designBlock}${projectBlock}${referenceBlock ? `\n${referenceBlock}\n` : ''}${templateBlock}
 User instruction:
 """
 ${instruction}
@@ -255,6 +273,91 @@ function buildDesignBlock(designs: KnownDesign[]): string {
   return `\nDESIGNS ALREADY IN THIS QUESTLINE (reference these by id):\n${sections.join('\n')}\n`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+async function loadAiTemplateContext(args: {
+  ownerId: string;
+  gameId: string;
+  templateId?: string;
+  templateSnapshot?: unknown;
+  mappedEntities: NormalizedMappedEntity[];
+}): Promise<{ mappings: TemplateMappingEntry[]; promptBlock: string; hasTemplate: boolean }> {
+  const latest = args.templateId && mongoose.isValidObjectId(args.templateId)
+    ? await ExportTemplateModel.findOne({
+        _id: args.templateId,
+        $or: [{ isBuiltIn: true }, { ownerId: args.ownerId }],
+      }).lean()
+    : null;
+  const template = latest ?? (isRecord(args.templateSnapshot) ? args.templateSnapshot : undefined);
+  if (!template) return { mappings: [], promptBlock: '', hasTemplate: false };
+  const mappings = await loadValidatedTemplateMappings({
+    ownerId: args.ownerId,
+    gameId: args.gameId,
+    templateId: args.templateId,
+  });
+  const schema = isRecord(template.templateSchema) ? template.templateSchema : {};
+  const editableFields = Array.isArray(schema.editableFields) ? schema.editableFields : [];
+  const promptBlock = `
+SELECTED EXPORT TEMPLATE:
+${JSON.stringify({
+    name: typeof template.name === 'string' ? template.name : undefined,
+    editableFields,
+    validatedMappings: mappings,
+  }, null, 2)}
+The server applies validated entity mappings deterministically. Keep node references aligned with the intended entities; never invent mapped IDs.
+${buildMappedEntityPromptBlock(mappings, args.mappedEntities)}`;
+  return { mappings, promptBlock, hasTemplate: true };
+}
+
+async function mappedProposalEntities(args: {
+  gameId: string;
+  proposals: Array<{ tempId: string; kind: DesignKind; name: string; kbRef?: string; existingId?: string }>;
+  projectEntities: NormalizedMappedEntity[];
+}): Promise<NormalizedMappedEntity[]> {
+  const projectById = new Map(args.projectEntities.map((entity) => [entity.refId, entity]));
+  const seeds: MappedEntitySeed[] = args.proposals.map((proposal) => {
+    const project = proposal.existingId ? projectById.get(proposal.existingId) : undefined;
+    return {
+      refId: proposal.tempId,
+      kbType: proposal.kind === 'item' ? 'items' : proposal.kind === 'monster' ? 'monsters' : 'characters',
+      name: proposal.name,
+      projectFields: project?.projectFields,
+      kbRef: project?.kbRef ?? proposal.kbRef,
+      hasProjectSource: Boolean(project),
+    };
+  });
+  return enrichMappedEntitySeeds({ gameId: args.gameId, seeds });
+}
+
+function templateStateForChange(args: {
+  node?: NodeSnapshot;
+  refs: RefLists;
+  mappings: TemplateMappingEntry[];
+  entities: NormalizedMappedEntity[];
+  questGiver?: NormalizedMappedEntity;
+}): TemplateMappingState {
+  return applyEntityMappings({
+    values: args.node?.data?.templateValues ?? {},
+    sources: args.node?.data?.templateValueSources ?? {},
+    mappings: args.mappings,
+    entities: args.entities,
+    refIds: [...args.refs.npcIds, ...args.refs.monsterIds, ...args.refs.rewardIds],
+    questGiver: args.questGiver,
+  });
+}
+
+/** The questline's quest giver as a mapped entity, resolved from the live graph. */
+function questGiverEntity(
+  nodes: Array<{ id: string; npcIds?: string[] }>,
+  edges: Array<{ source: string; target: string }>,
+  entities: NormalizedMappedEntity[],
+): NormalizedMappedEntity | undefined {
+  const refId = questGiverRefId(nodes, edges);
+  return refId ? entities.find((entity) => entity.refId === refId) : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Controller — propose edits
 // ---------------------------------------------------------------------------
@@ -364,7 +467,7 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
     const gameId = await resolveGameId(questline);
     const trimmedInstruction = instruction.trim().slice(0, 500);
 
-    const [knownDesigns, reference, projectCharacters, projectItems] = await Promise.all([
+    const [knownDesigns, reference, projectCharacters, projectItems, projectMappedEntities] = await Promise.all([
       loadKnownDesigns([...referencedIds]),
       buildReferenceContext({
         ownerId: questline.ownerId,
@@ -374,7 +477,36 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
       }),
       loadProjectCharacters(questline.ownerId, questline.projectId ?? ''),
       loadProjectItems(questline.ownerId, questline.projectId ?? ''),
+      loadMappedProjectEntities({
+        ownerId: questline.ownerId,
+        projectId: questline.projectId ?? '',
+        gameId,
+        refIds: [...referencedIds],
+      }),
     ]);
+
+    const rosterMappedEntities = await loadMappedProjectEntities({
+      ownerId: questline.ownerId,
+      projectId: questline.projectId ?? '',
+      gameId,
+      refIds: [
+        ...projectMappedEntities.map((entity) => entity.refId),
+        ...projectCharacters.map((character) => character.id),
+        ...projectItems.map((item) => item.id),
+      ],
+    });
+
+    const mappedEntitiesForPrompt = [
+      ...rosterMappedEntities,
+      ...normalizeReferenceEntities(reference.entities),
+    ];
+    const templateContext = await loadAiTemplateContext({
+      ownerId: questline.ownerId,
+      gameId,
+      templateId: questline.templateId,
+      templateSnapshot: questline.templateSnapshot,
+      mappedEntities: mappedEntitiesForPrompt,
+    });
 
     const nameById = new Map(knownDesigns.map((d) => [d.id, d.name]));
     const refLineFor = (n: NodeSnapshot): string => {
@@ -393,6 +525,7 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
       designBlock: buildDesignBlock(knownDesigns),
       projectBlock: `${buildProjectCharactersBlock(projectCharacters)}${buildProjectItemsBlock(projectItems)}`,
       referenceBlock: reference.referenceBlock,
+      templateBlock: templateContext.promptBlock,
       instruction: trimmedInstruction,
     });
 
@@ -409,6 +542,18 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
       ...proposed.map((p) => p.tempId),
     ]);
 
+    const proposalMappedEntities = await mappedProposalEntities({
+      gameId,
+      proposals: proposed,
+      projectEntities: rosterMappedEntities,
+    });
+    const mappingEntities = [...rosterMappedEntities, ...proposalMappedEntities];
+    const aiEditQuestGiver = questGiverEntity(
+      nodeSnapshots.map((node) => ({ id: node.id, npcIds: node.data?.npcIds })),
+      edges as EdgeSnapshot[],
+      mappingEntities,
+    );
+
     const raw = Array.isArray(parsed.changes) ? parsed.changes : [];
     const changes = raw
       .filter(isValidChange)
@@ -419,7 +564,26 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
         const refs = readRefs(ch.refs, allowedIds);
         // Drop only the refs block on malformed input — the text edit is still
         // worth offering.
-        return refs ? { ...ch, refs } : { ...ch, refs: undefined };
+        const cleaned = refs ? { ...ch, refs } : { ...ch, refs: undefined };
+        if (!templateContext.hasTemplate || !templateContext.mappings.length) return cleaned;
+        const existingNode = ch.type === 'updateNode' && typeof ch.nodeId === 'string'
+          ? nodeSnapshots.find((node) => node.id === ch.nodeId)
+          : undefined;
+        const effectiveRefs = refs?.after ?? {
+          npcIds: existingNode?.data?.npcIds ?? [],
+          monsterIds: existingNode?.data?.monsterIds ?? [],
+          rewardIds: existingNode?.data?.rewardIds ?? [],
+        };
+        return {
+          ...cleaned,
+          templateState: templateStateForChange({
+            node: existingNode,
+            refs: effectiveRefs,
+            mappings: templateContext.mappings,
+            entities: mappingEntities,
+            questGiver: aiEditQuestGiver,
+          }),
+        };
       });
 
     // Only ship descriptors something actually references, so a stray invention
@@ -452,6 +616,123 @@ export async function aiEditQuestline(req: QuestlineRequest, res: Response): Pro
 // ---------------------------------------------------------------------------
 // Controller — materialize proposed designs on approval
 // ---------------------------------------------------------------------------
+
+function readIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
+}
+
+/**
+ * @swagger
+ * /questlines/{id}/template-mappings/resolve:
+ *   post:
+ *     summary: Recompute a node's mapped template values for a set of node references
+ *     tags: [Questlines]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               npcIds:
+ *                 type: array
+ *               monsterIds:
+ *                 type: array
+ *               rewardIds:
+ *                 type: array
+ *               templateValues:
+ *                 type: object
+ *               templateValueSources:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: The recomputed template values, sources, and warnings
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+/**
+ * Generation and AI edits both apply validated mappings server-side. Attaching a
+ * design by hand in the node editor is the third way a node's cast changes, and
+ * it has to land on the same values as the other two — so it comes back here
+ * rather than reimplementing the mapper in the client. Fields the author edited
+ * by hand carry `source: 'manual'` and are preserved.
+ */
+export async function resolveTemplateMappings(req: QuestlineRequest, res: Response): Promise<void> {
+  const body = req.body as {
+    npcIds?: unknown;
+    monsterIds?: unknown;
+    rewardIds?: unknown;
+    templateValues?: unknown;
+    templateValueSources?: unknown;
+  };
+
+  const questline = req.questline!;
+  if (!questline.projectId) {
+    res.status(400).json({ error: 'Questline has no project' });
+    return;
+  }
+
+  const values = isRecord(body.templateValues) ? body.templateValues : {};
+  const sources = isRecord(body.templateValueSources) ? body.templateValueSources : {};
+  const refIds = [
+    ...readIdList(body.npcIds),
+    ...readIdList(body.monsterIds),
+    ...readIdList(body.rewardIds),
+  ];
+
+  try {
+    const gameId = await resolveGameId(questline);
+    const mappings = await loadValidatedTemplateMappings({
+      ownerId: questline.ownerId,
+      gameId,
+      templateId: questline.templateId,
+    });
+    // No validated mapping means nothing is ours to decide — echo the draft back
+    // untouched rather than clearing fields the author or the AI filled.
+    if (!mappings.length) {
+      res.json({ values, sources, warnings: [] });
+      return;
+    }
+
+    // The giver comes from the saved graph, and its design has to be normalized
+    // too — a node being edited may cast nobody, and that node still speaks.
+    const graphNodes = questline.nodes.map((node) => ({ id: node.nodeId, npcIds: node.npcIds }));
+    const graphEdges = questline.edges.map((edge) => ({ source: edge.source, target: edge.target }));
+    const questGiverId = questGiverRefId(graphNodes, graphEdges);
+
+    const entities = await loadMappedProjectEntities({
+      ownerId: questline.ownerId,
+      projectId: questline.projectId,
+      gameId,
+      refIds: questGiverId ? [...refIds, questGiverId] : refIds,
+    });
+
+    res.json(applyEntityMappings({
+      values,
+      sources,
+      mappings,
+      entities,
+      refIds,
+      questGiver: entities.find((entity) => entity.refId === questGiverId),
+    }));
+  } catch (error) {
+    console.error('[questAiEdit] resolveTemplateMappings error:', error);
+    res.status(500).json({ error: 'Failed to resolve template mappings' });
+  }
+}
 
 /**
  * @swagger

@@ -4,6 +4,7 @@ import {
   createExportTemplate,
   deleteExportTemplate,
   listExportTemplates,
+  saveRequiredFieldPaths,
   updateExportTemplate,
 } from '../controllers/exportTemplateController';
 import {
@@ -22,6 +23,7 @@ exportTemplateRouter.get('/:id/kb-mappings', listTemplateKbMappings);
 exportTemplateRouter.post('/:id/kb-mappings/analyze', analyzeTemplateKbMappings);
 exportTemplateRouter.put('/:id/kb-mappings', saveTemplateKbMappings);
 exportTemplateRouter.delete('/:id/kb-mappings', deleteTemplateKbMappings);
+exportTemplateRouter.put('/:id/required-fields', saveRequiredFieldPaths);
 exportTemplateRouter.put('/:id', updateExportTemplate);
 exportTemplateRouter.delete('/:id', deleteExportTemplate);
 

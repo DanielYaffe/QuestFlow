@@ -151,6 +151,27 @@ function RefsDiff({ refs, lookup }: { refs: { before: RefLists; after: RefLists 
   );
 }
 
+function TemplateStateSummary({
+  change,
+  currentValues = {},
+}: {
+  change: AIChange;
+  currentValues?: Record<string, unknown>;
+}) {
+  if (change.type !== 'updateNode' && change.type !== 'addNode') return null;
+  if (!change.templateState) return null;
+  const paths = new Set([...Object.keys(currentValues), ...Object.keys(change.templateState.values)]);
+  const changed = [...paths].filter((path) => (
+    JSON.stringify(currentValues[path]) !== JSON.stringify(change.templateState?.values[path])
+  ));
+  if (!changed.length) return null;
+  return (
+    <div className="rounded border border-emerald-800/50 bg-emerald-950/20 px-2 py-1.5 text-emerald-300">
+      Template fields: {changed.length} mapped update{changed.length === 1 ? '' : 's'}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Skeleton card (loading placeholder)
 // ---------------------------------------------------------------------------
@@ -195,6 +216,7 @@ function ChangeDetail({
     const titleChanged   = change.before.title   !== change.after.title;
     const bodyChanged    = change.before.body    !== change.after.body;
     const variantChanged = change.before.variant !== change.after.variant;
+    const currentValues = nodes.find((node) => node.id === change.nodeId)?.data?.templateValues ?? {};
     return (
       <div className="space-y-2 text-xs">
         {titleChanged && (
@@ -227,6 +249,7 @@ function ChangeDetail({
           </div>
         )}
         {change.refs && <RefsDiff refs={change.refs} lookup={lookup} />}
+        <TemplateStateSummary change={change} currentValues={currentValues} />
       </div>
     );
   }
@@ -245,6 +268,7 @@ function ChangeDetail({
           )}
         </div>
         {change.refs && <RefsDiff refs={change.refs} lookup={lookup} />}
+        <TemplateStateSummary change={change} />
       </div>
     );
   }

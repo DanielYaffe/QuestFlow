@@ -2,7 +2,7 @@ import { Router, RequestHandler } from 'express';
 import questlineController from '../controllers/questlineController';
 import { requireQuestlineOwnership } from '../middlewares/requireQuestlineOwnership';
 import { previewExport, downloadExport, pushToGithub } from '../controllers/questExportController';
-import { aiEditQuestline, materializeAiEditDesigns } from '../controllers/questAiEditController';
+import { aiEditQuestline, materializeAiEditDesigns, resolveTemplateMappings } from '../controllers/questAiEditController';
 
 const questlineRouter = Router();
 
@@ -646,5 +646,11 @@ questlineRouter.post('/:id/push-to-github', requireQuestlineOwnership as Request
 
 questlineRouter.post('/:id/ai-edit', requireQuestlineOwnership as RequestHandler, aiEditQuestline as RequestHandler);
 questlineRouter.post('/:id/ai-edit/materialize', requireQuestlineOwnership as RequestHandler, materializeAiEditDesigns as RequestHandler);
+
+// ── Template mappings ───────────────────────────────────────────────────────
+// Recompute mapped template values after the author changes a node's cast by
+// hand, so manual attach lands on the same values as generation and AI edits.
+
+questlineRouter.post('/:id/template-mappings/resolve', requireQuestlineOwnership as RequestHandler, resolveTemplateMappings as RequestHandler);
 
 export default questlineRouter;

@@ -30,6 +30,12 @@ export interface RefLists {
   rewardIds: string[];
 }
 
+export interface TemplateState {
+  values: Record<string, unknown>;
+  sources: Record<string, unknown>;
+  warnings: string[];
+}
+
 /**
  * Node references before and after the change. Complete lists, not deltas — an
  * id missing from `after` is a detach. See docs/adr/0002.
@@ -56,6 +62,7 @@ export type AIChange =
       before: { title: string; body: string; variant: string };
       after: { title: string; body: string; variant: string };
       refs?: RefsChange;
+      templateState?: TemplateState;
     }
   | {
       type: 'addNode';
@@ -63,6 +70,7 @@ export type AIChange =
       node: { title: string; body: string; variant: string };
       connectFrom?: string;
       refs?: RefsChange;
+      templateState?: TemplateState;
     }
   | { type: 'deleteNode'; nodeId: string; nodeTitle: string; summary: string }
   | {
@@ -114,6 +122,24 @@ export async function materializeAiEditDesigns(
   return data;
 }
 
+/**
+ * Recompute mapped template values for a node's current cast.
+ *
+ * The mapper lives on the server so generation, AI edits, and attaching a design
+ * by hand all produce the same values. Fields the author edited by hand are
+ * marked `manual` in `sources` and come back untouched.
+ */
+export async function resolveTemplateMappings(
+  questlineId: string,
+  payload: RefLists & {
+    templateValues: Record<string, unknown>;
+    templateValueSources: Record<string, unknown>;
+  },
+): Promise<TemplateState> {
+  const { data } = await api.post(`/questlines/${questlineId}/template-mappings/resolve`, payload);
+  return data;
+}
+
 /** Replace temp ids with the real design ids materialize handed back. */
 export function remapRefs(refs: RefLists, ids: Record<string, string>): RefLists {
   const remap = (list: string[]) => list.map((id) => ids[id] ?? id);
@@ -122,6 +148,19 @@ export function remapRefs(refs: RefLists, ids: Record<string, string>): RefLists
     monsterIds: remap(refs.monsterIds),
     rewardIds: remap(refs.rewardIds),
   };
+}
+
+/** Remap temporary entity ids stored in mapping provenance after materialization. */
+export function remapTemplateState(state: TemplateState, ids: Record<string, string>): TemplateState {
+  const sources = Object.fromEntries(Object.entries(state.sources).map(([path, source]) => {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return [path, source];
+    const record = source as Record<string, unknown>;
+    const entityIds = Array.isArray(record.entityIds)
+      ? record.entityIds.map((id) => ids[String(id)] ?? id)
+      : record.entityIds;
+    return [path, { ...record, ...(entityIds ? { entityIds } : {}) }];
+  }));
+  return { ...state, sources };
 }
 
 /** The proposed designs an approved set of changes actually needs created. */

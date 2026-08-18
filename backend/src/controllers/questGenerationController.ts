@@ -28,6 +28,17 @@ import {
 } from '../services/designMaterialization';
 import { ownsGame } from '../services/gameService';
 import { DifficultyBucket } from '../services/structuredParse';
+import { buildFallbackDialogPages } from '../services/templateDialogFallback';
+import { allocateIds } from '../services/idAllocationService';
+import {
+  applyEntityMappings,
+  buildMappedEntityPromptBlock,
+  enrichMappedEntitySeeds,
+  loadMappedProjectEntities,
+  MappedEntitySeed,
+  NormalizedMappedEntity,
+  questGiverRefId,
+} from '../services/templateEntityMappingService';
 
 const BASE_VARIANT_KEYS = new Set(BASE_VARIANT_SEEDS.map((s) => s.key));
 
@@ -470,83 +481,10 @@ function isEmptyTemplateGeneratedValue(value: unknown): boolean {
   return false;
 }
 
-function buildFallbackDialogPages(
-  templateDoc: any,
-  field: TemplateFieldForGeneration,
-  node: { id: string; title: string; body: string; npcIds?: string[] },
-): Record<string, unknown>[] {
-  const itemSchema = field.itemSchema ?? [];
-  const allowedKeys = new Set(itemSchema.map((item) => item.path));
-  const identityKey = identityItemKeyForField(templateDoc, field) ?? itemSchema[0]?.path;
-  const promptKey = promptItemKeyForField(templateDoc, field, identityKey);
-  const pathKey = field.path.replace(/[^\w]+/g, '_');
-  const baseId = `${node.id}_${pathKey}`;
-  const npcId = firstNumericId(node.npcIds) ?? 0;
-  const body = node.body || node.title;
-  const page: Record<string, unknown> = {};
 
-  if (identityKey) page[identityKey] = `${baseId}_page_1`;
-  if (promptKey) page[promptKey] = body;
 
-  for (const item of itemSchema) {
-    if (page[item.path] !== undefined) continue;
-    if (item.valueType === 'number' && /npc/i.test(item.path)) page[item.path] = npcId;
-  }
 
-  return Object.keys(page).length ? [makeDialogPage(allowedKeys, page)] : [];
-}
 
-function makeDialogPage(allowedKeys: Set<string>, page: Record<string, unknown>): Record<string, unknown> {
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(page)) {
-    if (!allowedKeys.has(key) || value === undefined || value === '') continue;
-    cleaned[key] = value;
-  }
-  if (!('prompt' in cleaned) && allowedKeys.has('prompt')) cleaned.prompt = '';
-  return cleaned;
-}
-
-function firstNumericId(values: unknown): number | undefined {
-  if (!Array.isArray(values)) return undefined;
-  for (const value of values) {
-    const match = String(value).match(/\d+/);
-    if (!match) continue;
-    const parsed = Number(match[0]);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
-}
-
-function identityItemKeyForField(templateDoc: any, field: TemplateFieldForGeneration): string | undefined {
-  const relationship = relationshipHintsForField(templateDoc, field.path).find((hint) => parseArrayItemPath(hint.to)?.itemPath);
-  return relationship ? parseArrayItemPath(relationship.to)?.itemPath : undefined;
-}
-
-function promptItemKeyForField(templateDoc: any, field: TemplateFieldForGeneration, identityKey?: string): string | undefined {
-  const hints = templateDoc?.templateSchema?.generationContract?.fieldHints;
-  const itemSchema = field.itemSchema ?? [];
-  if (Array.isArray(hints)) {
-    const hinted = hints.find((hint) => {
-      const parsed = typeof hint?.path === 'string' ? parseArrayItemPath(hint.path) : null;
-      if (!parsed || parsed.arrayPath !== field.path) return false;
-      const text = `${hint.meaning ?? ''} ${hint.generationUse ?? ''}`.toLowerCase();
-      return /player-facing|dialog|dialogue|prompt|line|message|speech|text/.test(text);
-    });
-    if (hinted) return parseArrayItemPath(hinted.path)?.itemPath;
-  }
-  return itemSchema.find((item) => item.valueType === 'string' && item.path !== identityKey)?.path;
-}
-
-function relationshipHintsForField(templateDoc: any, fieldPath: string): Array<{ from: string; to: string }> {
-  const hints = templateDoc?.templateSchema?.generationContract?.relationshipHints;
-  if (!Array.isArray(hints)) return [];
-  return hints.filter((hint) => {
-    if (!hint || typeof hint.from !== 'string' || typeof hint.to !== 'string') return false;
-    const from = parseArrayItemPath(hint.from);
-    const to = parseArrayItemPath(hint.to);
-    return Boolean(from && to && from.arrayPath === fieldPath && to.arrayPath === fieldPath);
-  });
-}
 
 function sanitizeGeneratedTemplateValues(templateDoc: any, raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -798,6 +736,46 @@ async function loadValidatedTemplateKbMappings(args: {
     }));
 }
 
+async function loadWizardMappedEntities(args: {
+  ownerId: string;
+  projectId: string;
+  gameId: string;
+  characters: GeneratedCharacter[];
+  rewards: Reward[];
+}): Promise<NormalizedMappedEntity[]> {
+  const existingIds = args.characters.flatMap((character) => (
+    character.existingId ? [character.existingId] : []
+  ));
+  const existing = await loadMappedProjectEntities({
+    ownerId: args.ownerId,
+    projectId: args.projectId,
+    gameId: args.gameId,
+    refIds: existingIds,
+  });
+  const existingById = new Map(existing.map((entity) => [entity.refId, entity]));
+  const seeds: MappedEntitySeed[] = [
+    ...args.characters.map((character) => {
+      const projectEntity = character.existingId ? existingById.get(character.existingId) : undefined;
+      return {
+        refId: character.id,
+        kbType: character.role === 'monster' ? 'monsters' as const : 'characters' as const,
+        name: character.name,
+        projectFields: projectEntity?.projectFields,
+        kbRef: projectEntity?.kbRef ?? character.kbRef,
+        hasProjectSource: Boolean(projectEntity),
+      };
+    }),
+    ...args.rewards.map((reward) => ({
+      refId: reward.id,
+      kbType: 'items' as const,
+      name: reward.title,
+      kbRef: reward.kbRef,
+      hasProjectSource: false,
+    })),
+  ];
+  return enrichMappedEntitySeeds({ gameId: args.gameId, seeds });
+}
+
 function buildTemplateKbMappingGuidance(mappings: TemplateKbMappingForPrompt[]): string {
   if (!mappings.length) {
     return `
@@ -872,6 +850,24 @@ function isReverseRelationshipHint(hint: { from: { itemPath: string }; meaning?:
 function isSequenceForwardRelationshipHint(hint: { kind?: string; from: { itemPath: string }; meaning?: string }): boolean {
   if (hint.kind === 'branch') return false;
   return /next|forward/i.test(`${hint.from.itemPath} ${hint.meaning ?? ''}`);
+}
+
+/**
+ * The quest ids a node's incoming edges point at. `[-1]` is the template's
+ * "no prerequisite" marker, so an entry node keeps it.
+ */
+function prerequisiteQuestIds(
+  edges: Array<{ source: string; target: string }>,
+  nodeId: string,
+  questIdByNode: Map<string, number>,
+): number[] {
+  const ids = edges
+    .filter((edge) => edge.target === nodeId)
+    .flatMap((edge) => {
+      const questId = questIdByNode.get(edge.source);
+      return questId ? [questId] : [];
+    });
+  return ids.length ? [...new Set(ids)] : [-1];
 }
 
 function parseArrayItemPath(path: string): { arrayPath: string; itemPath: string } | null {
@@ -1239,6 +1235,7 @@ function buildGraphPrompt(
   referenceBlock: string,
   template?: TemplateContext,
   mappings: TemplateKbMappingForPrompt[] = [],
+  mappedEntityBlock = '',
 ): string {
   const objectiveList = objectives.map((o, i) => `  ${i + 1}. ${o.title} — ${o.description}`).join('\n');
   const rewardList    = rewards.map((r) => `  - id="${r.id}" title="${r.title}"`).join('\n');
@@ -1261,7 +1258,7 @@ ${rewardList}
 ${hasCharacters ? `
 Characters in this story (use their exact IDs when assigning to nodes):
 ${characterList}
-` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}${buildTemplateGraphGuidance(template, mappings)}
+` : ''}${referenceBlock ? `${referenceBlock}\n` : ''}${mappedEntityBlock}${buildTemplateGraphGuidance(template, mappings)}
 ━━━ WHAT A NODE IS ━━━
 A node is a single SCENE in the story — one moment, one location, one decision point.
 Think of it like a chapter in a book or a room in a dungeon.
@@ -1417,6 +1414,15 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       gameId: ownedGameId,
       templateId: templateContext?.id,
     });
+    const wizardMappedEntities = mappings.length
+      ? await loadWizardMappedEntities({
+          ownerId: String(userId),
+          projectId: resolvedProjectId,
+          gameId: ownedGameId,
+          characters: characters ?? [],
+          rewards: rewards ?? [],
+        })
+      : [];
     const json = await complete(buildGraphPrompt(
       story,
       genre,
@@ -1428,6 +1434,7 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       reference.referenceBlock,
       templateContext,
       mappings,
+      buildMappedEntityPromptBlock(mappings, wizardMappedEntities),
     ));
     const generated = JSON.parse(json) as {
       title: string;
@@ -1494,7 +1501,49 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       .filter((d) => d.created && d.kind === 'item')
       .map((d) => new mongoose.Types.ObjectId(d.id));
 
-    const allowedMappedValues = mappedCandidateValues(reference.entities, mappings);
+    const castableTypes = new Set(['characters', 'monsters', 'items']);
+    const nonCastableMappings = mappings.filter((mapping) => !castableTypes.has(mapping.kbType));
+    const allowedMappedValues = mappedCandidateValues(reference.entities, nonCastableMappings);
+    const materializedById = await loadMappedProjectEntities({
+      ownerId: String(userId),
+      projectId: resolvedProjectId,
+      gameId: ownedGameId,
+      refIds: designs.map((design) => design.id),
+    });
+    const mappedEntities = materializedById;
+
+    // Every node of a quest is dialogue with the NPC who hands it out, so a
+    // combat or collect node that casts nobody still needs that speaker.
+    // Resolved against real design ids, not the wizard's temp ids.
+    const questGiverId = questGiverRefId(
+      generated.nodes.map((node) => ({
+        id: node.id,
+        npcIds: (node.npcIds ?? []).map((id) => charIdMap.get(id) ?? id),
+      })),
+      generated.edges ?? [],
+    );
+    const questGiver = mappedEntities.find((entity) => entity.refId === questGiverId);
+
+    // Quest ids used to be the node's position ("1", "2", …), so every
+    // questline in a project exported quests 1..N and collided with every other
+    // one. Draw unique ids from the project's pool instead. preQuest holds
+    // prerequisite *quest* ids, so it has to be remapped through the same table
+    // — it only looked right before because both were the node number.
+    const questIdAllocation = await allocateIds({
+      projectId: resolvedProjectId,
+      type: 'quest',
+      count: generated.nodes.length,
+    });
+    const questIdByNode = new Map<string, number>();
+    generated.nodes.forEach((node, index) => {
+      const allocated = questIdAllocation.ids[index];
+      // Falling back to the node number keeps the old behaviour when no quest
+      // id range is configured, rather than exporting quests with no id.
+      questIdByNode.set(node.id, allocated || parseInt(node.id, 10) || index + 1);
+    });
+    if (questIdAllocation.error) {
+      console.warn(`[generateQuestline] quest id allocation: ${questIdAllocation.error}`);
+    }
 
     const questline = await QuestlineModel.create({
       ownerId:      userId,
@@ -1525,11 +1574,23 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
       } : undefined,
       // Nodes saved with placeholder IDs first — remapped below after we have _ids
       nodes: generated.nodes.map((n) => {
-        const templateValues = enforceMappedTemplateValues(
+        const generatedValues = enforceMappedTemplateValues(
           buildInitialTemplateValues(templateDoc, n),
-          mappings,
+          nonCastableMappings,
           allowedMappedValues,
         );
+        const mappedState = applyEntityMappings({
+          values: generatedValues,
+          sources: buildTemplateValueSourceMetadata(generatedValues, nonCastableMappings),
+          mappings,
+          entities: mappedEntities,
+          refIds: [
+            ...(n.npcIds ?? []).map((id) => charIdMap.get(id) ?? id),
+            ...(n.monsterIds ?? []).map((id) => charIdMap.get(id) ?? id),
+            ...(n.rewardIds ?? []).map((id) => rewardIdMap.get(id) ?? id),
+          ],
+          questGiver,
+        });
         return {
           nodeId:     n.id,
           type:       n.type ?? 'questNode',
@@ -1539,21 +1600,13 @@ export async function generateQuestline(req: AuthRequest, res: Response) {
           npcIds:     n.npcIds     ?? [],
           monsterIds: n.monsterIds ?? [],
           rewardIds:  n.rewardIds  ?? [],
-          templateValues,
-          templateValueSources: buildTemplateValueSourceMetadata(templateValues, mappings),
-          generationWarnings: buildTemplateGenerationWarnings(templateValues, mappings),
+          templateValues: mappedState.values,
+          templateValueSources: mappedState.sources,
+          generationWarnings: mappedState.warnings,
           exportFields: {
-            questId: parseInt(n.id, 10) || undefined,
+            questId: questIdByNode.get(n.id),
             silent: true,
-            preQuest: generated.edges
-              .filter((e) => e.target === n.id)
-              .map((e) => parseInt(e.source, 10))
-              .filter((id) => Number.isFinite(id)).length
-              ? generated.edges
-                .filter((e) => e.target === n.id)
-                .map((e) => parseInt(e.source, 10))
-                .filter((id) => Number.isFinite(id))
-              : [-1],
+            preQuest: prerequisiteQuestIds(generated.edges, n.id, questIdByNode),
             daily: false,
             toKill: [],
             toCollect: [],

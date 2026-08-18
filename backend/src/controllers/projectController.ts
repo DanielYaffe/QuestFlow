@@ -146,6 +146,7 @@ const mapleSettingsSchema = z.object({
   defaultExportMode: z.enum(['changed-only', 'full-snapshot']).optional(),
   npcIdRanges: z.array(mapleIdRangeSchema).optional(),
   itemIdRanges: z.array(mapleIdRangeSchema).optional(),
+  questIdRanges: z.array(mapleIdRangeSchema).optional(),
 }).partial();
 
 const assetFieldTypeSchema = z.enum([
@@ -703,6 +704,7 @@ class ProjectController extends BaseController {
           defaultExportMode: mapleSettings.defaultExportMode ?? project.mapleSettings?.defaultExportMode ?? 'changed-only',
           npcIdRanges: mapleSettings.npcIdRanges ?? project.mapleSettings?.npcIdRanges ?? [],
           itemIdRanges: mapleSettings.itemIdRanges ?? project.mapleSettings?.itemIdRanges ?? [],
+          questIdRanges: mapleSettings.questIdRanges ?? project.mapleSettings?.questIdRanges ?? [],
         };
         project.markModified('mapleSettings');
       }

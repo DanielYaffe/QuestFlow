@@ -85,6 +85,8 @@ export interface IProjectMapleSettings {
   defaultExportMode: 'changed-only' | 'full-snapshot';
   npcIdRanges: IMapleIdRange[];
   itemIdRanges: IMapleIdRange[];
+  /** Pool that quest ids are drawn from. Quests are ided per node on export. */
+  questIdRanges: IMapleIdRange[];
 }
 
 export interface IProject extends Document {
@@ -255,6 +257,7 @@ const ProjectMapleSettingsSchema = new Schema<IProjectMapleSettings>(
     defaultExportMode:  { type: String, enum: ['changed-only', 'full-snapshot'], default: 'changed-only' },
     npcIdRanges:        { type: [MapleIdRangeSchema], default: [] },
     itemIdRanges:       { type: [MapleIdRangeSchema], default: [] },
+    questIdRanges:      { type: [MapleIdRangeSchema], default: [] },
   },
   { _id: false },
 );

@@ -93,6 +93,8 @@ export interface ExportTemplate {
   templateAst?: unknown;
   fieldSchema: TemplateFieldSummary[];
   templateSchema?: TemplateSchema;
+  /** Template paths the author marked must-fill, incl. "arr[].item" form. */
+  requiredFieldPaths?: string[];
   schemaSummary?: {
     requirementFields: string[];
     rewardFields: string[];
@@ -162,6 +164,12 @@ export async function saveTemplateKbMappings(
   entries: TemplateKbMappingEntry[],
 ): Promise<TemplateKbMapping> {
   const { data } = await api.put<TemplateKbMapping>(`/export-templates/${templateId}/kb-mappings`, { gameId, entries });
+  return data;
+}
+
+/** Replace the set of fields that must be filled on every quest node. */
+export async function saveRequiredFieldPaths(id: string, paths: string[]): Promise<ExportTemplate> {
+  const { data } = await api.put(`/export-templates/${id}/required-fields`, { paths });
   return data;
 }
 

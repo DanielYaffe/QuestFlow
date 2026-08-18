@@ -44,8 +44,46 @@ type TemplateFieldGroup = {
   fields: TemplateFieldSummary[];
 };
 
-function isTemplateSnapshot(value: unknown): value is { fieldSchema?: TemplateFieldSummary[]; templateSchema?: TemplateSchema } {
+function isTemplateSnapshot(value: unknown): value is {
+  fieldSchema?: TemplateFieldSummary[];
+  templateSchema?: TemplateSchema;
+  requiredFieldPaths?: string[];
+} {
   return value !== null && typeof value === 'object';
+}
+
+/** Paths the template author marked must-fill, in "field" or "arr[].item" form. */
+export function getRequiredFieldPaths(template?: TemplateRef | null): string[] {
+  return isTemplateSnapshot(template?.snapshot) && Array.isArray(template.snapshot.requiredFieldPaths)
+    ? template.snapshot.requiredFieldPaths
+    : [];
+}
+
+function hasValue(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+/**
+ * Required paths this node leaves empty. An array-item path counts as unmet when
+ * any row is missing it — a dialog whose second page has no speaker is as broken
+ * as one with no pages at all.
+ */
+export function unmetRequiredPaths(
+  template: TemplateRef | null | undefined,
+  templateValues: Record<string, unknown>,
+): string[] {
+  return getRequiredFieldPaths(template).filter((path) => {
+    const marker = path.indexOf('[].');
+    if (marker < 0) return !hasValue(templateValues[path]);
+    const rows = templateValues[path.slice(0, marker)];
+    const itemPath = path.slice(marker + 3);
+    if (!Array.isArray(rows) || rows.length === 0) return true;
+    return rows.some((row) => !hasValue((row as Record<string, unknown> | null)?.[itemPath]));
+  });
 }
 
 function getTemplateSchema(template?: TemplateRef | null): TemplateSchema | undefined {
@@ -246,6 +284,7 @@ export function TemplateFieldsEditor({
   };
   const fieldGroups = React.useMemo(() => groupTemplateFields(fields), [fields]);
   const templateSchema = getTemplateSchema(template);
+  const unmetPaths = unmetRequiredPaths(template, templateValues);
   const [openGroupKey, setOpenGroupKey] = React.useState<string | null>(null);
   const [dialogField, setDialogField] = React.useState<TemplateFieldSummary | null>(null);
   const activeGroup = fieldGroups.find((g) => g.key === openGroupKey) ?? null;
@@ -608,6 +647,14 @@ export function TemplateFieldsEditor({
                   {field.description && <p className="text-steel-500 text-xs mb-2">{field.description}</p>}
                   {generationWarnings.some((warning) => warning.includes(field.path)) && (
                     <p className="text-amber-300 text-xs mb-2">Generated without a validated KB mapping.</p>
+                  )}
+                  {unmetPaths.some((path) => path === field.path || path.startsWith(`${field.path}[].`)) && (
+                    <p className="text-red-300 text-xs mb-2">
+                      Required by this template — {unmetPaths
+                        .filter((path) => path === field.path || path.startsWith(`${field.path}[].`))
+                        .map((path) => path.slice(field.path.length + 3) || 'this field')
+                        .join(', ')} is empty.
+                    </p>
                   )}
                   {renderTemplateFieldInput(field, current)}
                 </div>

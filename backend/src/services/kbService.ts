@@ -1,7 +1,7 @@
 import { KbType, deleteDocumentPoints } from './qdrant';
 import { embedBatch } from './ai';
 import { chunkText } from './chunk';
-import { parseCollectionFile, ParsedEntity } from './structuredParse';
+import { canonicalEntityId, ENTITY_ID_KEYS, parseCollectionFile, ParsedEntity } from './structuredParse';
 import KbDocumentModel, { IKbDocument } from '../models/kbDocumentModel';
 import CharacterModel from '../models/characterModel';
 import { kbQueue } from '../queues/kbQueue';
@@ -43,13 +43,42 @@ function stringListField(fields: Record<string, unknown>, keys: string[]): strin
   return [];
 }
 
-function numberField(fields: Record<string, unknown>, keys: string[]): number {
-  for (const key of keys) {
-    const value = fields[key];
-    if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
-    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim());
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeMissingFields(
+  current: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...current };
+  for (const [key, sourceValue] of Object.entries(source)) {
+    if (!Object.prototype.hasOwnProperty.call(merged, key)) {
+      merged[key] = sourceValue;
+      continue;
+    }
+    if (isRecord(merged[key]) && isRecord(sourceValue)) {
+      merged[key] = mergeMissingFields(merged[key] as Record<string, unknown>, sourceValue);
+    }
   }
-  return 0;
+  return merged;
+}
+
+/**
+ * Merge KB fields into a design's custom fields, but let the KB restate the
+ * canonical id outright. Everything else is descriptive and an author edit wins;
+ * an id is identity, and a copy taken from an older version of this same
+ * document is precisely what needs correcting.
+ */
+function mergeFieldsWithCanonicalId(
+  current: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = mergeMissingFields(current, source);
+  for (const key of ENTITY_ID_KEYS) {
+    if (key in source) merged[key] = source[key];
+  }
+  return merged;
 }
 
 function characterPatchFromEntity(entity: ParsedEntity, type: KbType): Record<string, unknown> {
@@ -57,7 +86,7 @@ function characterPatchFromEntity(entity: ParsedEntity, type: KbType): Record<st
   const appearance = stringField(fields, ['appearance', 'look', 'visual', 'description']);
   const lore = stringField(fields, ['notes', 'lore', 'background', 'bio', 'description']);
   const dialogueTraits = stringListField(fields, ['traits', 'dialogueTraits', 'dialogue_traits', 'personality']);
-  const mapleId = numberField(fields, ['id', 'mapleId', 'maple_id', 'npcId', 'npc_id', 'mobId', 'mob_id']);
+  const mapleId = canonicalEntityId(fields);
 
   const patch: Record<string, unknown> = {
     name: entity.name,
@@ -70,7 +99,7 @@ function characterPatchFromEntity(entity: ParsedEntity, type: KbType): Record<st
   return patch;
 }
 
-async function syncCharacterReferencesFromKb(doc: IKbDocument): Promise<void> {
+export async function syncCharacterReferencesFromKb(doc: IKbDocument): Promise<void> {
   if (doc.type !== 'characters' && doc.type !== 'monsters') return;
 
   const entities = parseCollectionFile(doc.originalText);
@@ -84,10 +113,20 @@ async function syncCharacterReferencesFromKb(doc: IKbDocument): Promise<void> {
     ];
     if (singleEntityDoc) filters.push({ kbDocId: docId });
 
-    await CharacterModel.updateMany(
-      { $or: filters },
-      { $set: { ...characterPatchFromEntity(entity, doc.type), kbRef: `${doc.gameId}:${entity.name}` } },
-    );
+    const linkedCharacters = await CharacterModel.find({ $or: filters }).select('customFields').lean();
+    await Promise.all(linkedCharacters.map((character) => CharacterModel.updateOne(
+      { _id: character._id },
+      {
+        $set: {
+          ...characterPatchFromEntity(entity, doc.type),
+          kbRef: `${doc.gameId}:${entity.name}`,
+          customFields: mergeFieldsWithCanonicalId(
+            isRecord(character.customFields) ? character.customFields : {},
+            entity.fields,
+          ),
+        },
+      },
+    )));
   }
 }
 

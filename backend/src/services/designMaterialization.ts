@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 import CharacterModel, { CharacterKind } from '../models/characterModel';
 import ItemModel, { ItemRarity } from '../models/itemModel';
 import { createItem } from './itemService';
+import { loadExactKbEntity } from './templateEntityMappingService';
+import { canonicalEntityId, ENTITY_ID_KEYS } from './structuredParse';
+import { allocateId } from './idAllocationService';
+import { KbType } from './qdrant';
 
 // ---------------------------------------------------------------------------
 // Design materialization — turning a *proposed design* (a name the AI returned,
@@ -45,6 +49,8 @@ export interface MaterializeResult {
   /** tempId → real design id, for remapping node references. */
   ids: Record<string, string>;
   designs: MaterializedDesign[];
+  /** Why some designs were created without an id (e.g. no configured range). */
+  allocationWarnings: string[];
 }
 
 /** The provenance tag persisted on a design. Mirrors characterModel's kbRef. */
@@ -74,6 +80,8 @@ interface DesignRow {
   id: string;
   name: string;
   kbRef: string;
+  customFields: Record<string, unknown>;
+  mapleId: number;
 }
 
 interface Lookup {
@@ -85,6 +93,50 @@ interface Lookup {
 
 function emptyLookup(): Lookup {
   return { byId: new Map(), byKbRef: new Map(), byName: new Map() };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeMissingFields(
+  current: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...current };
+  for (const [key, sourceValue] of Object.entries(source)) {
+    if (!Object.prototype.hasOwnProperty.call(merged, key)) {
+      merged[key] = sourceValue;
+      continue;
+    }
+    const currentValue = merged[key];
+    if (isRecord(currentValue) && isRecord(sourceValue)) {
+      merged[key] = mergeMissingFields(currentValue, sourceValue);
+    }
+  }
+  return merged;
+}
+
+/** Replace the id aliases in `fields` with whatever the KB currently states. */
+function withCanonicalId(
+  fields: Record<string, unknown>,
+  kbFields: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...fields };
+  for (const key of ENTITY_ID_KEYS) {
+    if (key in kbFields) next[key] = kbFields[key];
+  }
+  return next;
+}
+
+function kbTypeFor(kind: DesignKind): KbType {
+  if (kind === 'item') return 'items';
+  return kind === 'monster' ? 'monsters' : 'characters';
+}
+
+function entityNameFromProposal(gameId: string, kbRef: string | undefined): string {
+  const ref = kbRef?.trim() ?? '';
+  return ref.startsWith(`${gameId}:`) ? ref.slice(gameId.length + 1).trim() : ref;
 }
 
 function index<T extends DesignRow>(rows: T[], nameKey: (row: T) => string): Lookup {
@@ -123,11 +175,11 @@ interface ResolveArgs {
  */
 export async function materializeDesigns(args: ResolveArgs): Promise<MaterializeResult> {
   const { ownerId, projectId, gameId, proposals } = args;
-  if (proposals.length === 0) return { ids: {}, designs: [] };
+  if (proposals.length === 0) return { ids: {}, designs: [], allocationWarnings: [] };
 
   const [characterDocs, itemDocs] = await Promise.all([
-    CharacterModel.find({ projectId }).select('name kind kbRef').lean(),
-    ItemModel.find({ projectId }).select('name kbRef').lean(),
+    CharacterModel.find({ projectId }).select('name kind kbRef customFields maple.mapleId').lean(),
+    ItemModel.find({ projectId }).select('name kbRef customFields maple.mapleId').lean(),
   ]);
 
   const characters = index(
@@ -136,16 +188,31 @@ export async function materializeDesigns(args: ResolveArgs): Promise<Materialize
       name: c.name,
       kbRef: c.kbRef ?? '',
       kind: c.kind,
+      customFields: isRecord(c.customFields) ? c.customFields : {},
+      mapleId: c.maple?.mapleId ?? 0,
     })),
     (row) => `${row.kind}:${norm(row.name)}`,
   );
   const items = index(
-    itemDocs.map((i) => ({ id: String(i._id), name: i.name, kbRef: i.kbRef ?? '' })),
+    itemDocs.map((i) => ({
+      id: String(i._id),
+      name: i.name,
+      kbRef: i.kbRef ?? '',
+      customFields: isRecord(i.customFields) ? i.customFields : {},
+      mapleId: i.maple?.mapleId ?? 0,
+    })),
     (row) => norm(row.name),
   );
 
   const ids: Record<string, string> = {};
   const designs: MaterializedDesign[] = [];
+  const kbEntityCache = new Map<string, ReturnType<typeof loadExactKbEntity>>();
+  // Ids handed out during this call. A freshly created design is not yet in the
+  // query the allocator runs, so without this a batch would reuse one id.
+  const allocatedThisBatch = new Set<number>(
+    [...characterDocs, ...itemDocs].flatMap((doc) => (doc.maple?.mapleId ? [doc.maple.mapleId] : [])),
+  );
+  const allocationWarnings = new Set<string>();
 
   for (const proposal of proposals) {
     const name = proposal.name?.trim();
@@ -154,7 +221,18 @@ export async function materializeDesigns(args: ResolveArgs): Promise<Materialize
     const isItem = proposal.kind === 'item';
     const lookup = isItem ? items : characters;
     const nameKey = isItem ? norm(name) : `${proposal.kind}:${norm(name)}`;
-    const tag = gameId && proposal.kbRef?.trim() ? kbRefTag(gameId, proposal.kbRef) : '';
+    const kbEntityName = gameId ? entityNameFromProposal(gameId, proposal.kbRef) : '';
+    const tag = gameId && kbEntityName ? kbRefTag(gameId, kbEntityName) : '';
+    const kbType = kbTypeFor(proposal.kind);
+    const kbCacheKey = `${kbType}:${kbEntityName}`;
+    let kbEntityPromise = kbEntityCache.get(kbCacheKey);
+    if (tag && !kbEntityPromise) {
+      kbEntityPromise = loadExactKbEntity(gameId, kbType, kbEntityName);
+      kbEntityCache.set(kbCacheKey, kbEntityPromise);
+    }
+    const kbEntity = kbEntityPromise ? await kbEntityPromise : undefined;
+    const kbFields = kbEntity?.fields ?? {};
+    const kbEntityId = canonicalEntityId(kbEntity?.fields);
 
     // 1. Explicit reuse of a project design. A character proposal must not
     //    resolve to an item id, so we only consult its own lookup.
@@ -185,12 +263,57 @@ export async function materializeDesigns(args: ResolveArgs): Promise<Materialize
         if (row) row.kbRef = tag;
         lookup.byKbRef.set(tag, resolvedId);
       }
+      if (row && kbEntity) {
+        // Descriptive fields merge (an author edit wins), but identity is the
+        // KB's to state: a design linked before the KB file was re-uploaded
+        // otherwise keeps an id the game no longer uses, and nothing else in the
+        // app would ever correct it.
+        const mergedFields = withCanonicalId(mergeMissingFields(row.customFields, kbFields), kbFields);
+        const set: Record<string, unknown> = {};
+        if (JSON.stringify(mergedFields) !== JSON.stringify(row.customFields)) {
+          set.customFields = mergedFields;
+          row.customFields = mergedFields;
+        }
+        if (kbEntityId && kbEntityId !== row.mapleId) {
+          set['maple.mapleId'] = kbEntityId;
+          row.mapleId = kbEntityId;
+        }
+        if (Object.keys(set).length) {
+          const filter = { _id: resolvedId, projectId };
+          if (isItem) await ItemModel.updateOne(filter, { $set: set });
+          else await CharacterModel.updateOne(filter, { $set: set });
+        }
+      }
       ids[proposal.tempId] = resolvedId;
       designs.push({ tempId: proposal.tempId, id: resolvedId, kind: proposal.kind, name, kbRef, created: false });
       continue;
     }
 
     // 4. Nothing matched — write the design.
+    //
+    // A KB-grounded design keeps the game's own id. Anything invented needs one
+    // allocated now, or it is written with id 0 and every invented design in the
+    // project shares that id until somebody presses Allocate by hand.
+    // `allocatedThisBatch` covers ids handed out but not yet visible to a query.
+    let mapleId = kbEntityId;
+    if (!mapleId) {
+      const allocation = await allocateId({
+        projectId,
+        type: isItem ? 'item' : 'npc',
+        taken: allocatedThisBatch,
+      });
+      if (allocation.id) {
+        mapleId = allocation.id;
+        allocatedThisBatch.add(allocation.id);
+      } else if (allocation.error) {
+        // No pool configured is a project setup gap, not a reason to refuse the
+        // design — it is created unided, exactly as before.
+        allocationWarnings.add(allocation.error);
+      }
+    } else {
+      allocatedThisBatch.add(mapleId);
+    }
+
     let newId: string;
     if (isItem) {
       const doc = await createItem({
@@ -200,6 +323,8 @@ export async function materializeDesigns(args: ResolveArgs): Promise<Materialize
         description: proposal.description ?? '',
         rarity: proposal.rarity,
         kbRef: tag,
+        customFields: kbFields,
+        ...(mapleId ? { maple: { mapleId } as Parameters<typeof createItem>[0]['maple'] } : {}),
       });
       newId = String(doc._id);
     } else {
@@ -211,13 +336,21 @@ export async function materializeDesigns(args: ResolveArgs): Promise<Materialize
         appearance: proposal.appearance ?? '',
         lore: proposal.lore ?? '',
         kbRef: tag,
+        customFields: kbFields,
+        ...(mapleId ? { maple: { mapleId } } : {}),
       });
       newId = String(doc._id);
     }
 
     // Index the new design so a later proposal naming it again links instead
     // of creating a second copy within this same batch.
-    const row: DesignRow = { id: newId, name, kbRef: tag };
+    const row: DesignRow = {
+      id: newId,
+      name,
+      kbRef: tag,
+      customFields: kbFields,
+      mapleId,
+    };
     lookup.byId.set(newId, row);
     lookup.byName.set(nameKey, newId);
     if (tag) lookup.byKbRef.set(tag, newId);
@@ -226,5 +359,5 @@ export async function materializeDesigns(args: ResolveArgs): Promise<Materialize
     designs.push({ tempId: proposal.tempId, id: newId, kind: proposal.kind, name, kbRef: tag, created: true });
   }
 
-  return { ids, designs };
+  return { ids, designs, allocationWarnings: [...allocationWarnings] };
 }

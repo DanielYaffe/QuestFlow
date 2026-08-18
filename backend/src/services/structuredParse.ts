@@ -163,6 +163,34 @@ function extractMarkdownEntities(text: string): RawEntity[] | null {
   });
 }
 
+// --- canonical entity id ------------------------------------------------------
+
+/**
+ * Field names a source collection may use for an entity's canonical id, most
+ * specific first. This is the one place that decides what "the id" means, so
+ * ingestion, materialization, and mapping cannot drift apart on it — they did,
+ * each carrying its own slightly different copy of this list.
+ *
+ * It is a list of *aliases*, not a schema: nothing here assumes a particular
+ * game or export template. A KB that names the field something else is still
+ * mapped correctly through an explicit `kbFieldPath` — this is only the fallback
+ * used when code has to find the id on its own.
+ */
+export const ENTITY_ID_KEYS = [
+  'id', 'mapleId', 'maple_id', 'npcId', 'npc_id', 'mobId', 'mob_id', 'itemId', 'item_id',
+] as const;
+
+/** The entity's canonical id, or 0 when none of the known aliases carries one. */
+export function canonicalEntityId(fields: Record<string, unknown> | undefined): number {
+  if (!fields) return 0;
+  for (const key of ENTITY_ID_KEYS) {
+    const value = fields[key];
+    if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim());
+  }
+  return 0;
+}
+
 // --- stat heuristics & progression ------------------------------------------
 
 const STAT_GROUPS: { group: string; pattern: RegExp; weight: number }[] = [

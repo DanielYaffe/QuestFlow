@@ -9,6 +9,7 @@ import {
   ExportTemplate,
   fetchExportTemplates,
   fetchTemplateKbMappings,
+  saveRequiredFieldPaths,
   saveTemplateKbMappings,
   TemplateKbMappingEntry,
   TemplateSchema,
@@ -73,6 +74,10 @@ export function QuestTemplateSettingsCard() {
   const [mappingGameId, setMappingGameId] = useState('');
   const [mappingLoadingId, setMappingLoadingId] = useState<string | null>(null);
   const [mappingDrafts, setMappingDrafts] = useState<Record<string, TemplateKbMappingEntry[]>>({});
+  // Required-field marks are edited per template and saved as a whole set.
+  const [requiredEditingId, setRequiredEditingId] = useState<string | null>(null);
+  const [requiredSavingId, setRequiredSavingId] = useState<string | null>(null);
+  const [requiredDrafts, setRequiredDrafts] = useState<Record<string, string[]>>({});
   const [name, setName] = useState('Generic Quest');
   const [description, setDescription] = useState('Quest-node export template');
   const [inputFormat, setInputFormat] = useState<TemplateFormat>('json');
@@ -327,6 +332,35 @@ export function QuestTemplateSettingsCard() {
       ...prev,
       [templateId]: (prev[templateId] ?? []).filter((_, entryIndex) => entryIndex !== index),
     }));
+  };
+
+  const startRequiredEdit = (template: ExportTemplate) => {
+    setRequiredDrafts((prev) => ({ ...prev, [template._id]: template.requiredFieldPaths ?? [] }));
+    setRequiredEditingId(template._id);
+  };
+
+  const toggleRequired = (templateId: string, path: string, checked: boolean) => {
+    setRequiredDrafts((prev) => {
+      const current = prev[templateId] ?? [];
+      return {
+        ...prev,
+        [templateId]: checked ? [...new Set([...current, path])] : current.filter((item) => item !== path),
+      };
+    });
+  };
+
+  const saveRequired = async (template: ExportTemplate) => {
+    setRequiredSavingId(template._id);
+    try {
+      const saved = await saveRequiredFieldPaths(template._id, requiredDrafts[template._id] ?? []);
+      setTemplates((prev) => prev.map((item) => (item._id === saved._id ? saved : item)));
+      setRequiredEditingId(null);
+      toast.success(`${(saved.requiredFieldPaths ?? []).length} required field(s) saved`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to save required fields');
+    } finally {
+      setRequiredSavingId(null);
+    }
   };
 
   const addMappingDraft = (template: ExportTemplate) => {
@@ -638,6 +672,70 @@ export function QuestTemplateSettingsCard() {
                     </div>
                   </div>
                 )}
+                <div className="mt-3 border-t border-steel-800 pt-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-steel-200 text-xs font-medium">Required fields</p>
+                      <p className="text-steel-500 text-xs">
+                        Fields every quest node must fill. Empty ones are flagged in the node editor.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="px-3 py-2 text-steel-400 text-xs">
+                        {(requiredDrafts[template._id] ?? template.requiredFieldPaths ?? []).length} marked
+                      </span>
+                      {requiredEditingId === template._id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => saveRequired(template)}
+                            disabled={requiredSavingId === template._id}
+                            className="px-3 py-2 bg-pulse/20 hover:bg-pulse/30 disabled:opacity-50 text-pulse rounded-lg text-xs"
+                          >
+                            {requiredSavingId === template._id ? 'Saving...' : 'Save required'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRequiredEditingId(null)}
+                            className="px-3 py-2 bg-steel-800 hover:bg-steel-700 text-steel-200 rounded-lg text-xs"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => startRequiredEdit(template)}
+                          disabled={template.isBuiltIn}
+                          title={template.isBuiltIn ? 'Built-in templates cannot be edited' : undefined}
+                          className="px-3 py-2 bg-steel-800 hover:bg-steel-700 disabled:opacity-50 disabled:cursor-not-allowed text-steel-200 rounded-lg text-xs"
+                        >
+                          Edit required
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {requiredEditingId === template._id && (
+                    <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-steel-700 bg-steel-900/50 p-3 space-y-1">
+                      {templateFieldOptions(template).length === 0 ? (
+                        <p className="text-steel-500 text-xs italic">Analyze this template first to list its fields.</p>
+                      ) : (
+                        templateFieldOptions(template).map((field) => (
+                          <label key={field.path} className="flex items-center gap-2 text-xs text-steel-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={(requiredDrafts[template._id] ?? []).includes(field.path)}
+                              onChange={(event) => toggleRequired(template._id, field.path, event.target.checked)}
+                              className="accent-pulse"
+                            />
+                            <span className="font-mono">{field.path}</span>
+                            <span className="text-steel-600">{field.valueType}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="mt-3 border-t border-steel-800 pt-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>

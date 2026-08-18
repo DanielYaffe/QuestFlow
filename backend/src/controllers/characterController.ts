@@ -10,6 +10,7 @@ import QuestlineModel from '../models/questlineModel';
 import { resolveProjectId } from '../models/projectModel';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getPresignedUrl } from '../utils/s3Helper';
+import { allocateId } from '../services/idAllocationService';
 import { validateAssetCustomFields } from '../services/assetSchemaValidation';
 import {
   startRotationsJob,
@@ -204,6 +205,13 @@ class CharacterController extends BaseController {
         }
       }
 
+      // A design created by hand needs an id from the project pool too, or it
+      // is written with id 0 and shares that with every other unided design.
+      // An explicitly supplied maple block always wins.
+      const allocated = body.maple
+        ? 0
+        : (await allocateId({ projectId, type: 'npc' })).id;
+
       const character = await CharacterModel.create({
         ownerId: userId,
         projectId,
@@ -218,7 +226,7 @@ class CharacterController extends BaseController {
         ...(body.speciesData ? { speciesData: body.speciesData } : {}),
         ...(body.assets ? { assets: body.assets } : {}),
         ...(body.customFields ? { customFields: body.customFields } : {}),
-        ...(body.maple ? { maple: body.maple } : {}),
+        ...(body.maple ? { maple: body.maple } : allocated ? { maple: { mapleId: allocated } } : {}),
       });
 
       res.status(201).json({ ...character.toObject(), previewUrl: await signPreview(character) });
