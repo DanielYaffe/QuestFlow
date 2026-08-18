@@ -70,6 +70,7 @@ export async function updateGitSettings(req: AuthRequest, res: Response) {
       defaultFilePath: g.defaultFilePath ?? '',
     });
   } catch (error) {
+    console.error('[gitSettings] update failed:', error);
     res.status(500).json({ error: 'Failed to update git settings' });
   }
 }

@@ -61,9 +61,12 @@ const envSchema = z.object({
                 .map((e) => e.trim().toLowerCase())
                 .filter((e) => e.length > 0),
         ),
+    // 32 bytes as hex. A 64-char value that is not hex passes a length check but
+    // Buffer.from(v, 'hex') silently drops the invalid pairs, so the key comes out
+    // short and every encrypt() throws at runtime instead of at boot.
     ENCRYPTION_KEY: z
         .string()
-        .regex(/^[0-9a-fA-F]{64}$/, 'ENCRYPTION_KEY must be a 64-character hex string')
+        .regex(/^[0-9a-fA-F]{64}$/, 'must be 64 hex characters (32 bytes)')
         .default('0'.repeat(64)),
     // --- AI generation (provider-swappable via OpenAI-compatible endpoints) ---
     AI_PROVIDER: z.enum(['gemini', 'openai', 'anthropic', 'groq', 'ollama']).default('gemini'),
